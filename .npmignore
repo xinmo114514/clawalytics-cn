@@ -1,0 +1,33 @@
+# Source files (we ship dist)
+src/
+*.ts
+!*.d.ts
+
+# Config files
+.eslintrc*
+eslint.config.js
+.prettierrc*
+.prettierignore
+tsconfig*.json
+vite.config.ts
+components.json
+knip.config.ts
+
+# Dev files
+.github/
+.git/
+node_modules/
+*.log
+.env*
+.DS_Store
+
+# Build artifacts not needed
+*.tsbuildinfo
+
+# Other
+CHANGELOG.md
+cz.yaml
+netlify.toml
+public/
+index.html
+# Ignore shadcn image

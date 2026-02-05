@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow, format } from 'date-fns'
 import { Download, Search } from 'lucide-react'
+import { SessionsIcon } from '@/components/icons/sessions-icon'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -81,8 +82,8 @@ export function Sessions() {
     <>
       <Header>
         <div className='flex items-center gap-2'>
-          <span className='text-2xl'>🦞</span>
-          <span className='font-semibold text-lg'>Clawalytics</span>
+          <SessionsIcon active className='h-6 w-6' />
+          <span className='font-semibold text-lg'>Sessions</span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
           <ThemeSwitch />

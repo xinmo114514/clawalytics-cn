@@ -59,6 +59,11 @@ export interface Config {
     weeklyBudget: number;
     monthlyBudget: number;
   };
+  // OpenClaw integration settings
+  openClawEnabled: boolean;
+  openClawPath: string;
+  gatewayLogsPath: string;
+  securityAlertsEnabled: boolean;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -69,4 +74,9 @@ export const DEFAULT_CONFIG: Config = {
     weeklyBudget: 50,
     monthlyBudget: 200,
   },
+  // OpenClaw defaults
+  openClawEnabled: true,
+  openClawPath: '',  // Will be auto-detected based on OS
+  gatewayLogsPath: '/tmp/openclaw',
+  securityAlertsEnabled: true,
 };

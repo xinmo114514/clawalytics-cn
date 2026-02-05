@@ -8,7 +8,16 @@ import costsRoutes from './routes/costs.js';
 import configRoutes from './routes/config.js';
 import tokensRoutes from './routes/tokens.js';
 import trendsRoutes from './routes/trends.js';
-import { startWatcher, stopWatcher } from './parser/watcher.js';
+// OpenClaw Phase 2 routes
+import agentsRoutes from './routes/agents.js';
+import channelsRoutes from './routes/channels.js';
+// OpenClaw Phase 3 routes
+import devicesRoutes from './routes/devices.js';
+import securityRoutes from './routes/security.js';
+import auditRoutes from './routes/audit.js';
+import toolsRoutes from './routes/tools.js';
+import { startWatcher, stopWatcher, startOpenClawWatcher, stopOpenClawWatcher } from './parser/watcher.js';
+import { startSecurityWatcher, stopSecurityWatcher } from './parser/security-watcher.js';
 import { loadConfig, ensureConfigDir } from './config/loader.js';
 import { getDatabase, closeDatabase } from './db/schema.js';
 
@@ -31,6 +40,14 @@ app.use('/api/costs', costsRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/tokens', tokensRoutes);
 app.use('/api/trends', trendsRoutes);
+// OpenClaw Phase 2 routes
+app.use('/api/agents', agentsRoutes);
+app.use('/api/channels', channelsRoutes);
+// OpenClaw Phase 3 routes
+app.use('/api/devices', devicesRoutes);
+app.use('/api/security', securityRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/tools', toolsRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -69,6 +86,23 @@ async function start() {
       console.warn('No log path configured. File watcher not started.');
     }
 
+    // Start OpenClaw watchers if enabled
+    if (config.openClawEnabled) {
+      startOpenClawWatcher(config.openClawPath);
+      console.log(`OpenClaw watcher started for: ${config.openClawPath}`);
+
+      // Start security watcher if enabled
+      if (config.securityAlertsEnabled) {
+        startSecurityWatcher({
+          openClawPath: config.openClawPath,
+          gatewayLogsPath: config.gatewayLogsPath,
+          enabled: config.securityAlertsEnabled,
+        });
+      }
+    } else {
+      console.log('OpenClaw integration disabled');
+    }
+
     // Start HTTP server
     const server = app.listen(PORT, () => {
       console.log(`\n🦞 Clawalytics server running at http://localhost:${PORT}`);
@@ -81,6 +115,8 @@ async function start() {
     const shutdown = () => {
       console.log('\nShutting down...');
       stopWatcher();
+      stopOpenClawWatcher();
+      stopSecurityWatcher();
       closeDatabase();
       server.close(() => {
         console.log('Server stopped');

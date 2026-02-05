@@ -28,6 +28,11 @@ router.post('/', (req: Request, res: Response): void => {
         ...currentConfig.alertThresholds,
         ...updates.alertThresholds,
       },
+      // OpenClaw settings
+      openClawEnabled: updates.openClawEnabled ?? currentConfig.openClawEnabled,
+      openClawPath: updates.openClawPath ?? currentConfig.openClawPath,
+      gatewayLogsPath: updates.gatewayLogsPath ?? currentConfig.gatewayLogsPath,
+      securityAlertsEnabled: updates.securityAlertsEnabled ?? currentConfig.securityAlertsEnabled,
     };
 
     saveConfig(newConfig);

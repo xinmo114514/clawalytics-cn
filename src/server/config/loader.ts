@@ -24,6 +24,30 @@ function getDefaultLogPath(): string {
   }
 }
 
+function getDefaultOpenClawPath(): string {
+  const platform = os.platform();
+  const home = os.homedir();
+
+  if (platform === 'darwin') {
+    return path.join(home, '.openclaw');
+  } else if (platform === 'win32') {
+    return path.join(home, 'AppData', 'Roaming', 'openclaw');
+  } else {
+    // Linux and others
+    return path.join(home, '.openclaw');
+  }
+}
+
+function getDefaultGatewayLogsPath(): string {
+  const platform = os.platform();
+
+  if (platform === 'win32') {
+    return path.join(os.tmpdir(), 'openclaw');
+  } else {
+    return '/tmp/openclaw';
+  }
+}
+
 function deepMerge<T extends object>(target: T, source: Partial<T>): T {
   const result = { ...target };
   for (const key in source) {
@@ -56,6 +80,8 @@ export function loadConfig(): Config {
   const defaultConfig: Config = {
     ...DEFAULT_CONFIG,
     logPath: getDefaultLogPath(),
+    openClawPath: getDefaultOpenClawPath(),
+    gatewayLogsPath: getDefaultGatewayLogsPath(),
   };
 
   if (!fs.existsSync(CONFIG_FILE)) {
@@ -78,6 +104,11 @@ export function loadConfig(): Config {
         ...defaultConfig.alertThresholds,
         ...userConfig.alertThresholds,
       },
+      // OpenClaw settings
+      openClawEnabled: userConfig.openClawEnabled ?? defaultConfig.openClawEnabled,
+      openClawPath: userConfig.openClawPath || defaultConfig.openClawPath,
+      gatewayLogsPath: userConfig.gatewayLogsPath || defaultConfig.gatewayLogsPath,
+      securityAlertsEnabled: userConfig.securityAlertsEnabled ?? defaultConfig.securityAlertsEnabled,
     };
   } catch (error) {
     console.error('Error loading config, using defaults:', error);

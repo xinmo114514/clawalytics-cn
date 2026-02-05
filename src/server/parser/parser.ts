@@ -8,6 +8,13 @@ import {
   type DailyCostUpdate,
 } from '../db/queries.js';
 
+// Source type detection
+export type SourceType = 'claude-code' | 'openclaw';
+
+export function detectSourceType(filePath: string): SourceType {
+  return filePath.includes('.openclaw') ? 'openclaw' : 'claude-code';
+}
+
 // OpenClaw/Claude Code log entry structure
 export interface LogEntry {
   type: string;

@@ -1,7 +1,7 @@
 {
   "name": "clawalytics",
-  "version": "0.1.0",
-  "description": "Local analytics dashboard for OpenClaw - track your AI spending in real-time",
+  "version": "0.2.0",
+  "description": "Cost-tracking analytics dashboard for Claude Code and OpenClaw - track AI spending, monitor agents, analyze channels, and manage security",
   "author": "David Novotny",
   "license": "MIT",
   "type": "module",
@@ -113,14 +113,18 @@
   "keywords": [
     "openclaw",
     "claude-code",
+    "claude",
+    "anthropic",
     "ai-costs",
     "token-tracking",
     "analytics",
-    "claude",
     "openai",
     "llm",
     "api-costs",
-    "dashboard"
+    "dashboard",
+    "cost-tracking",
+    "prompt-caching",
+    "agent-monitoring"
   ],
   "repository": {
     "type": "git",

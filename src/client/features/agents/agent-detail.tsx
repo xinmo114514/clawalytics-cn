@@ -61,7 +61,7 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
       <Header>
         <div className='flex items-center gap-2'>
           <AgentsIcon active className='h-6 w-6' />
-          <span className='font-semibold text-lg'>Agent Detail</span>
+          <span className='font-jersey text-xl'>Agent Detail</span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
           <ThemeSwitch />
@@ -70,7 +70,7 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
 
       <Main>
         <div className='mb-6'>
-          <Link to='/agents'>
+          <Link to='/'>
             <Button variant='ghost' size='sm' className='mb-4 -ml-2'>
               <ArrowLeft className='mr-2 h-4 w-4' />
               Back to Overview

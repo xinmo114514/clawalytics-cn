@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import {
-  getAuditLog,
+  getAuditLogWithCount,
   getAuditEntry,
   getAuditLogByEntity,
   getAuditLogByActor,
@@ -19,14 +19,15 @@ router.get('/', (req: Request, res: Response): void => {
       entity_type: req.query.entityType as string | undefined,
       entity_id: req.query.entityId as string | undefined,
       actor: req.query.actor as string | undefined,
+      ip_address: req.query.ipAddress as string | undefined,
       startDate: req.query.startDate as string | undefined,
       endDate: req.query.endDate as string | undefined,
-      limit: parseInt(req.query.limit as string) || 100,
+      limit: parseInt(req.query.limit as string) || 50,
       offset: parseInt(req.query.offset as string) || 0,
     };
 
-    const entries = getAuditLog(filters);
-    res.json(entries);
+    const result = getAuditLogWithCount(filters);
+    res.json(result);
   } catch (error) {
     console.error('Error fetching audit log:', error);
     res.status(500).json({ error: 'Failed to fetch audit log' });

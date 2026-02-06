@@ -70,16 +70,9 @@ export function AgentCostChart({ data }: AgentCostChartProps) {
       >
         <defs>
           <linearGradient id='agentCostGradient' x1='0' y1='0' x2='0' y2='1'>
-            <stop
-              offset='5%'
-              stopColor='hsl(var(--primary))'
-              stopOpacity={0.4}
-            />
-            <stop
-              offset='95%'
-              stopColor='hsl(var(--primary))'
-              stopOpacity={0.05}
-            />
+            <stop offset='5%' stopColor='#ef4444' stopOpacity={0.5} />
+            <stop offset='50%' stopColor='#f87171' stopOpacity={0.25} />
+            <stop offset='95%' stopColor='#fca5a5' stopOpacity={0.05} />
           </linearGradient>
         </defs>
         <CartesianGrid
@@ -116,7 +109,8 @@ export function AgentCostChart({ data }: AgentCostChartProps) {
                   </div>
                   <div className='space-y-1.5'>
                     <div className='flex items-center justify-between gap-6'>
-                      <span className='text-xs text-muted-foreground'>
+                      <span className='text-xs text-muted-foreground flex items-center gap-2'>
+                        <span className='h-2 w-2 rounded-full bg-red-500' />
                         Cost
                       </span>
                       <span className='font-mono font-medium text-sm'>
@@ -158,8 +152,8 @@ export function AgentCostChart({ data }: AgentCostChartProps) {
         <Area
           type='monotone'
           dataKey='cost'
-          stroke='hsl(var(--primary))'
-          strokeWidth={2}
+          stroke='#ef4444'
+          strokeWidth={2.5}
           fillOpacity={1}
           fill='url(#agentCostGradient)'
         />

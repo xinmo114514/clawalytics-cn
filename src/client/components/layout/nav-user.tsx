@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Settings, HelpCircle } from 'lucide-react'
+import { HelpCircle } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -69,12 +69,6 @@ export function NavUser({ user }: NavUserProps) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem asChild>
-                <Link to='/settings'>
-                  <Settings />
-                  Settings
-                </Link>
-              </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link to='/help-center'>
                   <HelpCircle />

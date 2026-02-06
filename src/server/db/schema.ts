@@ -238,63 +238,84 @@ function initializeSchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(actor);
   `);
 
-  // Run migrations to add new columns to existing databases
+  // Run versioned migrations
   runMigrations(database);
 }
 
+// Each migration runs exactly once, tracked by version number in schema_version table.
+// To add a new migration: append an entry to this array with the next version number.
+// Migrations MUST be idempotent and non-destructive (never drop user data).
+const migrations: { version: number; description: string; up: (db: Database.Database) => void }[] = [
+  {
+    version: 1,
+    description: 'Add cache token columns to requests and daily_costs',
+    up: (db) => {
+      const addColumnIfMissing = (table: string, column: string, type: string) => {
+        const info = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+        if (!info.some(c => c.name === column)) {
+          db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+        }
+      };
+      addColumnIfMissing('requests', 'cache_creation_tokens', 'INTEGER DEFAULT 0');
+      addColumnIfMissing('requests', 'cache_read_tokens', 'INTEGER DEFAULT 0');
+      addColumnIfMissing('daily_costs', 'cache_creation_tokens', 'INTEGER DEFAULT 0');
+      addColumnIfMissing('daily_costs', 'cache_read_tokens', 'INTEGER DEFAULT 0');
+      addColumnIfMissing('daily_costs', 'cache_savings', 'REAL DEFAULT 0');
+    },
+  },
+  {
+    version: 2,
+    description: 'Add OpenClaw integration columns to sessions',
+    up: (db) => {
+      const addColumnIfMissing = (table: string, column: string, type: string) => {
+        const info = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+        if (!info.some(c => c.name === column)) {
+          db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+        }
+      };
+      addColumnIfMissing('sessions', 'agent_id', 'TEXT');
+      addColumnIfMissing('sessions', 'channel', 'TEXT');
+      addColumnIfMissing('sessions', 'origin_provider', 'TEXT');
+      addColumnIfMissing('sessions', 'source_type', "TEXT DEFAULT 'claude-code'");
+      db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_agent_id ON sessions(agent_id)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_channel ON sessions(channel)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_source_type ON sessions(source_type)');
+    },
+  },
+  // To add a future migration:
+  // {
+  //   version: 3,
+  //   description: 'Add xyz column to sessions',
+  //   up: (db) => {
+  //     db.exec('ALTER TABLE sessions ADD COLUMN xyz TEXT');
+  //   },
+  // },
+];
+
 function runMigrations(database: Database.Database): void {
-  // Check if cache columns exist in requests table
-  const requestsInfo = database.prepare("PRAGMA table_info(requests)").all() as { name: string }[];
-  const requestsColumns = requestsInfo.map(c => c.name);
+  // Create version tracking table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS schema_version (
+      version INTEGER PRIMARY KEY,
+      description TEXT NOT NULL,
+      applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
 
-  if (!requestsColumns.includes('cache_creation_tokens')) {
-    database.exec('ALTER TABLE requests ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0');
-  }
-  if (!requestsColumns.includes('cache_read_tokens')) {
-    database.exec('ALTER TABLE requests ADD COLUMN cache_read_tokens INTEGER DEFAULT 0');
-  }
+  const currentVersion = (database.prepare(
+    'SELECT COALESCE(MAX(version), 0) as v FROM schema_version'
+  ).get() as { v: number }).v;
 
-  // Check if cache columns exist in daily_costs table
-  const dailyCostsInfo = database.prepare("PRAGMA table_info(daily_costs)").all() as { name: string }[];
-  const dailyCostsColumns = dailyCostsInfo.map(c => c.name);
+  const pending = migrations.filter(m => m.version > currentVersion);
+  if (pending.length === 0) return;
 
-  if (!dailyCostsColumns.includes('cache_creation_tokens')) {
-    database.exec('ALTER TABLE daily_costs ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0');
-  }
-  if (!dailyCostsColumns.includes('cache_read_tokens')) {
-    database.exec('ALTER TABLE daily_costs ADD COLUMN cache_read_tokens INTEGER DEFAULT 0');
-  }
-  if (!dailyCostsColumns.includes('cache_savings')) {
-    database.exec('ALTER TABLE daily_costs ADD COLUMN cache_savings REAL DEFAULT 0');
-  }
-
-  // Phase 2 & 3: Add new columns to sessions table for OpenClaw integration
-  const sessionsInfo = database.prepare("PRAGMA table_info(sessions)").all() as { name: string }[];
-  const sessionsColumns = sessionsInfo.map(c => c.name);
-
-  if (!sessionsColumns.includes('agent_id')) {
-    database.exec('ALTER TABLE sessions ADD COLUMN agent_id TEXT');
-  }
-  if (!sessionsColumns.includes('channel')) {
-    database.exec('ALTER TABLE sessions ADD COLUMN channel TEXT');
-  }
-  if (!sessionsColumns.includes('origin_provider')) {
-    database.exec('ALTER TABLE sessions ADD COLUMN origin_provider TEXT');
-  }
-  if (!sessionsColumns.includes('source_type')) {
-    database.exec("ALTER TABLE sessions ADD COLUMN source_type TEXT DEFAULT 'claude-code'");
-  }
-
-  // Add indexes for new sessions columns (conditional - only if sessions table has new columns)
-  if (!sessionsColumns.includes('agent_id')) {
-    // Index will be created on new databases via schema, but for migrated databases:
-    try {
-      database.exec('CREATE INDEX IF NOT EXISTS idx_sessions_agent_id ON sessions(agent_id)');
-      database.exec('CREATE INDEX IF NOT EXISTS idx_sessions_channel ON sessions(channel)');
-      database.exec('CREATE INDEX IF NOT EXISTS idx_sessions_source_type ON sessions(source_type)');
-    } catch {
-      // Indexes may already exist
-    }
+  for (const migration of pending) {
+    database.transaction(() => {
+      migration.up(database);
+      database.prepare(
+        'INSERT INTO schema_version (version, description) VALUES (?, ?)'
+      ).run(migration.version, migration.description);
+    })();
   }
 }
 

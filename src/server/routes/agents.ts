@@ -1,18 +1,12 @@
 import { Router, type Request, type Response } from 'express';
-import {
-  getAgents,
-  getAgent,
-  getAgentDailyCosts,
-  getAllAgentsDailyCosts,
-  getAgentStats,
-} from '../db/queries-agents.js';
+import { getAnalyticsService } from '../services/analytics-service.js';
 
 const router: Router = Router();
 
 // GET /api/agents - List all agents
 router.get('/', (_req: Request, res: Response): void => {
   try {
-    const agents = getAgents();
+    const agents = getAnalyticsService().getAgents();
     res.json(agents);
   } catch (error) {
     console.error('Error fetching agents:', error);
@@ -24,7 +18,7 @@ router.get('/', (_req: Request, res: Response): void => {
 router.get('/stats', (req: Request, res: Response): void => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
-    const stats = getAgentStats(limit);
+    const stats = getAnalyticsService().getAgentStatsResult(limit);
     res.json(stats);
   } catch (error) {
     console.error('Error fetching agent stats:', error);
@@ -36,7 +30,7 @@ router.get('/stats', (req: Request, res: Response): void => {
 router.get('/daily', (req: Request, res: Response): void => {
   try {
     const days = parseInt(req.query.days as string) || 30;
-    const dailyCosts = getAllAgentsDailyCosts(days);
+    const dailyCosts = getAnalyticsService().getAllAgentsDailyCosts(days);
     res.json(dailyCosts);
   } catch (error) {
     console.error('Error fetching agents daily costs:', error);
@@ -48,7 +42,7 @@ router.get('/daily', (req: Request, res: Response): void => {
 router.get('/:id', (req: Request, res: Response): void => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const agent = getAgent(id);
+    const agent = getAnalyticsService().getAgent(id);
 
     if (!agent) {
       res.status(404).json({ error: 'Agent not found' });
@@ -66,7 +60,7 @@ router.get('/:id', (req: Request, res: Response): void => {
 router.get('/:id/stats', (req: Request, res: Response): void => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const agent = getAgent(id);
+    const agent = getAnalyticsService().getAgent(id);
 
     if (!agent) {
       res.status(404).json({ error: 'Agent not found' });
@@ -74,7 +68,7 @@ router.get('/:id/stats', (req: Request, res: Response): void => {
     }
 
     const days = parseInt(req.query.days as string) || 30;
-    const dailyCosts = getAgentDailyCosts(id, days);
+    const dailyCosts = getAnalyticsService().getAgentDailyCosts(id, days);
 
     res.json({
       agent,
@@ -91,7 +85,7 @@ router.get('/:id/daily', (req: Request, res: Response): void => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const days = parseInt(req.query.days as string) || 30;
-    const dailyCosts = getAgentDailyCosts(id, days);
+    const dailyCosts = getAnalyticsService().getAgentDailyCosts(id, days);
     res.json(dailyCosts);
   } catch (error) {
     console.error('Error fetching agent daily costs:', error);

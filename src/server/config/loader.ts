@@ -10,20 +10,6 @@ export type { Config, DefaultRates, ProviderRates } from './defaults.js';
 const CONFIG_DIR = path.join(os.homedir(), '.clawalytics');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.yaml');
 
-function getDefaultLogPath(): string {
-  const platform = os.platform();
-  const home = os.homedir();
-
-  if (platform === 'darwin') {
-    return path.join(home, '.claude', 'projects');
-  } else if (platform === 'win32') {
-    return path.join(home, 'AppData', 'Roaming', 'claude', 'projects');
-  } else {
-    // Linux and others
-    return path.join(home, '.claude', 'projects');
-  }
-}
-
 function getDefaultOpenClawPath(): string {
   const platform = os.platform();
   const home = os.homedir();
@@ -79,7 +65,6 @@ export function loadConfig(): Config {
 
   const defaultConfig: Config = {
     ...DEFAULT_CONFIG,
-    logPath: getDefaultLogPath(),
     openClawPath: getDefaultOpenClawPath(),
     gatewayLogsPath: getDefaultGatewayLogsPath(),
   };
@@ -98,17 +83,17 @@ export function loadConfig(): Config {
     const mergedRates: DefaultRates = deepMerge(DEFAULT_RATES, userConfig.rates || {});
 
     return {
-      logPath: userConfig.logPath || defaultConfig.logPath,
       rates: mergedRates,
       alertThresholds: {
         ...defaultConfig.alertThresholds,
         ...userConfig.alertThresholds,
       },
       // OpenClaw settings
-      openClawEnabled: userConfig.openClawEnabled ?? defaultConfig.openClawEnabled,
       openClawPath: userConfig.openClawPath || defaultConfig.openClawPath,
       gatewayLogsPath: userConfig.gatewayLogsPath || defaultConfig.gatewayLogsPath,
       securityAlertsEnabled: userConfig.securityAlertsEnabled ?? defaultConfig.securityAlertsEnabled,
+      // Pricing
+      pricingEndpoint: userConfig.pricingEndpoint ?? defaultConfig.pricingEndpoint,
     };
   } catch (error) {
     console.error('Error loading config, using defaults:', error);

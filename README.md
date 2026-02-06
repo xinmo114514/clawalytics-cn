@@ -108,7 +108,7 @@ clawalytics path /path/to/claude/logs
 clawalytics status
 ```
 
-The dashboard will be available at `http://localhost:3001` by default.
+The dashboard will be available at `http://localhost:9174` by default.
 
 ## Configuration
 

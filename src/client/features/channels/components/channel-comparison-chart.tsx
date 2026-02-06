@@ -14,19 +14,50 @@ interface ChannelComparisonChartProps {
   channels: Channel[]
 }
 
-const CHANNEL_COLORS: Record<string, string> = {
-  whatsapp: 'hsl(142, 71%, 45%)',
-  telegram: 'hsl(200, 90%, 50%)',
-  slack: 'hsl(270, 60%, 55%)',
-  discord: 'hsl(235, 85%, 65%)',
+// Red gradient colors for bars (darker to lighter)
+const BAR_COLORS = [
+  '#7f1d1d', // Red 900
+  '#991b1b', // Red 800
+  '#b91c1c', // Red 700
+  '#dc2626', // Red 600
+  '#ef4444', // Red 500
+  '#f87171', // Red 400
+  '#fca5a5', // Red 300
+  '#fecaca', // Red 200
+  '#fee2e2', // Red 100
+  '#fef2f2', // Red 50
+]
+
+function getBarColor(index: number, total: number): string {
+  // Map index to color array, spreading evenly across available colors
+  const colorIndex = Math.min(
+    Math.floor((index / total) * BAR_COLORS.length),
+    BAR_COLORS.length - 1
+  )
+  return BAR_COLORS[colorIndex]
 }
 
-function getChannelColor(name: string): string {
-  const lowerName = name.toLowerCase()
-  for (const [key, color] of Object.entries(CHANNEL_COLORS)) {
-    if (lowerName.includes(key)) return color
-  }
-  return 'hsl(var(--primary))'
+// Custom tick component for Jersey font
+interface CustomTickProps {
+  x?: number | string
+  y?: number | string
+  payload?: { value: string }
+}
+
+function CustomYAxisTick({ x, y, payload }: CustomTickProps) {
+  if (!payload) return null
+  return (
+    <text
+      x={Number(x)}
+      y={Number(y)}
+      dy={4}
+      textAnchor='end'
+      fill='hsl(var(--foreground))'
+      style={{ fontFamily: '"Jersey 10", sans-serif', fontSize: '14px' }}
+    >
+      {payload.value}
+    </text>
+  )
 }
 
 export function ChannelComparisonChart({
@@ -36,12 +67,11 @@ export function ChannelComparisonChart({
     .filter((channel) => channel.total_cost > 0 || channel.message_count > 0)
     .sort((a, b) => b.total_cost - a.total_cost)
     .map((channel) => ({
-      name: channel.name,
+      name: channel.name.toUpperCase(),
       cost: channel.total_cost,
       messages: channel.message_count,
       inputTokens: channel.total_input_tokens,
       outputTokens: channel.total_output_tokens,
-      color: getChannelColor(channel.name),
     }))
 
   if (chartData.length === 0) {
@@ -53,8 +83,11 @@ export function ChannelComparisonChart({
     )
   }
 
+  // Dynamic height: 28px per channel, min 200px
+  const chartHeight = Math.max(200, chartData.length * 28 + 40)
+
   return (
-    <ResponsiveContainer width='100%' height={300}>
+    <ResponsiveContainer width='100%' height={chartHeight}>
       <BarChart
         data={chartData}
         layout='vertical'
@@ -77,11 +110,11 @@ export function ChannelComparisonChart({
         <YAxis
           type='category'
           dataKey='name'
-          stroke='hsl(var(--muted-foreground))'
-          fontSize={12}
           tickLine={false}
           axisLine={false}
-          width={100}
+          width={130}
+          interval={0}
+          tick={CustomYAxisTick}
         />
         <Tooltip
           content={({ active, payload }) => {
@@ -89,7 +122,7 @@ export function ChannelComparisonChart({
               const tooltipData = payload[0].payload as (typeof chartData)[0]
               return (
                 <div className='rounded-lg border bg-background p-3 shadow-md min-w-[180px]'>
-                  <div className='mb-2 font-medium text-sm'>
+                  <div className='mb-2 font-jersey text-base'>
                     {tooltipData.name}
                   </div>
                   <div className='space-y-1.5'>
@@ -124,9 +157,12 @@ export function ChannelComparisonChart({
             return null
           }}
         />
-        <Bar dataKey='cost' radius={[0, 4, 4, 0]} maxBarSize={40}>
-          {chartData.map((entry, index) => (
-            <Cell key={`cell-${index}`} fill={entry.color} />
+        <Bar dataKey='cost' radius={[0, 4, 4, 0]} maxBarSize={22}>
+          {chartData.map((_, index) => (
+            <Cell
+              key={`cell-${index}`}
+              fill={getBarColor(index, chartData.length)}
+            />
           ))}
         </Bar>
       </BarChart>

@@ -1,12 +1,12 @@
+import { useState, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import {
   DollarSign,
   Coins,
   Database,
   Activity,
-  ArrowRight,
   TrendingUp,
+  Download,
 } from 'lucide-react'
 import { HomeIcon } from '@/components/icons/home-icon'
 import {
@@ -23,22 +23,36 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { formatCurrency, formatNumber } from '@/lib/format'
 import {
   getEnhancedStats,
   getDailyCosts,
   getModelUsage,
   getTokenBreakdown,
-  getSessions,
+  getBudgetStatus,
+  type BudgetPeriod,
 } from '@/lib/api'
 import { DailyCostChart } from './components/daily-cost-chart'
-import { ModelUsageChart } from './components/model-usage-chart'
-import { TokenBreakdownCard } from './components/token-breakdown-card'
-import { RecentSessionsTable } from './components/recent-sessions-table'
+import { OverviewTab } from './tabs/overview-tab'
+import { ModelsTab } from './tabs/models-tab'
+import { AgentsTab } from './tabs/agents-tab'
+import { ChannelsTab } from './tabs/channels-tab'
 
 export function Dashboard() {
+  const [activeTab, setActiveTab] = useState('overview')
+  const visitedTabs = useRef(new Set(['overview']))
+
+  const handleTabChange = (tab: string) => {
+    visitedTabs.current.add(tab)
+    setActiveTab(tab)
+  }
+
+  const hasVisited = (tab: string) => visitedTabs.current.has(tab)
+
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['enhancedStats'],
     queryFn: getEnhancedStats,
@@ -63,26 +77,11 @@ export function Dashboard() {
     refetchInterval: 10000,
   })
 
-  const { data: recentSessions, isLoading: sessionsLoading } = useQuery({
-    queryKey: ['recentSessions'],
-    queryFn: () => getSessions(10, 0),
+  const { data: budgetStatus } = useQuery({
+    queryKey: ['budgetStatus'],
+    queryFn: getBudgetStatus,
     refetchInterval: 10000,
   })
-
-  const formatCurrency = (value: number) => {
-    if (value >= 100) return `$${value.toFixed(0)}`
-    if (value >= 10) return `$${value.toFixed(1)}`
-    if (value >= 1) return `$${value.toFixed(2)}`
-    if (value >= 0.01) return `$${value.toFixed(2)}`
-    return `$${value.toFixed(4)}`
-  }
-
-  const formatNumber = (value: number) => {
-    if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`
-    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-    if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
-    return value.toString()
-  }
 
   const totalTokens = stats
     ? stats.totalTokens.input +
@@ -96,7 +95,7 @@ export function Dashboard() {
       <Header>
         <div className='flex items-center gap-2'>
           <HomeIcon active className='h-6 w-6' />
-          <span className='font-semibold text-lg'>Dashboard</span>
+          <span className='font-jersey text-xl'>Dashboard</span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
           <ThemeSwitch />
@@ -106,22 +105,30 @@ export function Dashboard() {
       <Main>
         <div className='mb-6 flex items-center justify-between'>
           <div>
-            <h1 className='text-2xl font-bold tracking-tight'>Uebersicht</h1>
+            <h1 className='text-3xl font-bold tracking-tight'>Overview</h1>
             <p className='text-muted-foreground'>
-              Deine Kostenanalyse auf einen Blick
+              Your cost analytics at a glance
             </p>
           </div>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => window.open('/api/export/costs?format=csv', '_blank')}
+          >
+            <Download className='mr-2 h-4 w-4' />
+            Export CSV
+          </Button>
         </div>
 
         {/* Stats Cards Row */}
         <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6'>
-          {/* Total Cost Card */}
-          <Card>
+          <Card className='relative overflow-hidden'>
+            <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>
-                Gesamtkosten
-              </CardTitle>
-              <DollarSign className='h-4 w-4 text-muted-foreground' />
+              <CardTitle className='text-sm font-medium'>Total Cost</CardTitle>
+              <div className='rounded-full bg-red-500/10 p-2'>
+                <DollarSign className='h-4 w-4 text-red-500' />
+              </div>
             </CardHeader>
             <CardContent>
               {statsLoading ? (
@@ -131,24 +138,24 @@ export function Dashboard() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold'>
+                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                     {formatCurrency(stats?.totalCost ?? 0)}
                   </div>
                   <p className='text-xs text-muted-foreground'>
-                    {formatCurrency(stats?.monthCost ?? 0)} diesen Monat
+                    {formatCurrency(stats?.monthCost ?? 0)} this month
                   </p>
                 </>
               )}
             </CardContent>
           </Card>
 
-          {/* Total Tokens Card */}
-          <Card>
+          <Card className='relative overflow-hidden'>
+            <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-rose-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>
-                Tokens gesamt
-              </CardTitle>
-              <Coins className='h-4 w-4 text-muted-foreground' />
+              <CardTitle className='text-sm font-medium'>Total Tokens</CardTitle>
+              <div className='rounded-full bg-rose-500/10 p-2'>
+                <Coins className='h-4 w-4 text-rose-500' />
+              </div>
             </CardHeader>
             <CardContent>
               {statsLoading ? (
@@ -160,7 +167,7 @@ export function Dashboard() {
                 <>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div className='text-2xl font-bold cursor-help'>
+                      <div className='text-2xl font-bold cursor-help text-rose-600 dark:text-rose-400'>
                         {formatNumber(totalTokens)}
                       </div>
                     </TooltipTrigger>
@@ -202,13 +209,13 @@ export function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* Cache Savings Card */}
-          <Card>
+          <Card className='relative overflow-hidden'>
+            <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>
-                Cache-Ersparnis
-              </CardTitle>
-              <Database className='h-4 w-4 text-muted-foreground' />
+              <CardTitle className='text-sm font-medium'>Cache Savings</CardTitle>
+              <div className='rounded-full bg-red-500/10 p-2'>
+                <Database className='h-4 w-4 text-red-500' />
+              </div>
             </CardHeader>
             <CardContent>
               {statsLoading ? (
@@ -218,24 +225,22 @@ export function Dashboard() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-green-600 dark:text-green-400'>
+                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                     {formatCurrency(stats?.cacheSavings ?? 0)}
                   </div>
-                  <p className='text-xs text-muted-foreground'>
-                    Durch Prompt-Caching gespart
-                  </p>
+                  <p className='text-xs text-muted-foreground'>Saved via prompt caching</p>
                 </>
               )}
             </CardContent>
           </Card>
 
-          {/* Active Sessions Card */}
-          <Card>
+          <Card className='relative overflow-hidden'>
+            <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>
-                Aktive Sessions
-              </CardTitle>
-              <Activity className='h-4 w-4 text-muted-foreground' />
+              <CardTitle className='text-sm font-medium'>Active Sessions</CardTitle>
+              <div className='rounded-full bg-red-500/10 p-2'>
+                <Activity className='h-4 w-4 text-red-500' />
+              </div>
             </CardHeader>
             <CardContent>
               {statsLoading ? (
@@ -245,110 +250,123 @@ export function Dashboard() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold'>
+                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                     {stats?.activeSessionsThisMonth ?? 0}
                   </div>
-                  <p className='text-xs text-muted-foreground'>Diesen Monat</p>
+                  <p className='text-xs text-muted-foreground'>This month</p>
                 </>
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Charts Row */}
-        <div className='grid grid-cols-1 gap-6 lg:grid-cols-7 mb-6'>
-          {/* Daily Cost Chart - Takes 4 columns */}
-          <Card className='col-span-1 lg:col-span-4'>
-            <CardHeader>
-              <CardTitle className='flex items-center gap-2'>
-                <TrendingUp className='h-5 w-5' />
-                Tageskosten
-              </CardTitle>
-              <CardDescription>
-                Deine Ausgaben der letzten 30 Tage
-              </CardDescription>
-            </CardHeader>
-            <CardContent className='ps-2'>
-              {dailyCostsLoading ? (
-                <Skeleton className='h-[300px] w-full' />
-              ) : (
-                <DailyCostChart data={dailyCosts ?? []} />
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Model Usage Chart - Takes 3 columns */}
-          <Card className='col-span-1 lg:col-span-3'>
-            <CardHeader>
-              <CardTitle>Modell-Nutzung</CardTitle>
-              <CardDescription>Kostenverteilung nach Modell</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {modelUsageLoading ? (
-                <Skeleton className='h-[300px] w-full' />
-              ) : (
-                <ModelUsageChart data={modelUsage ?? []} />
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Token Breakdown and Recent Sessions Row */}
-        <div className='grid grid-cols-1 gap-6 lg:grid-cols-7'>
-          {/* Token Breakdown Card - Takes 3 columns */}
-          <div className='col-span-1 lg:col-span-3'>
-            {tokenBreakdownLoading ? (
-              <Card>
-                <CardHeader>
-                  <Skeleton className='h-6 w-32' />
-                  <Skeleton className='h-4 w-48' />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className='h-[200px] w-full' />
-                </CardContent>
-              </Card>
-            ) : (
-              <TokenBreakdownCard data={tokenBreakdown} />
+        {/* Budget Progress */}
+        {budgetStatus && (budgetStatus.daily || budgetStatus.weekly || budgetStatus.monthly) && (
+          <div className='grid gap-4 sm:grid-cols-3 mb-6'>
+            {budgetStatus.daily && (
+              <BudgetBar label='Daily Budget' period={budgetStatus.daily} />
+            )}
+            {budgetStatus.weekly && (
+              <BudgetBar label='Weekly Budget' period={budgetStatus.weekly} />
+            )}
+            {budgetStatus.monthly && (
+              <BudgetBar label='Monthly Budget' period={budgetStatus.monthly} />
             )}
           </div>
+        )}
 
-          {/* Recent Sessions Table - Takes 4 columns */}
-          <Card className='col-span-1 lg:col-span-4'>
-            <CardHeader className='flex flex-row items-center justify-between'>
-              <div>
-                <CardTitle>Letzte Sessions</CardTitle>
-                <CardDescription>
-                  Deine aktuellsten OpenClaw-Sessions
-                </CardDescription>
-              </div>
-              <Link to='/sessions'>
-                <Button variant='ghost' size='sm' className='gap-1'>
-                  Alle anzeigen
-                  <ArrowRight className='h-4 w-4' />
-                </Button>
-              </Link>
-            </CardHeader>
-            <CardContent>
-              {sessionsLoading ? (
-                <div className='space-y-4'>
-                  {[...Array(5)].map((_, i) => (
-                    <div key={i} className='flex items-center gap-4'>
-                      <Skeleton className='h-10 w-10 rounded-full' />
-                      <div className='flex-1 space-y-2'>
-                        <Skeleton className='h-4 w-32' />
-                        <Skeleton className='h-3 w-24' />
-                      </div>
-                      <Skeleton className='h-4 w-16' />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <RecentSessionsTable sessions={recentSessions?.sessions ?? []} />
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        {/* Daily Cost Chart (always visible, above tabs) */}
+        <Card className='mb-6'>
+          <CardHeader>
+            <CardTitle className='flex items-center gap-2'>
+              <TrendingUp className='h-5 w-5' />
+              Daily Costs
+            </CardTitle>
+            <CardDescription>Your spending over the last 30 days</CardDescription>
+          </CardHeader>
+          <CardContent className='ps-2'>
+            {dailyCostsLoading ? (
+              <Skeleton className='h-[300px] w-full' />
+            ) : (
+              <DailyCostChart data={dailyCosts ?? []} />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Tabbed Breakdown */}
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
+          <TabsList>
+            <TabsTrigger value='overview'>Overview</TabsTrigger>
+            <TabsTrigger value='models'>Models</TabsTrigger>
+            <TabsTrigger value='agents'>Agents</TabsTrigger>
+            <TabsTrigger value='channels'>Channels</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value='overview'>
+            <OverviewTab
+              modelUsage={modelUsage}
+              modelUsageLoading={modelUsageLoading}
+              tokenBreakdown={tokenBreakdown}
+              tokenBreakdownLoading={tokenBreakdownLoading}
+              onSwitchTab={handleTabChange}
+            />
+          </TabsContent>
+
+          <TabsContent value='models'>
+            <ModelsTab enabled={hasVisited('models')} />
+          </TabsContent>
+
+          <TabsContent value='agents'>
+            <AgentsTab enabled={hasVisited('agents')} />
+          </TabsContent>
+
+          <TabsContent value='channels'>
+            <ChannelsTab enabled={hasVisited('channels')} />
+          </TabsContent>
+        </Tabs>
       </Main>
     </>
+  )
+}
+
+function BudgetBar({
+  label,
+  period,
+}: {
+  label: string
+  period: BudgetPeriod
+}) {
+  const color =
+    period.percent >= 90
+      ? 'bg-red-500'
+      : period.percent >= 70
+        ? 'bg-yellow-500'
+        : 'bg-green-500'
+
+  const textColor =
+    period.percent >= 90
+      ? 'text-red-600 dark:text-red-400'
+      : period.percent >= 70
+        ? 'text-yellow-600 dark:text-yellow-400'
+        : 'text-green-600 dark:text-green-400'
+
+  return (
+    <Card className='p-4'>
+      <div className='flex items-center justify-between mb-2'>
+        <span className='text-sm font-medium'>{label}</span>
+        <span className={`text-sm font-semibold ${textColor}`}>
+          {formatCurrency(period.spent)} / {formatCurrency(period.budget)}
+        </span>
+      </div>
+      <div className='relative h-2 w-full overflow-hidden rounded-full bg-muted'>
+        <div
+          className={`h-full transition-all ${color}`}
+          style={{ width: `${Math.min(100, period.percent)}%` }}
+        />
+      </div>
+      <p className='text-xs text-muted-foreground mt-1'>
+        {period.percent.toFixed(0)}% used
+      </p>
+    </Card>
   )
 }

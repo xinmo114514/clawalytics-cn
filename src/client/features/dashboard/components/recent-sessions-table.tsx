@@ -1,5 +1,5 @@
 import { formatDistanceToNow, differenceInMinutes, differenceInHours } from 'date-fns'
-import { de } from 'date-fns/locale'
+import { enUS } from 'date-fns/locale'
 import {
   Table,
   TableBody,
@@ -66,11 +66,20 @@ function formatCurrency(value: number): string {
   return `$${value.toFixed(4)}`
 }
 
+// Model badge color mapping (red/rose palette)
+function getModelBadgeClass(model: string): string {
+  if (model.includes('opus')) return 'border-red-500/50 text-red-600 dark:text-red-400'
+  if (model.includes('sonnet')) return 'border-rose-500/50 text-rose-600 dark:text-rose-400'
+  if (model.includes('haiku')) return 'border-pink-500/50 text-pink-600 dark:text-pink-400'
+  if (model.includes('gpt')) return 'border-fuchsia-500/50 text-fuchsia-600 dark:text-fuchsia-400'
+  return 'border-gray-500/50'
+}
+
 export function RecentSessionsTable({ sessions }: RecentSessionsTableProps) {
   if (sessions.length === 0) {
     return (
       <div className='flex h-[200px] items-center justify-center text-muted-foreground text-center'>
-        Noch keine Sessions vorhanden. Starte OpenClaw, um hier deine Sessions zu sehen.
+        No sessions yet. Start using Claude Code to see your sessions here.
       </div>
     )
   }
@@ -80,11 +89,11 @@ export function RecentSessionsTable({ sessions }: RecentSessionsTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Projekt</TableHead>
-            <TableHead className='hidden sm:table-cell'>Gestartet</TableHead>
-            <TableHead className='hidden md:table-cell'>Dauer</TableHead>
+            <TableHead>Project</TableHead>
+            <TableHead className='hidden sm:table-cell'>Started</TableHead>
+            <TableHead className='hidden md:table-cell'>Duration</TableHead>
             <TableHead className='text-right'>Tokens</TableHead>
-            <TableHead className='text-right'>Kosten</TableHead>
+            <TableHead className='text-right'>Cost</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -92,8 +101,8 @@ export function RecentSessionsTable({ sessions }: RecentSessionsTableProps) {
             <TableRow key={session.id}>
               <TableCell>
                 <div className='flex items-center gap-3'>
-                  <div className='hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 sm:flex'>
-                    <span className='text-xs font-medium text-primary'>
+                  <div className='hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-rose-500 sm:flex'>
+                    <span className='text-xs font-medium text-white'>
                       {getProjectInitials(session.project_path)}
                     </span>
                   </div>
@@ -106,7 +115,7 @@ export function RecentSessionsTable({ sessions }: RecentSessionsTableProps) {
                         <Badge
                           key={model}
                           variant='outline'
-                          className='text-[10px] px-1 py-0'
+                          className={`text-[10px] px-1 py-0 ${getModelBadgeClass(model)}`}
                         >
                           {getModelShortName(model)}
                         </Badge>
@@ -126,7 +135,7 @@ export function RecentSessionsTable({ sessions }: RecentSessionsTableProps) {
               <TableCell className='hidden sm:table-cell text-muted-foreground'>
                 {formatDistanceToNow(new Date(session.started_at), {
                   addSuffix: true,
-                  locale: de,
+                  locale: enUS,
                 })}
               </TableCell>
               <TableCell className='hidden md:table-cell text-muted-foreground'>

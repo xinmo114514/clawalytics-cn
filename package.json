@@ -1,17 +1,19 @@
 {
   "name": "clawalytics",
-  "version": "0.2.0",
-  "description": "Cost-tracking analytics dashboard for Claude Code and OpenClaw - track AI spending, monitor agents, analyze channels, and manage security",
+  "version": "0.6.1",
+  "description": "Cost-tracking analytics dashboard for OpenClaw - track AI spending across 100+ models, monitor agents, analyze channels, and manage security",
   "author": "David Novotny",
   "license": "MIT",
   "type": "module",
   "main": "dist/server/index.js",
   "bin": {
-    "clawalytics": "./bin/clawalytics.js"
+    "clawalytics": "./bin/clawalytics.js",
+    "clawalytics-mcp": "./bin/clawalytics-mcp.js"
   },
   "files": [
     "bin",
     "dist",
+    "scripts",
     "README.md"
   ],
   "engines": {
@@ -24,7 +26,9 @@
     "build": "pnpm build:client && pnpm build:server",
     "build:client": "tsc -b && vite build",
     "build:server": "tsc -p tsconfig.server.json",
-    "start": "node dist/server/index.js",
+    "start": "NODE_ENV=production node dist/server/index.js",
+    "postinstall": "node scripts/postinstall.js",
+    "preuninstall": "node scripts/preuninstall.js",
     "prepublishOnly": "pnpm build",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -32,11 +36,14 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "better-sqlite3": "^11.7.0",
     "chokidar": "^4.0.3",
     "commander": "^13.1.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "framer-motion": "^12.32.0",
+    "ws": "^8.19.0",
     "yaml": "^2.7.0"
   },
   "optionalDependencies": {
@@ -64,7 +71,6 @@
     "clsx": "^2.1.1",
     "cmdk": "1.1.1",
     "date-fns": "^4.1.0",
-    "input-otp": "^1.4.2",
     "lucide-react": "^0.561.0",
     "react": "^19.2.3",
     "react-day-picker": "9.12.0",
@@ -80,7 +86,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
-    "@faker-js/faker": "^10.1.0",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/eslint-plugin-query": "^5.91.2",
     "@tanstack/react-query": "^5.90.12",
@@ -96,6 +101,7 @@
     "@types/node": "^25.0.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react-swc": "^4.2.2",
     "concurrently": "^9.1.2",
     "eslint": "^9.39.2",

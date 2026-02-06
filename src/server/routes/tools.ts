@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import {
   getOutboundCalls,
+  getOutboundCallsWithCount,
   getOutboundCallsBySession,
   getOutboundCallsByTool,
   getOutboundCallStats,
@@ -8,14 +9,19 @@ import {
 
 const router: Router = Router();
 
-// GET /api/tools - List outbound tool calls
+// GET /api/tools - List outbound tool calls with pagination
 router.get('/', (req: Request, res: Response): void => {
   try {
-    const limit = parseInt(req.query.limit as string) || 100;
-    const agentId = req.query.agentId as string | undefined;
+    const filters = {
+      limit: parseInt(req.query.limit as string) || 50,
+      offset: parseInt(req.query.offset as string) || 0,
+      agentId: req.query.agentId as string | undefined,
+      toolName: req.query.toolName as string | undefined,
+      status: req.query.status as string | undefined,
+    };
 
-    const calls = getOutboundCalls(limit, agentId);
-    res.json(calls);
+    const result = getOutboundCallsWithCount(filters);
+    res.json(result);
   } catch (error) {
     console.error('Error fetching outbound calls:', error);
     res.status(500).json({ error: 'Failed to fetch outbound calls' });

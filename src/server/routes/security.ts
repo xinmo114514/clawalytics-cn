@@ -17,7 +17,18 @@ const router: Router = Router();
 router.get('/dashboard', (_req: Request, res: Response): void => {
   try {
     const stats = getSecurityDashboardStats();
-    res.json(stats);
+    const alertStats = getAlertStats();
+    res.json({
+      activeDevices: stats.devices.active,
+      unacknowledgedAlerts: stats.alerts.unacknowledged,
+      recentConnections: stats.devices.recentConnections,
+      alertsByLevel: {
+        critical: alertStats.bySeverity['critical'] ?? 0,
+        high: alertStats.bySeverity['high'] ?? 0,
+        medium: alertStats.bySeverity['medium'] ?? 0,
+        low: alertStats.bySeverity['low'] ?? 0,
+      },
+    });
   } catch (error) {
     console.error('Error fetching security dashboard:', error);
     res.status(500).json({ error: 'Failed to fetch security dashboard' });

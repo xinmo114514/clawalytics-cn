@@ -16,6 +16,7 @@ interface TokenBarItem {
   value: number
   percentage: number
   color: string
+  bgColor: string
 }
 
 function formatTokenCount(value: number): string {
@@ -30,12 +31,12 @@ export function TokenBreakdownCard({ data }: TokenBreakdownCardProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Token-Aufteilung</CardTitle>
-          <CardDescription>Letzte 30 Tage</CardDescription>
+          <CardTitle>Token Breakdown</CardTitle>
+          <CardDescription>Last 30 days</CardDescription>
         </CardHeader>
         <CardContent>
           <div className='flex h-[200px] items-center justify-center text-muted-foreground'>
-            Lade Daten...
+            Loading...
           </div>
         </CardContent>
       </Card>
@@ -48,51 +49,56 @@ export function TokenBreakdownCard({ data }: TokenBreakdownCardProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Token-Aufteilung</CardTitle>
-          <CardDescription>Letzte 30 Tage</CardDescription>
+          <CardTitle>Token Breakdown</CardTitle>
+          <CardDescription>Last 30 days</CardDescription>
         </CardHeader>
         <CardContent>
           <div className='flex h-[200px] items-center justify-center text-muted-foreground text-center px-4'>
-            Noch keine Daten vorhanden. Starte OpenClaw, um hier deine Token-Nutzung zu sehen.
+            No data yet. Start using Claude Code to see your token usage here.
           </div>
         </CardContent>
       </Card>
     )
   }
 
+  // Red/rose palette matching Clawalytics branding
   const items: TokenBarItem[] = [
     {
       label: 'Input',
       value: data.input,
       percentage: (data.input / total) * 100,
-      color: 'bg-chart-1',
+      color: '#ef4444', // Red 500
+      bgColor: 'bg-red-500',
     },
     {
       label: 'Output',
       value: data.output,
       percentage: (data.output / total) * 100,
-      color: 'bg-chart-2',
+      color: '#f43f5e', // Rose 500
+      bgColor: 'bg-rose-500',
     },
     {
       label: 'Cache (read)',
       value: data.cacheRead,
       percentage: (data.cacheRead / total) * 100,
-      color: 'bg-chart-3',
+      color: '#10b981', // Emerald 500 (savings = green)
+      bgColor: 'bg-emerald-500',
     },
     {
       label: 'Cache (write)',
       value: data.cacheCreation,
       percentage: (data.cacheCreation / total) * 100,
-      color: 'bg-chart-4',
+      color: '#ec4899', // Pink 500
+      bgColor: 'bg-pink-500',
     },
   ].filter((item) => item.value > 0) // Only show items with values
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Token-Aufteilung</CardTitle>
+        <CardTitle>Token Breakdown</CardTitle>
         <CardDescription>
-          Letzte 30 Tage - {formatTokenCount(total)} Tokens gesamt
+          Last 30 days &middot; {formatTokenCount(total)} tokens total
         </CardDescription>
       </CardHeader>
       <CardContent className='space-y-6'>
@@ -102,8 +108,8 @@ export function TokenBreakdownCard({ data }: TokenBreakdownCardProps) {
             {items.map((item, idx) => (
               <div
                 key={idx}
-                className={`${item.color} transition-all duration-300 first:rounded-l-full last:rounded-r-full`}
-                style={{ width: `${item.percentage}%` }}
+                className='transition-all duration-300 first:rounded-l-full last:rounded-r-full'
+                style={{ width: `${item.percentage}%`, backgroundColor: item.color }}
                 title={`${item.label}: ${formatTokenCount(item.value)} (${item.percentage.toFixed(1)}%)`}
               />
             ))}
@@ -114,7 +120,10 @@ export function TokenBreakdownCard({ data }: TokenBreakdownCardProps) {
         <div className='grid grid-cols-2 gap-4'>
           {items.map((item, idx) => (
             <div key={idx} className='flex items-center gap-3'>
-              <div className={`h-3 w-3 rounded-full ${item.color} shrink-0`} />
+              <div
+                className='h-3 w-3 rounded-full shrink-0'
+                style={{ backgroundColor: item.color }}
+              />
               <div className='min-w-0 flex-1'>
                 <div className='flex items-baseline justify-between gap-2'>
                   <span className='text-sm font-medium truncate'>
@@ -144,8 +153,8 @@ export function TokenBreakdownCard({ data }: TokenBreakdownCardProps) {
               </div>
               <div className='h-2 w-full overflow-hidden rounded-full bg-muted'>
                 <div
-                  className={`h-full ${item.color} transition-all duration-500`}
-                  style={{ width: `${item.percentage}%` }}
+                  className='h-full transition-all duration-500'
+                  style={{ width: `${item.percentage}%`, backgroundColor: item.color }}
                 />
               </div>
             </div>

@@ -8,18 +8,21 @@ import costsRoutes from './routes/costs.js';
 import configRoutes from './routes/config.js';
 import tokensRoutes from './routes/tokens.js';
 import trendsRoutes from './routes/trends.js';
-// OpenClaw Phase 2 routes
+// OpenClaw routes
 import agentsRoutes from './routes/agents.js';
 import channelsRoutes from './routes/channels.js';
-// OpenClaw Phase 3 routes
 import devicesRoutes from './routes/devices.js';
 import securityRoutes from './routes/security.js';
 import auditRoutes from './routes/audit.js';
 import toolsRoutes from './routes/tools.js';
-import { startWatcher, stopWatcher, startOpenClawWatcher, stopOpenClawWatcher } from './parser/watcher.js';
+import modelsRoutes from './routes/models.js';
+import exportRoutes from './routes/export.js';
+import { initializeAnalyticsService, shutdownAnalyticsService } from './services/analytics-service.js';
 import { startSecurityWatcher, stopSecurityWatcher } from './parser/security-watcher.js';
 import { loadConfig, ensureConfigDir } from './config/loader.js';
 import { getDatabase, closeDatabase } from './db/schema.js';
+import { initPricingService } from './services/pricing-service.js';
+import { initWebSocket, closeWebSocket } from './ws/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,11 +30,17 @@ const __dirname = path.dirname(__filename);
 import type { Express } from 'express';
 
 const app: Express = express();
-const PORT = parseInt(process.env.PORT || '3001');
+const PORT = parseInt(process.env.PORT || '9174');
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Serve static files in production (before API routes)
+const clientPath = path.join(__dirname, '../client');
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(clientPath, { index: 'index.html' }));
+}
 
 // API routes
 app.use('/api/stats', statsRoutes);
@@ -40,30 +49,34 @@ app.use('/api/costs', costsRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/tokens', tokensRoutes);
 app.use('/api/trends', trendsRoutes);
-// OpenClaw Phase 2 routes
+// OpenClaw routes
 app.use('/api/agents', agentsRoutes);
 app.use('/api/channels', channelsRoutes);
-// OpenClaw Phase 3 routes
 app.use('/api/devices', devicesRoutes);
 app.use('/api/security', securityRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/tools', toolsRoutes);
+app.use('/api/models', modelsRoutes);
+app.use('/api/export', exportRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Serve static files in production
-if (process.env.NODE_ENV === 'production') {
-  const clientPath = path.join(__dirname, '../client');
-  app.use(express.static(clientPath));
-
-  // SPA fallback
-  app.get('*', (_req, res) => {
+// SPA fallback - serve index.html for non-API routes (must be after API routes)
+app.use((req, res, next) => {
+  // Skip API routes
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
+  // In production, serve index.html for client-side routing
+  if (process.env.NODE_ENV === 'production') {
     res.sendFile(path.join(clientPath, 'index.html'));
-  });
-}
+  } else {
+    next();
+  }
+});
 
 // Initialize and start server
 async function start() {
@@ -71,36 +84,27 @@ async function start() {
     // Ensure config directory exists
     ensureConfigDir();
 
-    // Initialize database
+    // Initialize database (still needed for security tables)
     getDatabase();
     console.log('Database initialized');
 
-    // Load config and start file watcher
+    // Load config
     const config = loadConfig();
-    console.log(`Config loaded. Log path: ${config.logPath}`);
 
-    if (config.logPath) {
-      startWatcher(config.logPath);
-      console.log(`File watcher started for: ${config.logPath}`);
-    } else {
-      console.warn('No log path configured. File watcher not started.');
-    }
+    // Initialize pricing service
+    await initPricingService(config.pricingEndpoint);
 
-    // Start OpenClaw watchers if enabled
-    if (config.openClawEnabled) {
-      startOpenClawWatcher(config.openClawPath);
-      console.log(`OpenClaw watcher started for: ${config.openClawPath}`);
+    // Initialize analytics service (reads JSONL files directly)
+    initializeAnalyticsService(config.openClawPath);
 
-      // Start security watcher if enabled
-      if (config.securityAlertsEnabled) {
-        startSecurityWatcher({
-          openClawPath: config.openClawPath,
-          gatewayLogsPath: config.gatewayLogsPath,
-          enabled: config.securityAlertsEnabled,
-        });
-      }
-    } else {
-      console.log('OpenClaw integration disabled');
+    // Start security watcher if enabled
+    if (config.securityAlertsEnabled) {
+      startSecurityWatcher({
+        openClawPath: config.openClawPath,
+        gatewayLogsPath: config.gatewayLogsPath,
+        enabled: config.securityAlertsEnabled,
+      });
+      console.log('Security watcher started');
     }
 
     // Start HTTP server
@@ -111,12 +115,15 @@ async function start() {
       console.log('\nPress Ctrl+C to stop\n');
     });
 
+    // Attach WebSocket server
+    initWebSocket(server);
+
     // Graceful shutdown
     const shutdown = () => {
       console.log('\nShutting down...');
-      stopWatcher();
-      stopOpenClawWatcher();
+      shutdownAnalyticsService();
       stopSecurityWatcher();
+      closeWebSocket();
       closeDatabase();
       server.close(() => {
         console.log('Server stopped');

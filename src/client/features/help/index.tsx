@@ -78,7 +78,7 @@ export function HelpCenter() {
       <Header>
         <div className="flex items-center gap-2">
           <HelpIcon active className="h-6 w-6" />
-          <span className="font-semibold text-lg">Help Center</span>
+          <span className="font-jersey text-xl">Help Center</span>
         </div>
         <div className="ms-auto flex items-center space-x-4">
           <ThemeSwitch />
@@ -129,12 +129,12 @@ export function HelpCenter() {
           <div className="text-sm text-muted-foreground">Messaging integration</div>
         </a>
         <a
-          href="#faq"
+          href="#mcp"
           className="group rounded-lg border bg-card p-4 hover:border-primary hover:shadow-md transition-all"
         >
-          <div className="text-2xl mb-2">❓</div>
-          <div className="font-medium group-hover:text-primary transition-colors">FAQ</div>
-          <div className="text-sm text-muted-foreground">Common questions</div>
+          <div className="text-2xl mb-2">🔌</div>
+          <div className="font-medium group-hover:text-primary transition-colors">MCP Server</div>
+          <div className="text-sm text-muted-foreground">AI tool integration</div>
         </a>
       </div>
 
@@ -165,7 +165,7 @@ export function HelpCenter() {
               </p>
               <CodeBlock>clawalytics start</CodeBlock>
               <p className="text-muted-foreground mt-4">
-                Open <InlineCode>http://localhost:3001</InlineCode> in your browser.
+                Open <InlineCode>http://localhost:9174</InlineCode> in your browser.
               </p>
             </div>
 
@@ -175,8 +175,9 @@ export function HelpCenter() {
                 You're Done!
               </h3>
               <p className="text-muted-foreground">
-                Clawalytics automatically detects Claude Code logs at <InlineCode>~/.claude/projects/</InlineCode>.
-                Your usage data will appear as you use Claude Code.
+                Clawalytics automatically reads OpenClaw gateway logs from <InlineCode>/tmp/openclaw/</InlineCode> and
+                agent configuration from <InlineCode>~/.openclaw/</InlineCode>.
+                Your usage data will appear as agents make API calls through OpenClaw.
               </p>
             </div>
 
@@ -309,11 +310,11 @@ export function HelpCenter() {
               <p className="text-sm text-muted-foreground mb-4">
                 Add these settings to <InlineCode>~/.clawalytics/config.yaml</InlineCode>:
               </p>
-              <CodeBlock>{`# OpenClaw Integration
-openClawEnabled: true
+              <CodeBlock>{`# These are the default settings in ~/.clawalytics/config.yaml
+# Only change if your OpenClaw installation uses custom paths
 openClawPath: ~/.openclaw
-securityAlertsEnabled: true
-gatewayLogsPath: /tmp/openclaw`}</CodeBlock>
+gatewayLogsPath: /tmp/openclaw
+securityAlertsEnabled: true`}</CodeBlock>
             </div>
           </div>
         </Section>
@@ -328,14 +329,16 @@ gatewayLogsPath: /tmp/openclaw`}</CodeBlock>
 
             <div className="rounded-lg border bg-card p-5">
               <h4 className="font-semibold mb-3">Full Configuration Example</h4>
-              <CodeBlock>{`# Claude Code log path
-logPath: ~/.claude/projects
-
-# OpenClaw integration (optional)
-openClawEnabled: true
+              <CodeBlock>{`# OpenClaw paths
 openClawPath: ~/.openclaw
+gatewayLogsPath: /tmp/openclaw
 securityAlertsEnabled: true
-gatewayLogsPath: /tmp/openclaw`}</CodeBlock>
+
+# Budget alert thresholds (in USD, set to 0 to disable)
+alertThresholds:
+  dailyBudget: 10
+  weeklyBudget: 50
+  monthlyBudget: 200`}</CodeBlock>
             </div>
 
             <div className="rounded-lg border-2 border-dashed border-muted p-5">
@@ -350,8 +353,87 @@ gatewayLogsPath: /tmp/openclaw`}</CodeBlock>
                   <span className="text-muted-foreground">Database</span>
                 </div>
                 <div className="flex justify-between">
-                  <InlineCode>~/.claude/projects/</InlineCode>
-                  <span className="text-muted-foreground">Claude Code logs</span>
+                  <InlineCode>~/.openclaw/</InlineCode>
+                  <span className="text-muted-foreground">OpenClaw agent config</span>
+                </div>
+                <div className="flex justify-between">
+                  <InlineCode>/tmp/openclaw/</InlineCode>
+                  <span className="text-muted-foreground">Gateway logs</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        {/* MCP Server */}
+        <Section id="mcp" title="MCP Server">
+          <div className="space-y-6">
+            <div className="rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border p-5">
+              <p className="text-muted-foreground">
+                <strong className="text-foreground">MCP (Model Context Protocol)</strong> lets AI assistants query your analytics data directly.
+                Configure Clawalytics as an MCP server to ask questions like "How much did I spend this week?" or "Which model is most cost-efficient?"
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-card p-5">
+              <h4 className="font-semibold mb-3">Setup</h4>
+              <p className="text-sm text-muted-foreground mb-4">
+                Add Clawalytics to your OpenClaw or Claude Code MCP configuration:
+              </p>
+              <CodeBlock>{`{
+  "mcpServers": {
+    "clawalytics": {
+      "command": "clawalytics-mcp"
+    }
+  }
+}`}</CodeBlock>
+              <p className="text-sm text-muted-foreground mt-4">
+                Or run it manually: <InlineCode>clawalytics mcp</InlineCode>
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-card p-5">
+              <h4 className="font-semibold mb-3">Available Tools</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex gap-4">
+                  <InlineCode>get_spending_summary</InlineCode>
+                  <span className="text-muted-foreground">Spending across periods</span>
+                </div>
+                <div className="flex gap-4">
+                  <InlineCode>get_cost_breakdown</InlineCode>
+                  <span className="text-muted-foreground">Costs by model or agent</span>
+                </div>
+                <div className="flex gap-4">
+                  <InlineCode>get_daily_costs</InlineCode>
+                  <span className="text-muted-foreground">Daily cost trend data</span>
+                </div>
+                <div className="flex gap-4">
+                  <InlineCode>get_model_comparison</InlineCode>
+                  <span className="text-muted-foreground">Cost-efficiency across models</span>
+                </div>
+                <div className="flex gap-4">
+                  <InlineCode>get_budget_status</InlineCode>
+                  <span className="text-muted-foreground">Spending vs thresholds</span>
+                </div>
+                <div className="flex gap-4">
+                  <InlineCode>get_security_alerts</InlineCode>
+                  <span className="text-muted-foreground">Recent security alerts</span>
+                </div>
+                <div className="flex gap-4">
+                  <InlineCode>get_agent_stats</InlineCode>
+                  <span className="text-muted-foreground">Per-agent performance</span>
+                </div>
+                <div className="flex gap-4">
+                  <InlineCode>get_session_stats</InlineCode>
+                  <span className="text-muted-foreground">Recent session info</span>
+                </div>
+                <div className="flex gap-4">
+                  <InlineCode>get_tool_usage</InlineCode>
+                  <span className="text-muted-foreground">Tool call statistics</span>
+                </div>
+                <div className="flex gap-4">
+                  <InlineCode>get_cache_efficiency</InlineCode>
+                  <span className="text-muted-foreground">Cache hit rates and savings</span>
                 </div>
               </div>
             </div>
@@ -377,9 +459,10 @@ gatewayLogsPath: /tmp/openclaw`}</CodeBlock>
                 <div className="space-y-2">
                   <p>Check these common issues:</p>
                   <ol className="list-decimal list-inside space-y-1 ml-2">
-                    <li>Make sure you've used Claude Code at least once</li>
-                    <li>Verify the log path with <InlineCode>clawalytics config</InlineCode></li>
-                    <li>Try setting a custom path: <InlineCode>clawalytics path ~/.claude/projects</InlineCode></li>
+                    <li>Make sure OpenClaw is running and agents are making API calls</li>
+                    <li>Verify gateway logs exist at <InlineCode>/tmp/openclaw/</InlineCode></li>
+                    <li>Check configuration with <InlineCode>clawalytics config</InlineCode></li>
+                    <li>Ensure agent config exists at <InlineCode>~/.openclaw/</InlineCode></li>
                   </ol>
                 </div>
               }

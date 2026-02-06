@@ -1,5 +1,6 @@
-import { loadConfig } from '../config/loader.js';
-import type { Config } from '../config/loader.js';
+import { getModelPricing, type ModelPricing } from '../services/pricing-service.js';
+
+const warnedModels = new Set<string>();
 
 export interface TokenUsage {
   inputTokens: number;
@@ -28,30 +29,22 @@ export const CACHE_READ_MULTIPLIER = 0.1;    // Cache read costs 0.1x input pric
 export function calculateCost(
   provider: string,
   model: string,
-  usage: TokenUsage,
-  config?: Config
+  usage: TokenUsage
 ): CostResult {
-  const cfg = config || loadConfig();
-  const providerRates = cfg.rates[provider.toLowerCase()];
+  // Get pricing from pricing service
+  const pricing = getModelPricing(provider, model);
 
-  // Try exact model match first
-  let rates = providerRates?.[model];
-
-  // If not found, try matching by model family/prefix
-  if (!rates && providerRates) {
-    const modelLower = model.toLowerCase();
-    for (const [rateModel, rateValue] of Object.entries(providerRates)) {
-      if (modelLower.includes(rateModel.toLowerCase()) || rateModel.toLowerCase().includes(modelLower.split('-')[0])) {
-        rates = rateValue;
-        break;
-      }
+  // Default to zero if no pricing found
+  let rates: ModelPricing;
+  if (!pricing) {
+    const key = `${provider}/${model}`;
+    if (!warnedModels.has(key)) {
+      warnedModels.add(key);
+      console.warn(`No pricing found for ${key}, using zero cost`);
     }
-  }
-
-  // Default to zero if no rates found
-  if (!rates) {
-    console.warn(`No rates found for ${provider}/${model}, using zero cost`);
     rates = { input: 0, output: 0 };
+  } else {
+    rates = pricing;
   }
 
   // Extract token counts with defaults for backward compatibility
@@ -64,14 +57,17 @@ export function calculateCost(
   const inputCost = (inputTokens / 1_000_000) * rates.input;
   const outputCost = (outputTokens / 1_000_000) * rates.output;
 
-  // Cache costs based on input rate with multipliers
-  const cacheCreationCost = (cacheCreationTokens / 1_000_000) * rates.input * CACHE_WRITE_MULTIPLIER;
-  const cacheReadCost = (cacheReadTokens / 1_000_000) * rates.input * CACHE_READ_MULTIPLIER;
+  // Cache costs - use specific rates if available, otherwise calculate from input rate
+  const cacheReadRate = rates.cacheRead ?? (rates.input * CACHE_READ_MULTIPLIER);
+  const cacheWriteRate = rates.cacheWrite ?? (rates.input * CACHE_WRITE_MULTIPLIER);
+
+  const cacheCreationCost = (cacheCreationTokens / 1_000_000) * cacheWriteRate;
+  const cacheReadCost = (cacheReadTokens / 1_000_000) * cacheReadRate;
 
   // Calculate savings: what user would have paid at full input rate minus actual cache costs
   const fullPriceForCacheTokens = ((cacheCreationTokens + cacheReadTokens) / 1_000_000) * rates.input;
   const actualCacheCost = cacheCreationCost + cacheReadCost;
-  const cacheSavings = fullPriceForCacheTokens - actualCacheCost;
+  const cacheSavings = Math.max(0, fullPriceForCacheTokens - actualCacheCost);
 
   return {
     inputCost,
@@ -87,6 +83,9 @@ export function calculateCost(
   };
 }
 
+/**
+ * Identify provider from model name (fallback when not explicitly provided)
+ */
 export function identifyProvider(model: string): string {
   const modelLower = model.toLowerCase();
 
@@ -96,14 +95,20 @@ export function identifyProvider(model: string): string {
   if (modelLower.includes('gpt') || modelLower.includes('o1') || modelLower.includes('davinci') || modelLower.includes('curie')) {
     return 'openai';
   }
-  if (modelLower.includes('moonshot') || modelLower.includes('kimi') || modelLower.includes('k2.')) {
-    return 'kimi';
+  if (modelLower.includes('moonshot') || modelLower.includes('kimi') || modelLower.startsWith('k2')) {
+    return 'moonshot';
   }
   if (modelLower.includes('gemini')) {
     return 'google';
   }
   if (modelLower.includes('deepseek')) {
     return 'deepseek';
+  }
+  if (modelLower.includes('llama')) {
+    return 'meta';
+  }
+  if (modelLower.includes('mistral')) {
+    return 'mistral';
   }
 
   return 'unknown';

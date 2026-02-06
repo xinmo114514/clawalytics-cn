@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { getTokenBreakdown } from '../db/queries.js';
+import { getAnalyticsService } from '../services/analytics-service.js';
 
 const router: Router = Router();
 
@@ -7,7 +7,7 @@ const router: Router = Router();
 router.get('/breakdown', (req: Request, res: Response): void => {
   try {
     const days = req.query.days ? parseInt(req.query.days as string) : undefined;
-    const breakdown = getTokenBreakdown(days);
+    const breakdown = getAnalyticsService().getTokenBreakdown(days);
     res.json(breakdown);
   } catch (error) {
     console.error('Error fetching token breakdown:', error);

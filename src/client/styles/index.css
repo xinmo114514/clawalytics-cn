@@ -17,6 +17,12 @@
     @apply min-h-svh w-full bg-background text-foreground has-[div[data-variant='inset']]:bg-sidebar;
   }
 
+  /* Jersey 15 pixel font for headings - no bold since pixel font is already thick */
+  h1, h2, h3 {
+    font-family: var(--font-jersey);
+    font-weight: 400 !important;
+  }
+
   /* Override Radix scroll locking for sticky headers */
   body[data-scroll-locked] {
     overflow: unset !important;

@@ -1,13 +1,8 @@
-import { DollarSign } from 'lucide-react'
+import { DollarSign, HelpCircle, Wallet } from 'lucide-react'
 import { HomeIcon } from '@/components/icons/home-icon'
 import { SessionsIcon } from '@/components/icons/sessions-icon'
-import { AgentsIcon } from '@/components/icons/agents-icon'
-import { ChannelsIcon } from '@/components/icons/channels-icon'
 import { SecurityIcon } from '@/components/icons/security-icon'
-import { DevicesIcon } from '@/components/icons/devices-icon'
-import { AuditIcon } from '@/components/icons/audit-icon'
 import { ToolsIcon } from '@/components/icons/tools-icon'
-import { HelpIcon } from '@/components/icons/help-icon'
 import { type SidebarData } from '../types'
 
 export const sidebarData: SidebarData = {
@@ -33,14 +28,14 @@ export const sidebarData: SidebarData = {
           icon: SessionsIcon,
         },
         {
-          title: 'Agents',
-          url: '/agents',
-          icon: AgentsIcon,
+          title: 'Tools',
+          url: '/tools',
+          icon: ToolsIcon,
         },
         {
-          title: 'Channels',
-          url: '/channels',
-          icon: ChannelsIcon,
+          title: 'Budget',
+          url: '/budget',
+          icon: Wallet,
         },
       ],
     },
@@ -48,24 +43,9 @@ export const sidebarData: SidebarData = {
       title: 'Security',
       items: [
         {
-          title: 'Overview',
+          title: 'Security',
           url: '/security',
           icon: SecurityIcon,
-        },
-        {
-          title: 'Devices',
-          url: '/security/devices',
-          icon: DevicesIcon,
-        },
-        {
-          title: 'Audit Log',
-          url: '/security/audit',
-          icon: AuditIcon,
-        },
-        {
-          title: 'Tools',
-          url: '/tools',
-          icon: ToolsIcon,
         },
       ],
     },
@@ -75,7 +55,7 @@ export const sidebarData: SidebarData = {
         {
           title: 'Help Center',
           url: '/help-center',
-          icon: HelpIcon,
+          icon: HelpCircle,
         },
       ],
     },

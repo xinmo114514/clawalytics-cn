@@ -9,7 +9,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import type { Channel } from '@/lib/api'
 
 interface ChannelsTableProps {
@@ -19,20 +18,6 @@ interface ChannelsTableProps {
 type SortField = 'name' | 'total_cost' | 'message_count'
 type SortDirection = 'asc' | 'desc'
 
-const CHANNEL_COLORS: Record<string, string> = {
-  whatsapp: 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
-  telegram: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20',
-  slack: 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20',
-  discord: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20',
-}
-
-function getChannelColor(name: string): string {
-  const lowerName = name.toLowerCase()
-  for (const [key, color] of Object.entries(CHANNEL_COLORS)) {
-    if (lowerName.includes(key)) return color
-  }
-  return 'bg-muted text-muted-foreground'
-}
 
 export function ChannelsTable({ channels }: ChannelsTableProps) {
   const [sortField, setSortField] = useState<SortField>('total_cost')
@@ -129,12 +114,9 @@ export function ChannelsTable({ channels }: ChannelsTableProps) {
           {sortedChannels.map((channel) => (
             <TableRow key={channel.id}>
               <TableCell>
-                <Badge
-                  variant='outline'
-                  className={`font-medium ${getChannelColor(channel.name)}`}
-                >
+                <span className='font-jersey text-base uppercase'>
                   {channel.name}
-                </Badge>
+                </span>
               </TableCell>
               <TableCell className='text-right font-mono'>
                 {formatCurrency(channel.total_cost)}
@@ -145,10 +127,8 @@ export function ChannelsTable({ channels }: ChannelsTableProps) {
               <TableCell className='text-right font-mono text-muted-foreground'>
                 {formatNumber(channel.total_output_tokens)}
               </TableCell>
-              <TableCell className='text-right'>
-                <Badge variant='secondary'>
-                  {formatNumber(channel.message_count)}
-                </Badge>
+              <TableCell className='text-right font-mono'>
+                {formatNumber(channel.message_count)}
               </TableCell>
             </TableRow>
           ))}

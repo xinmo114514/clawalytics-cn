@@ -7,19 +7,25 @@ export interface SessionMetadata {
   startedAt: string;
   lastActivity?: string;
   messageCount?: number;
-}
-
-export interface SessionIndex {
-  sessions: Array<{
-    id: string;
-    startedAt: string;
-    lastActivity?: string;
-    messageCount?: number;
-  }>;
+  channel?: string;
 }
 
 /**
- * Load the session index for an agent
+ * Actual OpenClaw sessions.json entry format.
+ * Keys are like "agent:main:main", values have this shape.
+ */
+interface SessionsJsonEntry {
+  sessionId: string;
+  updatedAt?: number;
+  deliveryContext?: { channel?: string };
+  lastChannel?: string;
+  sessionFile?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Load the session index for an agent.
+ * sessions.json is a map: { "agent:main:main": { sessionId, updatedAt, ... }, ... }
  */
 export function loadSessionIndex(agentPath: string): SessionMetadata[] {
   const indexPath = path.join(agentPath, 'sessions', 'sessions.json');
@@ -30,19 +36,23 @@ export function loadSessionIndex(agentPath: string): SessionMetadata[] {
 
   try {
     const content = fs.readFileSync(indexPath, 'utf-8');
-    const index = JSON.parse(content) as SessionIndex;
+    const index = JSON.parse(content) as Record<string, SessionsJsonEntry>;
 
-    if (!index.sessions || !Array.isArray(index.sessions)) {
-      console.warn(`Session index at ${indexPath} has no sessions array`);
-      return [];
+    const sessions: SessionMetadata[] = [];
+
+    for (const [, entry] of Object.entries(index)) {
+      if (!entry || typeof entry !== 'object' || !entry.sessionId) continue;
+
+      sessions.push({
+        id: entry.sessionId,
+        startedAt: entry.updatedAt
+          ? new Date(entry.updatedAt).toISOString()
+          : new Date().toISOString(),
+        channel: entry.deliveryContext?.channel || entry.lastChannel,
+      });
     }
 
-    return index.sessions.map((session) => ({
-      id: session.id,
-      startedAt: session.startedAt,
-      lastActivity: session.lastActivity,
-      messageCount: session.messageCount,
-    }));
+    return sessions;
   } catch (error) {
     console.error(`Failed to load session index from ${indexPath}:`, error);
     return [];

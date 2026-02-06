@@ -1,19 +1,12 @@
 import { Router, type Request, type Response } from 'express';
-import {
-  getChannels,
-  getChannel,
-  getChannelByName,
-  getChannelDailyCosts,
-  getAllChannelsDailyCosts,
-  getChannelStats,
-} from '../db/queries-agents.js';
+import { getAnalyticsService } from '../services/analytics-service.js';
 
 const router: Router = Router();
 
 // GET /api/channels - List all channels
 router.get('/', (_req: Request, res: Response): void => {
   try {
-    const channels = getChannels();
+    const channels = getAnalyticsService().getChannels();
     res.json(channels);
   } catch (error) {
     console.error('Error fetching channels:', error);
@@ -25,7 +18,7 @@ router.get('/', (_req: Request, res: Response): void => {
 router.get('/stats', (req: Request, res: Response): void => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
-    const stats = getChannelStats(limit);
+    const stats = getAnalyticsService().getChannelStatsResult(limit);
     res.json(stats);
   } catch (error) {
     console.error('Error fetching channel stats:', error);
@@ -37,7 +30,7 @@ router.get('/stats', (req: Request, res: Response): void => {
 router.get('/daily', (req: Request, res: Response): void => {
   try {
     const days = parseInt(req.query.days as string) || 30;
-    const dailyCosts = getAllChannelsDailyCosts(days);
+    const dailyCosts = getAnalyticsService().getAllChannelsDailyCosts(days);
     res.json(dailyCosts);
   } catch (error) {
     console.error('Error fetching channels daily costs:', error);
@@ -49,7 +42,7 @@ router.get('/daily', (req: Request, res: Response): void => {
 router.get('/by-name/:name', (req: Request, res: Response): void => {
   try {
     const name = Array.isArray(req.params.name) ? req.params.name[0] : req.params.name;
-    const channel = getChannelByName(name);
+    const channel = getAnalyticsService().getChannelByName(name);
 
     if (!channel) {
       res.status(404).json({ error: 'Channel not found' });
@@ -73,7 +66,7 @@ router.get('/:id', (req: Request, res: Response): void => {
       return;
     }
 
-    const channel = getChannel(id);
+    const channel = getAnalyticsService().getChannel(id);
 
     if (!channel) {
       res.status(404).json({ error: 'Channel not found' });
@@ -97,7 +90,7 @@ router.get('/:id/stats', (req: Request, res: Response): void => {
       return;
     }
 
-    const channel = getChannel(id);
+    const channel = getAnalyticsService().getChannel(id);
 
     if (!channel) {
       res.status(404).json({ error: 'Channel not found' });
@@ -105,7 +98,7 @@ router.get('/:id/stats', (req: Request, res: Response): void => {
     }
 
     const days = parseInt(req.query.days as string) || 30;
-    const dailyCosts = getChannelDailyCosts(id, days);
+    const dailyCosts = getAnalyticsService().getChannelDailyCosts(id, days);
 
     res.json({
       channel,
@@ -128,7 +121,7 @@ router.get('/:id/daily', (req: Request, res: Response): void => {
     }
 
     const days = parseInt(req.query.days as string) || 30;
-    const dailyCosts = getChannelDailyCosts(id, days);
+    const dailyCosts = getAnalyticsService().getChannelDailyCosts(id, days);
     res.json(dailyCosts);
   } catch (error) {
     console.error('Error fetching channel daily costs:', error);

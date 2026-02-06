@@ -33,11 +33,6 @@ export function ProfileDropdown() {
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuItem asChild>
-            <Link to='/settings'>
-              Settings
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
             <Link to='/help-center'>
               Help
             </Link>

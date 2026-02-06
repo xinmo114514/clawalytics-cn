@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { enUS } from 'date-fns/locale'
@@ -5,9 +6,9 @@ import {
   Activity,
   Clock,
   AlertCircle,
-  CheckCircle,
-  XCircle,
   Wrench,
+  Search,
+  Download,
 } from 'lucide-react'
 import { ToolsIcon } from '@/components/icons/tools-icon'
 import {
@@ -18,6 +19,7 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  Cell,
 } from 'recharts'
 import {
   Card,
@@ -34,8 +36,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ThemeSwitch } from '@/components/theme-switch'
@@ -43,41 +53,44 @@ import { getOutboundCalls, getToolStats } from '@/lib/api'
 
 ToolsAnalytics.displayName = 'ToolsAnalytics'
 
-const statusConfig: Record<
-  string,
-  {
-    className: string
-    icon: typeof CheckCircle
-    label: string
-  }
-> = {
-  success: {
-    className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-    icon: CheckCircle,
-    label: 'Success',
-  },
-  error: {
-    className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-    icon: XCircle,
-    label: 'Error',
-  },
-  pending: {
-    className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-    icon: Clock,
-    label: 'Pending',
-  },
-}
+const PAGE_SIZE = 50
 
-const defaultStatusConfig = {
-  className: 'bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-400',
-  icon: Activity,
-  label: 'Unknown',
-}
+const statusOptions = [
+  { value: 'all', label: 'All Status' },
+  { value: 'success', label: 'Success' },
+  { value: 'error', label: 'Error' },
+  { value: 'pending', label: 'Pending' },
+]
+
+// Red gradient colors for bars (darker to lighter)
+const BAR_COLORS = [
+  '#7f1d1d', // Red 900
+  '#991b1b', // Red 800
+  '#b91c1c', // Red 700
+  '#dc2626', // Red 600
+  '#ef4444', // Red 500
+  '#f87171', // Red 400
+  '#fca5a5', // Red 300
+  '#fecaca', // Red 200
+  '#fee2e2', // Red 100
+  '#fef2f2', // Red 50
+]
 
 export function ToolsAnalytics() {
-  const { data: toolCalls, isLoading: callsLoading } = useQuery({
-    queryKey: ['toolCalls'],
-    queryFn: () => getOutboundCalls(50),
+  const [page, setPage] = useState(0)
+  const [toolNameSearch, setToolNameSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  const filters = {
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
+    toolName: toolNameSearch || undefined,
+    status: statusFilter !== 'all' ? statusFilter : undefined,
+  }
+
+  const { data: toolCallsData, isLoading: callsLoading } = useQuery({
+    queryKey: ['toolCalls', filters],
+    queryFn: () => getOutboundCalls(filters),
     refetchInterval: 10000,
   })
 
@@ -87,15 +100,23 @@ export function ToolsAnalytics() {
     refetchInterval: 30000,
   })
 
-  const totalCalls = toolCalls?.length ?? 0
-  const errorCalls =
-    toolCalls?.filter((c) => c.status === 'error').length ?? 0
-  const errorRate = totalCalls > 0 ? (errorCalls / totalCalls) * 100 : 0
+  const toolCalls = toolCallsData?.calls ?? []
+  const total = toolCallsData?.total ?? 0
+  const totalPages = Math.ceil(total / PAGE_SIZE)
+  const startItem = page * PAGE_SIZE + 1
+  const endItem = Math.min((page + 1) * PAGE_SIZE, total)
+
+  const errorCalls = toolCalls.filter((c) => c.status === 'error').length
+  const errorRate = toolCalls.length > 0 ? (errorCalls / toolCalls.length) * 100 : 0
   const avgDuration =
-    toolCalls && toolCalls.length > 0
+    toolCalls.length > 0
       ? toolCalls.reduce((acc, c) => acc + (c.duration_ms ?? 0), 0) /
         toolCalls.filter((c) => c.duration_ms !== null).length
       : 0
+
+  const handleFilterChange = () => {
+    setPage(0)
+  }
 
   const chartData = (toolStats ?? [])
     .slice(0, 10)
@@ -115,7 +136,7 @@ export function ToolsAnalytics() {
       <Header>
         <div className='flex items-center gap-2'>
           <ToolsIcon active className='h-6 w-6' />
-          <span className='font-semibold text-lg'>Tools</span>
+          <span className='font-jersey text-xl'>Tools</span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
           <ThemeSwitch />
@@ -125,22 +146,33 @@ export function ToolsAnalytics() {
       <Main>
         <div className='mb-6 flex items-center justify-between'>
           <div>
-            <h1 className='text-2xl font-bold tracking-tight'>Tool Analytics</h1>
+            <h1 className='text-3xl font-bold tracking-tight'>Tool Analytics</h1>
             <p className='text-muted-foreground'>
               Overview of tool calls and statistics
             </p>
           </div>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => window.open('/api/export/tools?format=csv', '_blank')}
+          >
+            <Download className='mr-2 h-4 w-4' />
+            Export CSV
+          </Button>
         </div>
 
         {/* Stats Cards Row */}
         <div className='grid gap-4 sm:grid-cols-3 mb-6'>
           {/* Total Calls Card */}
-          <Card>
+          <Card className='relative overflow-hidden'>
+            <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 Total Calls
               </CardTitle>
-              <Activity className='h-4 w-4 text-muted-foreground' />
+              <div className='rounded-full bg-red-500/10 p-2'>
+                <Activity className='h-4 w-4 text-red-500' />
+              </div>
             </CardHeader>
             <CardContent>
               {callsLoading ? (
@@ -150,9 +182,9 @@ export function ToolsAnalytics() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold'>{totalCalls}</div>
+                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>{total}</div>
                   <p className='text-xs text-muted-foreground'>
-                    Last 50 calls
+                    Total tool calls
                   </p>
                 </>
               )}
@@ -160,12 +192,15 @@ export function ToolsAnalytics() {
           </Card>
 
           {/* Average Duration Card */}
-          <Card>
+          <Card className='relative overflow-hidden'>
+            <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 Average Duration
               </CardTitle>
-              <Clock className='h-4 w-4 text-muted-foreground' />
+              <div className='rounded-full bg-red-500/10 p-2'>
+                <Clock className='h-4 w-4 text-red-500' />
+              </div>
             </CardHeader>
             <CardContent>
               {callsLoading ? (
@@ -175,7 +210,7 @@ export function ToolsAnalytics() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold'>
+                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                     {avgDuration > 0 ? `${Math.round(avgDuration)}ms` : '-'}
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -187,10 +222,13 @@ export function ToolsAnalytics() {
           </Card>
 
           {/* Error Rate Card */}
-          <Card>
+          <Card className='relative overflow-hidden'>
+            <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>Error Rate</CardTitle>
-              <AlertCircle className='h-4 w-4 text-muted-foreground' />
+              <div className='rounded-full bg-red-500/10 p-2'>
+                <AlertCircle className='h-4 w-4 text-red-500' />
+              </div>
             </CardHeader>
             <CardContent>
               {callsLoading ? (
@@ -200,19 +238,11 @@ export function ToolsAnalytics() {
                 </>
               ) : (
                 <>
-                  <div
-                    className={`text-2xl font-bold ${
-                      errorRate > 10
-                        ? 'text-red-600 dark:text-red-400'
-                        : errorRate > 5
-                          ? 'text-yellow-600 dark:text-yellow-400'
-                          : 'text-green-600 dark:text-green-400'
-                    }`}
-                  >
+                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                     {errorRate.toFixed(1)}%
                   </div>
                   <p className='text-xs text-muted-foreground'>
-                    {errorCalls} of {totalCalls} failed
+                    {errorCalls} of {toolCalls.length} failed
                   </p>
                 </>
               )}
@@ -245,12 +275,19 @@ export function ToolsAnalytics() {
                     layout='vertical'
                     margin={{ top: 5, right: 30, left: 5, bottom: 5 }}
                   >
+                    <defs>
+                      <linearGradient id='barGradient' x1='0' y1='0' x2='1' y2='0'>
+                        <stop offset='0%' stopColor='#7f1d1d' />
+                        <stop offset='100%' stopColor='#ef4444' />
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray='3 3' className='stroke-muted' />
                     <XAxis type='number' className='text-xs' />
                     <YAxis
                       dataKey='name'
                       type='category'
                       width={100}
+                      interval={0}
                       className='text-xs'
                     />
                     <Tooltip
@@ -274,9 +311,15 @@ export function ToolsAnalytics() {
                     />
                     <Bar
                       dataKey='count'
-                      fill='hsl(var(--primary))'
                       radius={[0, 4, 4, 0]}
-                    />
+                    >
+                      {chartData.map((_, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={BAR_COLORS[index % BAR_COLORS.length]}
+                        />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -288,7 +331,7 @@ export function ToolsAnalytics() {
             <CardHeader>
               <CardTitle>Recent Tool Calls</CardTitle>
               <CardDescription>
-                Most recent tool calls
+                Most recent tool calls (last 10)
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -305,7 +348,7 @@ export function ToolsAnalytics() {
                     </div>
                   ))}
                 </div>
-              ) : (toolCalls ?? []).length === 0 ? (
+              ) : toolCalls.length === 0 ? (
                 <div className='flex flex-col items-center justify-center py-8'>
                   <Activity className='h-12 w-12 text-muted-foreground mb-4' />
                   <p className='text-muted-foreground'>
@@ -324,10 +367,9 @@ export function ToolsAnalytics() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(toolCalls ?? []).slice(0, 10).map((call) => {
-                        const config =
-                          statusConfig[call.status ?? ''] ?? defaultStatusConfig
-                        const StatusIcon = config.icon
+                      {toolCalls.slice(0, 10).map((call) => {
+                        const isError = call.status === 'error'
+                        const isSuccess = call.status === 'success'
 
                         return (
                           <TableRow key={call.id}>
@@ -342,10 +384,17 @@ export function ToolsAnalytics() {
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge className={config.className}>
-                                <StatusIcon className='mr-1 h-3 w-3' />
-                                {config.label}
-                              </Badge>
+                              <span
+                                className={`font-jersey text-xs uppercase tracking-wider ${
+                                  isError
+                                    ? 'text-red-600 dark:text-red-400'
+                                    : isSuccess
+                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                      : 'text-muted-foreground'
+                                }`}
+                              >
+                                {call.status ?? 'UNKNOWN'}
+                              </span>
                             </TableCell>
                             <TableCell className='text-right font-mono text-sm'>
                               {call.duration_ms !== null
@@ -368,6 +417,164 @@ export function ToolsAnalytics() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Full Tool Calls Table with Pagination */}
+        <Card className='mt-6'>
+          <CardHeader>
+            <CardTitle>All Tool Calls</CardTitle>
+            <CardDescription>
+              {total > 0
+                ? `Showing ${startItem}-${endItem} of ${total} calls`
+                : 'No calls found'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Search and Filter Controls */}
+            <div className='mb-4 flex flex-col gap-4 sm:flex-row sm:items-center'>
+              <div className='relative flex-1 max-w-sm'>
+                <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
+                <Input
+                  placeholder='Search by tool name...'
+                  value={toolNameSearch}
+                  onChange={(e) => {
+                    setToolNameSearch(e.target.value)
+                    handleFilterChange()
+                  }}
+                  className='pl-8'
+                />
+              </div>
+              <Select
+                value={statusFilter}
+                onValueChange={(v) => {
+                  setStatusFilter(v)
+                  handleFilterChange()
+                }}
+              >
+                <SelectTrigger className='w-[150px]'>
+                  <SelectValue placeholder='Filter by status' />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {callsLoading ? (
+              <div className='space-y-4'>
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className='h-12 animate-pulse rounded bg-muted' />
+                ))}
+              </div>
+            ) : toolCalls.length === 0 ? (
+              <div className='flex flex-col items-center justify-center py-8'>
+                <Activity className='h-12 w-12 text-muted-foreground mb-4' />
+                <p className='text-muted-foreground'>
+                  No tool calls found
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className='rounded-md border'>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tool</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className='text-right'>Duration</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Agent</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {toolCalls.map((call) => {
+                        const isError = call.status === 'error'
+                        const isSuccess = call.status === 'success'
+
+                        return (
+                          <TableRow key={call.id}>
+                            <TableCell>
+                              <div className='flex items-center gap-2'>
+                                <Wrench className='h-4 w-4 text-muted-foreground' />
+                                <span className='font-medium text-sm' title={call.tool_name}>
+                                  {call.tool_name.length > 30
+                                    ? `${call.tool_name.slice(0, 27)}...`
+                                    : call.tool_name}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`font-jersey text-xs uppercase tracking-wider ${
+                                  isError
+                                    ? 'text-red-600 dark:text-red-400'
+                                    : isSuccess
+                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                      : 'text-muted-foreground'
+                                }`}
+                              >
+                                {call.status ?? 'UNKNOWN'}
+                              </span>
+                            </TableCell>
+                            <TableCell className='text-right font-mono text-sm'>
+                              {call.duration_ms !== null
+                                ? `${call.duration_ms}ms`
+                                : '-'}
+                            </TableCell>
+                            <TableCell className='text-sm text-muted-foreground'>
+                              {formatDistanceToNow(new Date(call.timestamp), {
+                                addSuffix: true,
+                                locale: enUS,
+                              })}
+                            </TableCell>
+                            <TableCell className='text-sm text-muted-foreground'>
+                              {call.agent_id
+                                ? call.agent_id.length > 15
+                                  ? `${call.agent_id.slice(0, 12)}...`
+                                  : call.agent_id
+                                : '-'}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination Controls */}
+                <div className='mt-4 flex items-center justify-between'>
+                  <p className='text-sm text-muted-foreground'>
+                    {total} total calls
+                  </p>
+                  <div className='flex items-center gap-2'>
+                    <span className='text-sm text-muted-foreground'>
+                      Page {page + 1} of {Math.max(1, totalPages)}
+                    </span>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      onClick={() => setPage((p) => Math.max(0, p - 1))}
+                      disabled={page === 0}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      onClick={() => setPage((p) => p + 1)}
+                      disabled={page >= totalPages - 1}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </Main>
     </>
   )

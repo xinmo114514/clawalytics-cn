@@ -15,11 +15,11 @@ interface DailyCostChartProps {
 
 export function DailyCostChart({ data }: DailyCostChartProps) {
   const chartData = data.map((item) => ({
-    date: new Date(item.date).toLocaleDateString('de-CH', {
+    date: new Date(item.date).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
     }),
-    fullDate: new Date(item.date).toLocaleDateString('de-CH', {
+    fullDate: new Date(item.date).toLocaleDateString('en-US', {
       weekday: 'short',
       day: 'numeric',
       month: 'short',
@@ -33,7 +33,7 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
   if (chartData.length === 0) {
     return (
       <div className='flex h-[300px] items-center justify-center text-muted-foreground'>
-        Noch keine Daten vorhanden. Starte OpenClaw, um hier deine Kosten zu sehen.
+        No data yet. Start using Claude Code to see your costs here.
       </div>
     )
   }
@@ -42,9 +42,25 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
     <ResponsiveContainer width='100%' height={300}>
       <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <defs>
-          <linearGradient id='colorCostGradient' x1='0' y1='0' x2='0' y2='1'>
-            <stop offset='5%' stopColor='hsl(var(--primary))' stopOpacity={0.4} />
-            <stop offset='95%' stopColor='hsl(var(--primary))' stopOpacity={0.05} />
+          <linearGradient id='colorCostGradient' x1='0' y1='0' x2='1' y2='0'>
+            <stop offset='0%' stopColor='#fca5a5' stopOpacity={1} />
+            <stop offset='40%' stopColor='#ef4444' stopOpacity={1} />
+            <stop offset='100%' stopColor='#b91c1c' stopOpacity={1} />
+          </linearGradient>
+          <linearGradient id='colorCostStroke' x1='0' y1='0' x2='1' y2='0'>
+            <stop offset='0%' stopColor='#f87171' />
+            <stop offset='50%' stopColor='#dc2626' />
+            <stop offset='100%' stopColor='#991b1b' />
+          </linearGradient>
+          <linearGradient id='colorSavingsGradient' x1='0' y1='0' x2='1' y2='0'>
+            <stop offset='0%' stopColor='#86efac' stopOpacity={1} />
+            <stop offset='40%' stopColor='#22c55e' stopOpacity={1} />
+            <stop offset='100%' stopColor='#15803d' stopOpacity={1} />
+          </linearGradient>
+          <linearGradient id='colorSavingsStroke' x1='0' y1='0' x2='1' y2='0'>
+            <stop offset='0%' stopColor='#4ade80' />
+            <stop offset='50%' stopColor='#16a34a' />
+            <stop offset='100%' stopColor='#166534' />
           </linearGradient>
         </defs>
         <CartesianGrid
@@ -79,8 +95,9 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
                   <div className='mb-2 font-medium text-sm'>{data.fullDate}</div>
                   <div className='space-y-1.5'>
                     <div className='flex items-center justify-between gap-6'>
-                      <span className='text-xs text-muted-foreground'>
-                        Kosten
+                      <span className='text-xs text-muted-foreground flex items-center gap-2'>
+                        <span className='h-2 w-2 rounded-full bg-red-500' />
+                        Cost
                       </span>
                       <span className='font-mono font-medium text-sm'>
                         ${data.cost.toFixed(4)}
@@ -104,10 +121,11 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
                     </div>
                     {data.cacheSavings > 0 && (
                       <div className='flex items-center justify-between gap-6 border-t pt-1.5'>
-                        <span className='text-xs text-green-600 dark:text-green-400'>
-                          Cache-Ersparnis
+                        <span className='text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2'>
+                          <span className='h-2 w-2 rounded-full bg-emerald-500' />
+                          Cache Savings
                         </span>
-                        <span className='font-mono font-medium text-sm text-green-600 dark:text-green-400'>
+                        <span className='font-mono font-medium text-sm text-emerald-600 dark:text-emerald-400'>
                           ${data.cacheSavings.toFixed(4)}
                         </span>
                       </div>
@@ -120,12 +138,20 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
           }}
         />
         <Area
-          type='monotone'
+          type='step'
           dataKey='cost'
-          stroke='hsl(var(--primary))'
-          strokeWidth={2}
+          stroke='url(#colorCostStroke)'
+          strokeWidth={3}
           fillOpacity={1}
           fill='url(#colorCostGradient)'
+        />
+        <Area
+          type='step'
+          dataKey='cacheSavings'
+          stroke='url(#colorSavingsStroke)'
+          strokeWidth={2}
+          fillOpacity={1}
+          fill='url(#colorSavingsGradient)'
         />
       </AreaChart>
     </ResponsiveContainer>

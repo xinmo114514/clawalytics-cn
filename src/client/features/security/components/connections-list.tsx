@@ -15,7 +15,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { type ConnectionEvent } from '@/lib/api'
 
@@ -31,40 +30,47 @@ ConnectionsList.displayName = 'ConnectionsList'
 const eventTypeConfig: Record<
   string,
   {
-    className: string
+    iconBg: string
+    textColor: string
     icon: typeof Link
     label: string
   }
 > = {
   connection: {
-    className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+    iconBg: 'bg-emerald-500',
+    textColor: 'text-emerald-500',
     icon: Link,
     label: 'Connection',
   },
   disconnection: {
-    className: 'bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-400',
+    iconBg: 'bg-gray-500',
+    textColor: 'text-gray-500',
     icon: Link2Off,
     label: 'Disconnection',
   },
   auth_failure: {
-    className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+    iconBg: 'bg-red-500',
+    textColor: 'text-red-500',
     icon: ShieldX,
     label: 'Auth Failure',
   },
   auth_success: {
-    className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+    iconBg: 'bg-blue-500',
+    textColor: 'text-blue-500',
     icon: ShieldCheck,
     label: 'Auth Success',
   },
   heartbeat: {
-    className: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+    iconBg: 'bg-violet-500',
+    textColor: 'text-violet-500',
     icon: Activity,
     label: 'Heartbeat',
   },
 }
 
 const defaultEventConfig = {
-  className: 'bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-400',
+  iconBg: 'bg-gray-500',
+  textColor: 'text-gray-500',
   icon: Globe,
   label: 'Unknown',
 }
@@ -135,16 +141,16 @@ export function ConnectionsList({
                   <div
                     className={`
                       flex h-8 w-8 items-center justify-center rounded-full
-                      ${config.className}
+                      ${config.iconBg}
                     `}
                   >
-                    <IconComponent className='h-4 w-4' />
+                    <IconComponent className='h-4 w-4 text-white' />
                   </div>
                   <div className='flex-1 min-w-0'>
                     <div className='flex items-center gap-2'>
-                      <Badge variant='outline' className='text-xs'>
+                      <span className={`font-jersey text-xs tracking-wider ${config.textColor}`}>
                         {config.label}
-                      </Badge>
+                      </span>
                       {connection.device_id && (
                         <span className='text-xs text-muted-foreground font-mono truncate'>
                           {connection.device_id.slice(0, 8)}...

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { formatDistanceToNow, format } from 'date-fns'
+import { format } from 'date-fns'
 import { Download, Search } from 'lucide-react'
 import { SessionsIcon } from '@/components/icons/sessions-icon'
 import { Button } from '@/components/ui/button'
@@ -13,40 +13,97 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ThemeSwitch } from '@/components/theme-switch'
-import { getSessions } from '@/lib/api'
+import {
+  getSessions,
+  getSessionStats,
+  getProjectBreakdown,
+  getSessionFilters,
+} from '@/lib/api'
+import { SessionStatsCards } from './components/session-stats-cards'
+import { ProjectCostChart } from './components/project-cost-chart'
+import { SessionsTable } from './components/sessions-table'
+
+const PAGE_SIZE = 50
 
 export function Sessions() {
-  const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(0)
-  const pageSize = 20
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [sortBy, setSortBy] = useState('last_activity')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [projectFilter, setProjectFilter] = useState<string | undefined>()
+  const [modelFilter, setModelFilter] = useState<string | undefined>()
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['sessions', page, pageSize],
-    queryFn: () => getSessions(pageSize, page * pageSize),
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ['sessionStats'],
+    queryFn: getSessionStats,
     refetchInterval: 10000,
   })
 
-  const sessions = data?.sessions ?? []
-  const filteredSessions = sessions.filter(
-    (session) =>
-      session.project_path.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      session.models_used.some((m) =>
-        m.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-  )
+  const { data: projectBreakdown, isLoading: chartLoading } = useQuery({
+    queryKey: ['projectBreakdown'],
+    queryFn: () => getProjectBreakdown(10),
+    refetchInterval: 10000,
+  })
+
+  const { data: filters } = useQuery({
+    queryKey: ['sessionFilters'],
+    queryFn: getSessionFilters,
+    refetchInterval: 30000,
+  })
+
+  const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
+    queryKey: ['sessions', page, PAGE_SIZE, sortBy, sortDir, projectFilter, modelFilter, searchQuery],
+    queryFn: () =>
+      getSessions({
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+        sortBy,
+        sortDir,
+        project: projectFilter,
+        model: modelFilter,
+        search: searchQuery || undefined,
+      }),
+    refetchInterval: 10000,
+  })
+
+  const totalPages = sessionsData?.total ? Math.ceil(sessionsData.total / PAGE_SIZE) : 0
+  const startItem = page * PAGE_SIZE + 1
+  const endItem = Math.min((page + 1) * PAGE_SIZE, sessionsData?.total ?? 0)
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(field)
+      setSortDir('desc')
+    }
+    setPage(0)
+  }
+
+  const handleProjectClick = (project: string) => {
+    setProjectFilter((current) => (current === project ? undefined : project))
+    setPage(0)
+  }
+
+  const handleSearch = () => {
+    setSearchQuery(searchInput)
+    setPage(0)
+  }
 
   const exportToCSV = () => {
+    const sessions = sessionsData?.sessions ?? []
     const headers = [
       'Session ID',
       'Project',
@@ -55,9 +112,10 @@ export function Sessions() {
       'Input Tokens',
       'Output Tokens',
       'Cost',
+      'Requests',
       'Models',
     ]
-    const rows = filteredSessions.map((s) => [
+    const rows = sessions.map((s) => [
       s.id,
       s.project_path,
       s.started_at,
@@ -65,6 +123,7 @@ export function Sessions() {
       s.total_input_tokens,
       s.total_output_tokens,
       s.total_cost.toFixed(6),
+      s.request_count,
       s.models_used.join('; '),
     ])
 
@@ -83,7 +142,7 @@ export function Sessions() {
       <Header>
         <div className='flex items-center gap-2'>
           <SessionsIcon active className='h-6 w-6' />
-          <span className='font-semibold text-lg'>Sessions</span>
+          <span className='font-jersey text-xl'>Sessions</span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
           <ThemeSwitch />
@@ -92,144 +151,152 @@ export function Sessions() {
 
       <Main>
         <div className='mb-4 flex items-center justify-between'>
-          <h1 className='text-2xl font-bold tracking-tight'>Sessions</h1>
+          <div>
+            <h1 className='text-3xl font-bold tracking-tight'>Sessions</h1>
+            <p className='text-muted-foreground'>
+              Session analytics and cost breakdown by project
+            </p>
+          </div>
           <Button onClick={exportToCSV} variant='outline' size='sm'>
             <Download className='mr-2 h-4 w-4' />
             Export CSV
           </Button>
         </div>
 
-        <Card>
+        {/* Stats Cards */}
+        <div className='mb-6'>
+          <SessionStatsCards stats={stats} isLoading={statsLoading} />
+        </div>
+
+        {/* Project Cost Chart */}
+        <Card className='mb-6'>
           <CardHeader>
-            <CardTitle>All Sessions</CardTitle>
-            <CardDescription>
-              View all your OpenClaw sessions and their costs
-            </CardDescription>
+            <CardTitle>Cost by Project</CardTitle>
+            <CardDescription>Click a bar to filter the table below</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className='mb-4 flex items-center gap-4'>
-              <div className='relative flex-1'>
-                <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
-                <Input
-                  placeholder='Search by project or model...'
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className='pl-8'
-                />
-              </div>
-            </div>
-
-            {isLoading ? (
-              <div className='space-y-4'>
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className='h-16 animate-pulse rounded bg-muted' />
-                ))}
-              </div>
+          <CardContent className='ps-2'>
+            {chartLoading ? (
+              <Skeleton className='h-[200px] w-full' />
             ) : (
-              <>
-                <div className='rounded-md border'>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Project</TableHead>
-                        <TableHead>Last Activity</TableHead>
-                        <TableHead className='text-right'>Input Tokens</TableHead>
-                        <TableHead className='text-right'>Output Tokens</TableHead>
-                        <TableHead className='text-right'>Cost</TableHead>
-                        <TableHead>Models</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredSessions.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className='text-center py-8'>
-                            No sessions found
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredSessions.map((session) => (
-                          <TableRow key={session.id}>
-                            <TableCell className='font-medium'>
-                              {formatProjectPath(session.project_path)}
-                            </TableCell>
-                            <TableCell>
-                              {formatDistanceToNow(
-                                new Date(session.last_activity),
-                                { addSuffix: true }
-                              )}
-                            </TableCell>
-                            <TableCell className='text-right'>
-                              {session.total_input_tokens.toLocaleString()}
-                            </TableCell>
-                            <TableCell className='text-right'>
-                              {session.total_output_tokens.toLocaleString()}
-                            </TableCell>
-                            <TableCell className='text-right font-mono'>
-                              ${session.total_cost.toFixed(4)}
-                            </TableCell>
-                            <TableCell>
-                              <div className='flex gap-1 flex-wrap'>
-                                {session.models_used.map((model) => (
-                                  <Badge
-                                    key={model}
-                                    variant='secondary'
-                                    className='text-xs'
-                                  >
-                                    {getModelShortName(model)}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                <div className='mt-4 flex items-center justify-between'>
-                  <p className='text-sm text-muted-foreground'>
-                    Showing {filteredSessions.length} of {data?.total ?? 0} sessions
-                  </p>
-                  <div className='flex gap-2'>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={() => setPage((p) => Math.max(0, p - 1))}
-                      disabled={page === 0}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={() => setPage((p) => p + 1)}
-                      disabled={!data?.hasMore}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              </>
+              <ProjectCostChart
+                data={projectBreakdown ?? []}
+                activeProject={projectFilter}
+                onProjectClick={handleProjectClick}
+              />
             )}
           </CardContent>
         </Card>
+
+        {/* Filter bar */}
+        <div className='mb-4 flex flex-wrap items-center gap-3'>
+          <div className='relative flex-1 min-w-[200px]'>
+            <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
+            <Input
+              placeholder='Search by project or model...'
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSearch()
+              }}
+              className='pl-8'
+            />
+          </div>
+          <Select
+            value={projectFilter ?? 'all'}
+            onValueChange={(v) => {
+              setProjectFilter(v === 'all' ? undefined : v)
+              setPage(0)
+            }}
+          >
+            <SelectTrigger className='w-[180px]'>
+              <SelectValue placeholder='All Projects' />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='all'>All Projects</SelectItem>
+              {(filters?.projects ?? []).map((p) => {
+                const parts = p.split('-')
+                const name = parts[parts.length - 1] || p
+                return (
+                  <SelectItem key={p} value={p}>
+                    {name}
+                  </SelectItem>
+                )
+              })}
+            </SelectContent>
+          </Select>
+          <Select
+            value={modelFilter ?? 'all'}
+            onValueChange={(v) => {
+              setModelFilter(v === 'all' ? undefined : v)
+              setPage(0)
+            }}
+          >
+            <SelectTrigger className='w-[180px]'>
+              <SelectValue placeholder='All Models' />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='all'>All Models</SelectItem>
+              {(filters?.models ?? []).map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Sessions Table */}
+        {sessionsLoading ? (
+          <div className='space-y-4'>
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className='h-16 animate-pulse rounded bg-muted' />
+            ))}
+          </div>
+        ) : (
+          <>
+            <SessionsTable
+              sessions={sessionsData?.sessions ?? []}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSort={handleSort}
+              expandedSessionId={expandedSessionId}
+              onToggleExpand={(id) =>
+                setExpandedSessionId((prev) => (prev === id ? null : id))
+              }
+            />
+
+            {/* Pagination */}
+            <div className='mt-4 flex items-center justify-between'>
+              <p className='text-sm text-muted-foreground'>
+                {sessionsData?.total && sessionsData.total > 0
+                  ? `Showing ${startItem}-${endItem} of ${sessionsData.total} sessions`
+                  : 'No sessions'}
+              </p>
+              <div className='flex items-center gap-2'>
+                <span className='text-sm text-muted-foreground'>
+                  Page {page + 1} of {Math.max(1, totalPages)}
+                </span>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={!sessionsData?.hasMore}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
       </Main>
     </>
   )
-}
-
-function formatProjectPath(path: string): string {
-  const parts = path.split('-')
-  return parts[parts.length - 1] || path
-}
-
-function getModelShortName(model: string): string {
-  if (model.includes('claude-opus')) return 'Opus'
-  if (model.includes('claude-sonnet')) return 'Sonnet'
-  if (model.includes('claude-haiku')) return 'Haiku'
-  if (model.includes('gpt-4o-mini')) return '4o-mini'
-  if (model.includes('gpt-4o')) return 'GPT-4o'
-  if (model.includes('gpt-4')) return 'GPT-4'
-  return model.split('-')[0]
 }

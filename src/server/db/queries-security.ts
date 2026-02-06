@@ -137,6 +137,7 @@ export interface AuditFilters {
   entity_type?: string;
   entity_id?: string;
   actor?: string;
+  ip_address?: string;
   startDate?: string;
   endDate?: string;
   limit?: number;
@@ -332,6 +333,19 @@ export function logOutboundCall(call: OutboundCallInput): number {
   return result.lastInsertRowid as number;
 }
 
+export interface OutboundCallFilters {
+  limit?: number;
+  offset?: number;
+  agentId?: string;
+  toolName?: string;
+  status?: string;
+}
+
+export interface OutboundCallsResult {
+  calls: OutboundCall[];
+  total: number;
+}
+
 export function getOutboundCalls(limit = 100, agentId?: string): OutboundCall[] {
   const db = getDatabase();
 
@@ -349,6 +363,45 @@ export function getOutboundCalls(limit = 100, agentId?: string): OutboundCall[] 
     ORDER BY timestamp DESC
     LIMIT ?
   `).all(limit) as OutboundCall[];
+}
+
+export function getOutboundCallsWithCount(filters: OutboundCallFilters = {}): OutboundCallsResult {
+  const db = getDatabase();
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (filters.agentId) {
+    conditions.push('agent_id = ?');
+    params.push(filters.agentId);
+  }
+  if (filters.toolName) {
+    conditions.push('tool_name LIKE ?');
+    params.push(`%${filters.toolName}%`);
+  }
+  if (filters.status) {
+    conditions.push('status = ?');
+    params.push(filters.status);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // Get count first
+  const countRow = db.prepare(`
+    SELECT COUNT(*) as total FROM outbound_calls ${whereClause}
+  `).get(...params) as { total: number };
+
+  const limit = filters.limit ?? 50;
+  const offset = filters.offset ?? 0;
+  params.push(limit, offset);
+
+  const calls = db.prepare(`
+    SELECT * FROM outbound_calls
+    ${whereClause}
+    ORDER BY timestamp DESC
+    LIMIT ? OFFSET ?
+  `).all(...params) as OutboundCall[];
+
+  return { calls, total: countRow.total };
 }
 
 export function getOutboundCallsBySession(sessionId: string): OutboundCall[] {
@@ -606,6 +659,11 @@ export function logAudit(entry: AuditInput): number {
   return result.lastInsertRowid as number;
 }
 
+export interface AuditLogResult {
+  entries: AuditEntry[];
+  total: number;
+}
+
 export function getAuditLog(filters: AuditFilters = {}): AuditEntry[] {
   const db = getDatabase();
   const conditions: string[] = [];
@@ -624,8 +682,8 @@ export function getAuditLog(filters: AuditFilters = {}): AuditEntry[] {
     params.push(filters.entity_id);
   }
   if (filters.actor) {
-    conditions.push('actor = ?');
-    params.push(filters.actor);
+    conditions.push('actor LIKE ?');
+    params.push(`%${filters.actor}%`);
   }
   if (filters.startDate) {
     conditions.push('timestamp >= ?');
@@ -648,6 +706,61 @@ export function getAuditLog(filters: AuditFilters = {}): AuditEntry[] {
     ORDER BY timestamp DESC
     LIMIT ? OFFSET ?
   `).all(...params) as AuditEntry[];
+}
+
+export function getAuditLogWithCount(filters: AuditFilters = {}): AuditLogResult {
+  const db = getDatabase();
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (filters.action) {
+    conditions.push('action = ?');
+    params.push(filters.action);
+  }
+  if (filters.entity_type) {
+    conditions.push('entity_type = ?');
+    params.push(filters.entity_type);
+  }
+  if (filters.entity_id) {
+    conditions.push('entity_id = ?');
+    params.push(filters.entity_id);
+  }
+  if (filters.actor) {
+    conditions.push('actor LIKE ?');
+    params.push(`%${filters.actor}%`);
+  }
+  if (filters.ip_address) {
+    conditions.push('ip_address LIKE ?');
+    params.push(`%${filters.ip_address}%`);
+  }
+  if (filters.startDate) {
+    conditions.push('timestamp >= ?');
+    params.push(filters.startDate);
+  }
+  if (filters.endDate) {
+    conditions.push('timestamp <= ?');
+    params.push(filters.endDate);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // Get count first
+  const countRow = db.prepare(`
+    SELECT COUNT(*) as total FROM audit_log ${whereClause}
+  `).get(...params) as { total: number };
+
+  const limit = filters.limit ?? 100;
+  const offset = filters.offset ?? 0;
+  params.push(limit, offset);
+
+  const entries = db.prepare(`
+    SELECT * FROM audit_log
+    ${whereClause}
+    ORDER BY timestamp DESC
+    LIMIT ? OFFSET ?
+  `).all(...params) as AuditEntry[];
+
+  return { entries, total: countRow.total };
 }
 
 export function getAuditEntry(id: number): AuditEntry | undefined {

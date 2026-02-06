@@ -10,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import {
@@ -29,24 +28,28 @@ AlertsList.displayName = 'AlertsList'
 
 const severityConfig = {
   critical: {
-    className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+    iconBg: 'bg-red-500',
+    textColor: 'text-red-500',
     icon: ShieldAlert,
-    label: 'Critical',
+    label: 'CRITICAL',
   },
   high: {
-    className: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
+    iconBg: 'bg-orange-500',
+    textColor: 'text-orange-500',
     icon: AlertTriangle,
-    label: 'High',
+    label: 'HIGH',
   },
   medium: {
-    className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+    iconBg: 'bg-yellow-500',
+    textColor: 'text-yellow-500',
     icon: Bell,
-    label: 'Medium',
+    label: 'MEDIUM',
   },
   low: {
-    className: 'bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-400',
+    iconBg: 'bg-gray-500',
+    textColor: 'text-gray-500',
     icon: Info,
-    label: 'Low',
+    label: 'LOW',
   },
 } as const
 
@@ -146,7 +149,7 @@ export function AlertsList({
       <CardContent>
         {alerts.length === 0 ? (
           <div className='flex flex-col items-center justify-center py-8 text-center'>
-            <CheckCircle className='h-12 w-12 text-green-500 mb-4' />
+            <CheckCircle className='h-12 w-12 text-emerald-500 mb-4' />
             <p className='text-lg font-medium text-muted-foreground'>
               No alerts found
             </p>
@@ -172,14 +175,16 @@ export function AlertsList({
                   <div
                     className={`
                       flex h-10 w-10 items-center justify-center rounded-full
-                      ${config.className}
+                      ${config.iconBg}
                     `}
                   >
-                    <IconComponent className='h-5 w-5' />
+                    <IconComponent className='h-5 w-5 text-white' />
                   </div>
                   <div className='flex-1 min-w-0'>
                     <div className='flex items-center gap-2 mb-1'>
-                      <Badge className={config.className}>{config.label}</Badge>
+                      <span className={`font-jersey text-xs tracking-wider ${config.textColor}`}>
+                        {config.label}
+                      </span>
                       <span className='text-sm font-medium'>{alert.type}</span>
                     </div>
                     <p className='text-sm text-muted-foreground truncate'>

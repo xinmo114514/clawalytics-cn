@@ -1,27 +1,66 @@
 import { calculateCost, identifyProvider } from '../costs.js';
 
 /**
- * OpenClaw log entry structure - similar to Claude Code but with origin data
+ * Actual OpenClaw session JSONL entry structure.
+ *
+ * Assistant messages look like:
+ * {
+ *   "type": "message",
+ *   "id": "...",
+ *   "parentId": "...",
+ *   "timestamp": "2026-02-06T11:10:30.498Z",
+ *   "message": {
+ *     "role": "assistant",
+ *     "content": [...],
+ *     "api": "anthropic-messages",
+ *     "provider": "kimi-coding",
+ *     "model": "k2p5",
+ *     "usage": {
+ *       "input": 8794,
+ *       "output": 155,
+ *       "cacheRead": 0,
+ *       "cacheWrite": 0,
+ *       "totalTokens": 8949,
+ *       "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0 }
+ *     },
+ *     "stopReason": "stop",
+ *     "timestamp": 1770376226651
+ *   }
+ * }
  */
 export interface OpenClawLogEntry {
   type: string;
+  id?: string;
+  parentId?: string | null;
   timestamp?: string;
   message?: {
     role?: string;
     content?: unknown;
+    api?: string;
+    provider?: string;
     model?: string;
     usage?: {
+      // Actual OpenClaw format
+      input?: number;
+      output?: number;
+      cacheRead?: number;
+      cacheWrite?: number;
+      totalTokens?: number;
+      cost?: {
+        input?: number;
+        output?: number;
+        cacheRead?: number;
+        cacheWrite?: number;
+        total?: number;
+      };
+      // Claude Code / legacy format
       input_tokens?: number;
       output_tokens?: number;
       cache_creation_input_tokens?: number;
       cache_read_input_tokens?: number;
     };
-  };
-  // OpenClaw-specific: origin data for multi-channel support
-  origin?: {
-    provider?: string; // "whatsapp", "telegram", "slack", "web"
-    channel?: string; // channel/group name
-    user?: string;
+    stopReason?: string;
+    timestamp?: number;
   };
   // Tool use events
   tool_use?: {
@@ -31,17 +70,6 @@ export interface OpenClawLogEntry {
   tool_result?: {
     tool_use_id: string;
     is_error?: boolean;
-  };
-  // Standard fields
-  request_id?: string;
-  conversation_id?: string;
-  session_id?: string;
-  model?: string;
-  usage?: {
-    input_tokens?: number;
-    output_tokens?: number;
-    cache_creation_input_tokens?: number;
-    cache_read_input_tokens?: number;
   };
   [key: string]: unknown;
 }
@@ -77,7 +105,9 @@ export interface ParsedOpenClawResult {
 }
 
 /**
- * Parse a single line from an OpenClaw session log file
+ * Parse a single line from an OpenClaw session JSONL file.
+ * Handles both actual OpenClaw format (usage.input/output/cacheRead/cacheWrite)
+ * and Claude Code format (usage.input_tokens/output_tokens/cache_*).
  */
 export function parseOpenClawLine(
   line: string,
@@ -90,40 +120,43 @@ export function parseOpenClawLine(
   try {
     entry = JSON.parse(line) as OpenClawLogEntry;
   } catch {
-    // Skip non-JSON lines
     return null;
   }
 
-  // Check if this entry has token usage
-  if (!hasTokenUsage(entry)) {
-    return null;
-  }
+  // Only process message entries with assistant role that have usage
+  if (entry.type !== 'message') return null;
+  if (!entry.message?.usage) return null;
+  if (entry.message.role !== 'assistant') return null;
 
-  // Extract usage data
-  const usage = entry.usage || entry.message?.usage;
-  if (!usage) return null;
+  const usage = entry.message.usage;
 
-  const inputTokens = usage.input_tokens || 0;
-  const outputTokens = usage.output_tokens || 0;
-  const cacheCreationTokens = usage.cache_creation_input_tokens || 0;
-  const cacheReadTokens = usage.cache_read_input_tokens || 0;
+  // Extract tokens - support both OpenClaw and Claude Code formats
+  const inputTokens = usage.input ?? usage.input_tokens ?? 0;
+  const outputTokens = usage.output ?? usage.output_tokens ?? 0;
+  const cacheReadTokens = usage.cacheRead ?? usage.cache_read_input_tokens ?? 0;
+  const cacheCreationTokens = usage.cacheWrite ?? usage.cache_creation_input_tokens ?? 0;
 
   // Skip if no tokens at all
-  if (inputTokens === 0 && outputTokens === 0 && cacheCreationTokens === 0 && cacheReadTokens === 0) {
+  if (inputTokens === 0 && outputTokens === 0 && cacheReadTokens === 0 && cacheCreationTokens === 0) {
     return null;
   }
 
-  // Get model info
-  const model = entry.model || entry.message?.model || 'unknown';
-  const provider = identifyProvider(model);
+  // Get model and provider info
+  const model = entry.message.model || 'unknown';
+  const provider = entry.message.provider || identifyProvider(model);
 
-  // Calculate cost
+  // Calculate cost from our pricing data
   const costResult = calculateCost(provider, model, {
     inputTokens,
     outputTokens,
     cacheCreationTokens,
     cacheReadTokens,
   });
+
+  // Use provider-reported cost if available, otherwise our calculated cost
+  const providerCost = usage.cost?.total;
+  const cost = (providerCost && providerCost > 0) ? providerCost : costResult.totalCost;
+  const cacheSavings = costResult.cacheSavings;
 
   const timestamp = entry.timestamp || new Date().toISOString();
 
@@ -137,9 +170,9 @@ export function parseOpenClawLine(
     outputTokens,
     cacheCreationTokens,
     cacheReadTokens,
-    cost: costResult.totalCost,
-    cacheSavings: costResult.cacheSavings,
-    origin: extractOrigin(entry),
+    cost,
+    cacheSavings,
+    origin: null,
     toolUse: extractSessionToolUse(entry),
     messageType: entry.type,
     rawEntry: entry,
@@ -147,32 +180,7 @@ export function parseOpenClawLine(
 }
 
 /**
- * Check if entry has token usage data
- */
-function hasTokenUsage(entry: OpenClawLogEntry): boolean {
-  return !!(
-    entry.usage?.input_tokens ||
-    entry.usage?.output_tokens ||
-    entry.message?.usage?.input_tokens ||
-    entry.message?.usage?.output_tokens
-  );
-}
-
-/**
- * Extract origin information from an OpenClaw log entry
- */
-export function extractOrigin(entry: OpenClawLogEntry): OriginInfo | null {
-  if (!entry.origin) return null;
-
-  const provider = entry.origin.provider || 'unknown';
-  const channel = entry.origin.channel || 'default';
-
-  return { provider, channel };
-}
-
-/**
  * Extract simple tool use info from an OpenClaw log entry
- * Note: For full tool tracking, use tool-tracker.ts functions instead
  */
 export function extractSessionToolUse(entry: OpenClawLogEntry): SessionToolUseInfo | null {
   if (entry.tool_use) {
@@ -190,5 +198,10 @@ export function extractSessionToolUse(entry: OpenClawLogEntry): SessionToolUseIn
     };
   }
 
+  return null;
+}
+
+// Keep legacy export for backwards compatibility
+export function extractOrigin(_entry: OpenClawLogEntry): OriginInfo | null {
   return null;
 }

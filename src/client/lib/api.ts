@@ -105,10 +105,90 @@ export async function getTokenBreakdown(days = 30): Promise<TokenBreakdown> {
   return data;
 }
 
-export async function getSessions(limit = 100, offset = 0): Promise<SessionsResponse> {
-  const { data } = await api.get<SessionsResponse>('/sessions', {
-    params: { limit, offset },
+// Session analytics types
+export interface SessionStats {
+  totalSessions: number;
+  totalSessionsThisMonth: number;
+  totalCost: number;
+  avgCostPerSession: number;
+  mostActiveProject: { project: string; sessionCount: number } | null;
+}
+
+export interface ProjectBreakdown {
+  project: string;
+  totalCost: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  sessionCount: number;
+}
+
+export interface SessionFilters {
+  projects: string[];
+  models: string[];
+}
+
+export interface EnhancedSession extends Session {
+  request_count: number;
+}
+
+export interface EnhancedSessionsResponse {
+  sessions: EnhancedSession[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+export interface SessionRequest {
+  id?: number;
+  session_id: string;
+  timestamp: string;
+  provider: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_tokens: number;
+  cache_read_tokens: number;
+  cost: number;
+  message_type?: string;
+}
+
+export interface GetSessionsOptions {
+  limit?: number;
+  offset?: number;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+  project?: string;
+  model?: string;
+  search?: string;
+}
+
+export async function getSessions(options: GetSessionsOptions = {}): Promise<EnhancedSessionsResponse> {
+  const { data } = await api.get<EnhancedSessionsResponse>('/sessions', {
+    params: options,
   });
+  return data;
+}
+
+export async function getSessionStats(): Promise<SessionStats> {
+  const { data } = await api.get<SessionStats>('/sessions/stats');
+  return data;
+}
+
+export async function getProjectBreakdown(limit = 10): Promise<ProjectBreakdown[]> {
+  const { data } = await api.get<ProjectBreakdown[]>('/sessions/projects', {
+    params: { limit },
+  });
+  return data;
+}
+
+export async function getSessionFilters(): Promise<SessionFilters> {
+  const { data } = await api.get<SessionFilters>('/sessions/filters');
+  return data;
+}
+
+export async function getSessionRequests(sessionId: string): Promise<SessionRequest[]> {
+  const { data } = await api.get<SessionRequest[]>(`/sessions/${sessionId}/requests`);
   return data;
 }
 
@@ -227,7 +307,7 @@ export async function getAgentDailyCosts(
   days = 30
 ): Promise<AgentDailyCost[]> {
   const { data } = await api.get<AgentDailyCost[]>(
-    `/agents/${agentId}/costs/daily`,
+    `/agents/${agentId}/daily`,
     {
       params: { days },
     }
@@ -238,7 +318,7 @@ export async function getAgentDailyCosts(
 export async function getAllAgentsDailyCosts(
   days = 30
 ): Promise<AgentDailyCost[]> {
-  const { data } = await api.get<AgentDailyCost[]>('/agents/costs/daily', {
+  const { data } = await api.get<AgentDailyCost[]>('/agents/daily', {
     params: { days },
   });
   return data;
@@ -267,7 +347,7 @@ export async function getChannelDailyCosts(
   days = 30
 ): Promise<ChannelDailyCost[]> {
   const { data } = await api.get<ChannelDailyCost[]>(
-    `/channels/${channelId}/costs/daily`,
+    `/channels/${channelId}/daily`,
     {
       params: { days },
     }
@@ -278,7 +358,7 @@ export async function getChannelDailyCosts(
 export async function getAllChannelsDailyCosts(
   days = 30
 ): Promise<ChannelDailyCost[]> {
-  const { data } = await api.get<ChannelDailyCost[]>('/channels/costs/daily', {
+  const { data } = await api.get<ChannelDailyCost[]>('/channels/daily', {
     params: { days },
   });
   return data;
@@ -350,7 +430,6 @@ export interface AuditEntry {
 
 export interface SecurityDashboardStats {
   activeDevices: number;
-  pendingRequests: number;
   unacknowledgedAlerts: number;
   recentConnections: number;
   alertsByLevel: { low: number; medium: number; high: number; critical: number };
@@ -359,16 +438,36 @@ export interface SecurityDashboardStats {
 export interface AuditFilters {
   action?: string;
   entityType?: string;
+  actor?: string;
+  ipAddress?: string;
   startDate?: string;
   endDate?: string;
   limit?: number;
   offset?: number;
 }
 
+export interface AuditLogResponse {
+  entries: AuditEntry[];
+  total: number;
+}
+
 export interface ToolStats {
   toolName: string;
   count: number;
   avgDuration: number;
+}
+
+export interface OutboundCallFilters {
+  limit?: number;
+  offset?: number;
+  agentId?: string;
+  toolName?: string;
+  status?: string;
+}
+
+export interface OutboundCallsResponse {
+  calls: OutboundCall[];
+  total: number;
 }
 
 // Phase 3: Device API functions
@@ -383,7 +482,7 @@ export async function getActiveDevices(): Promise<Device[]> {
 }
 
 export async function getPendingRequests(): Promise<PairingRequest[]> {
-  const { data } = await api.get<PairingRequest[]>('/devices/pairing/pending');
+  const { data } = await api.get<PairingRequest[]>('/devices/pending');
   return data;
 }
 
@@ -392,7 +491,7 @@ export async function respondToPairingRequest(
   status: string,
   response?: string
 ): Promise<void> {
-  await api.post(`/devices/pairing/${id}/respond`, { status, response });
+  await api.post(`/devices/requests/${id}/respond`, { status, response });
 }
 
 // Phase 3: Security API functions
@@ -449,13 +548,9 @@ export async function getRecentConnections(hours?: number): Promise<ConnectionEv
 
 // Phase 3: Tool API functions
 export async function getOutboundCalls(
-  limit?: number,
-  agentId?: string
-): Promise<OutboundCall[]> {
-  const params: Record<string, unknown> = {};
-  if (limit !== undefined) params.limit = limit;
-  if (agentId !== undefined) params.agentId = agentId;
-  const { data } = await api.get<OutboundCall[]>('/tools', { params });
+  filters?: OutboundCallFilters
+): Promise<OutboundCallsResponse> {
+  const { data } = await api.get<OutboundCallsResponse>('/tools', { params: filters });
   return data;
 }
 
@@ -485,8 +580,8 @@ export async function getToolStats(days?: number): Promise<ToolStats[]> {
 }
 
 // Phase 3: Audit API functions
-export async function getAuditLog(filters?: AuditFilters): Promise<AuditEntry[]> {
-  const { data } = await api.get<AuditEntry[]>('/audit', { params: filters });
+export async function getAuditLog(filters?: AuditFilters): Promise<AuditLogResponse> {
+  const { data } = await api.get<AuditLogResponse>('/audit', { params: filters });
   return data;
 }
 
@@ -494,6 +589,102 @@ export async function getRecentAuditLog(hours?: number): Promise<AuditEntry[]> {
   const params: Record<string, unknown> = {};
   if (hours !== undefined) params.hours = hours;
   const { data } = await api.get<AuditEntry[]>('/audit/recent', { params });
+  return data;
+}
+
+// ============================================
+// Models API
+// ============================================
+
+export interface ModelUsageItem {
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cost: number;
+  requestCount: number;
+}
+
+export interface ModelStats {
+  totalModels: number;
+  totalProviders: number;
+  topModel: { provider: string; model: string; cost: number } | null;
+  topProvider: { provider: string; cost: number; modelCount: number } | null;
+}
+
+export interface ModelDailyUsage {
+  date: string;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cost: number;
+  requestCount: number;
+}
+
+export interface ProviderSummary {
+  provider: string;
+  totalCost: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  modelCount: number;
+  requestCount: number;
+}
+
+export interface PricingData {
+  models: Record<string, { input: number; output: number; cacheRead?: number; cacheWrite?: number }>;
+  fetchedAt: string;
+  source: string;
+}
+
+export async function getModels(days = 30): Promise<ModelUsageItem[]> {
+  const { data } = await api.get<ModelUsageItem[]>('/models', { params: { days } });
+  return data;
+}
+
+export async function getModelStats(days = 30): Promise<ModelStats> {
+  const { data } = await api.get<ModelStats>('/models/stats', { params: { days } });
+  return data;
+}
+
+export async function getModelDailyUsage(days = 30): Promise<ModelDailyUsage[]> {
+  const { data } = await api.get<ModelDailyUsage[]>('/models/daily', { params: { days } });
+  return data;
+}
+
+export async function getProviderSummary(days = 30): Promise<ProviderSummary[]> {
+  const { data } = await api.get<ProviderSummary[]>('/models/providers', { params: { days } });
+  return data;
+}
+
+export async function getModelPricing(): Promise<PricingData> {
+  const { data } = await api.get<PricingData>('/models/pricing');
+  return data;
+}
+
+export async function refreshModelPricing(): Promise<{ success: boolean; pricing?: PricingData }> {
+  const { data } = await api.post<{ success: boolean; pricing?: PricingData }>('/models/pricing/refresh');
+  return data;
+}
+
+// ============================================
+// Budget API
+// ============================================
+
+export interface BudgetPeriod {
+  spent: number;
+  budget: number;
+  percent: number;
+}
+
+export interface BudgetStatus {
+  daily: BudgetPeriod | null;
+  weekly: BudgetPeriod | null;
+  monthly: BudgetPeriod | null;
+}
+
+export async function getBudgetStatus(): Promise<BudgetStatus> {
+  const { data } = await api.get<BudgetStatus>('/stats/budget');
   return data;
 }
 

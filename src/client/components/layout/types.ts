@@ -7,7 +7,7 @@ type User = {
 }
 
 type Team = {
-  name: string
+  name: string 
   logo: React.ElementType
   plan: string
 }

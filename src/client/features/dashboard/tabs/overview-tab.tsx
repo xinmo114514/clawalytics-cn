@@ -33,8 +33,8 @@ export function OverviewTab({
       {/* Model Usage Chart - Takes 3 columns */}
       <Card className='col-span-1 lg:col-span-3'>
         <CardHeader>
-          <CardTitle>Model Usage</CardTitle>
-          <CardDescription>Cost distribution by model</CardDescription>
+          <CardTitle>模型使用情况</CardTitle>
+          <CardDescription>按模型查看成本分布</CardDescription>
         </CardHeader>
         <CardContent>
           {modelUsageLoading ? (
@@ -64,8 +64,8 @@ export function OverviewTab({
         <Card>
           <CardHeader className='flex flex-row items-center justify-between'>
             <div>
-              <CardTitle>Top Models</CardTitle>
-              <CardDescription>Most used models by cost</CardDescription>
+              <CardTitle>热门模型</CardTitle>
+              <CardDescription>按成本排序的常用模型</CardDescription>
             </div>
             <Button
               variant='ghost'
@@ -73,7 +73,7 @@ export function OverviewTab({
               className='gap-1'
               onClick={() => onSwitchTab('models')}
             >
-              View all
+              查看全部
               <ArrowRight className='h-4 w-4' />
             </Button>
           </CardHeader>

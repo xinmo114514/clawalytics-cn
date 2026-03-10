@@ -22,6 +22,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
+import { LanguageSwitch } from '@/components/language-switch'
 import { ThemeSwitch } from '@/components/theme-switch'
 import {
   getSessions,
@@ -142,9 +143,10 @@ export function Sessions() {
       <Header>
         <div className='flex items-center gap-2'>
           <SessionsIcon active className='h-6 w-6' />
-          <span className='font-jersey text-xl'>Sessions</span>
+          <span className='font-jersey text-xl'>会话</span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
+          <LanguageSwitch />
           <ThemeSwitch />
         </div>
       </Header>
@@ -152,14 +154,14 @@ export function Sessions() {
       <Main>
         <div className='mb-4 flex items-center justify-between'>
           <div>
-            <h1 className='text-3xl font-bold tracking-tight'>Sessions</h1>
+            <h1 className='text-3xl font-bold tracking-tight'>会话</h1>
             <p className='text-muted-foreground'>
-              Session analytics and cost breakdown by project
+              按项目查看会话分析与成本拆分
             </p>
           </div>
           <Button onClick={exportToCSV} variant='outline' size='sm'>
             <Download className='mr-2 h-4 w-4' />
-            Export CSV
+            导出 CSV
           </Button>
         </div>
 
@@ -171,8 +173,8 @@ export function Sessions() {
         {/* Project Cost Chart */}
         <Card className='mb-6'>
           <CardHeader>
-            <CardTitle>Cost by Project</CardTitle>
-            <CardDescription>Click a bar to filter the table below</CardDescription>
+            <CardTitle>按项目查看成本</CardTitle>
+            <CardDescription>点击柱状条可筛选下方表格</CardDescription>
           </CardHeader>
           <CardContent className='ps-2'>
             {chartLoading ? (
@@ -192,7 +194,7 @@ export function Sessions() {
           <div className='relative flex-1 min-w-[200px]'>
             <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
             <Input
-              placeholder='Search by project or model...'
+              placeholder='按项目或模型搜索...'
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => {
@@ -209,10 +211,10 @@ export function Sessions() {
             }}
           >
             <SelectTrigger className='w-[180px]'>
-              <SelectValue placeholder='All Projects' />
+              <SelectValue placeholder='全部项目' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value='all'>All Projects</SelectItem>
+              <SelectItem value='all'>全部项目</SelectItem>
               {(filters?.projects ?? []).map((p) => {
                 const parts = p.split('-')
                 const name = parts[parts.length - 1] || p
@@ -232,10 +234,10 @@ export function Sessions() {
             }}
           >
             <SelectTrigger className='w-[180px]'>
-              <SelectValue placeholder='All Models' />
+              <SelectValue placeholder='全部模型' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value='all'>All Models</SelectItem>
+              <SelectItem value='all'>全部模型</SelectItem>
               {(filters?.models ?? []).map((m) => (
                 <SelectItem key={m} value={m}>
                   {m}
@@ -269,12 +271,12 @@ export function Sessions() {
             <div className='mt-4 flex items-center justify-between'>
               <p className='text-sm text-muted-foreground'>
                 {sessionsData?.total && sessionsData.total > 0
-                  ? `Showing ${startItem}-${endItem} of ${sessionsData.total} sessions`
-                  : 'No sessions'}
+                  ? `显示第 ${startItem}-${endItem} 条，共 ${sessionsData.total} 条会话`
+                  : '暂无会话'}
               </p>
               <div className='flex items-center gap-2'>
                 <span className='text-sm text-muted-foreground'>
-                  Page {page + 1} of {Math.max(1, totalPages)}
+                  第 {page + 1} 页，共 {Math.max(1, totalPages)} 页
                 </span>
                 <Button
                   variant='outline'
@@ -282,7 +284,7 @@ export function Sessions() {
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                   disabled={page === 0}
                 >
-                  Previous
+                  上一页
                 </Button>
                 <Button
                   variant='outline'
@@ -290,7 +292,7 @@ export function Sessions() {
                   onClick={() => setPage((p) => p + 1)}
                   disabled={!sessionsData?.hasMore}
                 >
-                  Next
+                  下一页
                 </Button>
               </div>
             </div>

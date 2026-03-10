@@ -1,5 +1,3 @@
-import { formatDistanceToNow, format } from 'date-fns'
-import { enUS } from 'date-fns/locale'
 import { Smartphone, Monitor, Globe, HelpCircle } from 'lucide-react'
 import {
   Card,
@@ -19,6 +17,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { type Device } from '@/lib/api'
+import { formatDate, formatRelativeTime } from '@/lib/i18n'
 
 interface DevicesTableProps {
   devices: Device[]
@@ -36,21 +35,21 @@ const deviceTypeConfig: Record<
 > = {
   mobile: {
     icon: Smartphone,
-    label: 'Mobile',
+    label: '移动端',
   },
   desktop: {
     icon: Monitor,
-    label: 'Desktop',
+    label: '桌面端',
   },
   browser: {
     icon: Globe,
-    label: 'Browser',
+    label: '浏览器',
   },
 }
 
 const defaultDeviceConfig = {
   icon: HelpCircle,
-  label: 'Unknown',
+  label: '未知',
 }
 
 const statusConfig: Record<
@@ -62,21 +61,21 @@ const statusConfig: Record<
 > = {
   active: {
     className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-    label: 'Active',
+    label: '活跃',
   },
   inactive: {
     className: 'bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-400',
-    label: 'Inactive',
+    label: '不活跃',
   },
   suspended: {
     className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-    label: 'Suspended',
+    label: '已停用',
   },
 }
 
 const defaultStatusConfig = {
   className: 'bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-400',
-  label: 'Unknown',
+  label: '未知',
 }
 
 export function DevicesTable({ devices, isLoading }: DevicesTableProps) {
@@ -92,12 +91,12 @@ export function DevicesTable({ devices, isLoading }: DevicesTableProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Device</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Last Seen</TableHead>
-                  <TableHead className='text-right'>Connections</TableHead>
-                  <TableHead>Paired</TableHead>
+                  <TableHead>设备</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>最近在线</TableHead>
+                  <TableHead className='text-right'>连接次数</TableHead>
+                  <TableHead>配对时间</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -136,12 +135,12 @@ export function DevicesTable({ devices, isLoading }: DevicesTableProps) {
       <CardHeader>
         <CardTitle className='flex items-center gap-2'>
           <Smartphone className='h-5 w-5' />
-          Paired Devices
+          已配对设备
         </CardTitle>
         <CardDescription>
           {devices.length > 0
-            ? `${devices.length} device${devices.length !== 1 ? 's' : ''} paired`
-            : 'No devices paired'}
+            ? `已配对 ${devices.length} 台设备`
+            : '暂无已配对设备'}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -149,10 +148,10 @@ export function DevicesTable({ devices, isLoading }: DevicesTableProps) {
           <div className='flex flex-col items-center justify-center py-8 text-center'>
             <Smartphone className='h-12 w-12 text-muted-foreground mb-4' />
             <p className='text-lg font-medium text-muted-foreground'>
-              No devices found
+              未找到设备
             </p>
             <p className='text-sm text-muted-foreground'>
-              Pair a device to get started
+              先配对设备再开始使用
             </p>
           </div>
         ) : (
@@ -160,12 +159,12 @@ export function DevicesTable({ devices, isLoading }: DevicesTableProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Device</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Last Seen</TableHead>
-                  <TableHead className='text-right'>Connections</TableHead>
-                  <TableHead>Paired</TableHead>
+                  <TableHead>设备</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>最近在线</TableHead>
+                  <TableHead className='text-right'>连接次数</TableHead>
+                  <TableHead>配对时间</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -182,7 +181,7 @@ export function DevicesTable({ devices, isLoading }: DevicesTableProps) {
                         <div className='flex items-center gap-2'>
                           <IconComponent className='h-4 w-4 text-muted-foreground' />
                           <span className='font-medium'>
-                            {device.name ?? 'Unnamed'}
+                            {device.name ?? '未命名设备'}
                           </span>
                         </div>
                         <span className='text-xs text-muted-foreground font-mono'>
@@ -200,14 +199,11 @@ export function DevicesTable({ devices, isLoading }: DevicesTableProps) {
                       <TableCell>
                         {device.last_seen ? (
                           <span className='text-sm'>
-                            {formatDistanceToNow(new Date(device.last_seen), {
-                              addSuffix: true,
-                              locale: enUS,
-                            })}
+                            {formatRelativeTime(device.last_seen)}
                           </span>
                         ) : (
                           <span className='text-sm text-muted-foreground'>
-                            Never
+                            从未
                           </span>
                         )}
                       </TableCell>
@@ -216,9 +212,7 @@ export function DevicesTable({ devices, isLoading }: DevicesTableProps) {
                       </TableCell>
                       <TableCell>
                         <span className='text-sm'>
-                          {format(new Date(device.paired_at), 'MM/dd/yyyy', {
-                            locale: enUS,
-                          })}
+                          {formatDate(device.paired_at)}
                         </span>
                       </TableCell>
                     </TableRow>

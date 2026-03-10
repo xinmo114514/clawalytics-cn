@@ -1,7 +1,5 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { formatDistanceToNow } from 'date-fns'
-import { enUS } from 'date-fns/locale'
 import {
   Activity,
   Clock,
@@ -48,18 +46,20 @@ import {
 } from '@/components/ui/select'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
+import { LanguageSwitch } from '@/components/language-switch'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { getOutboundCalls, getToolStats } from '@/lib/api'
+import { formatRelativeTime } from '@/lib/i18n'
 
 ToolsAnalytics.displayName = 'ToolsAnalytics'
 
 const PAGE_SIZE = 50
 
 const statusOptions = [
-  { value: 'all', label: 'All Status' },
-  { value: 'success', label: 'Success' },
-  { value: 'error', label: 'Error' },
-  { value: 'pending', label: 'Pending' },
+  { value: 'all', label: '全部状态' },
+  { value: 'success', label: '成功' },
+  { value: 'error', label: '失败' },
+  { value: 'pending', label: '处理中' },
 ]
 
 // Red gradient colors for bars (darker to lighter)
@@ -136,9 +136,10 @@ export function ToolsAnalytics() {
       <Header>
         <div className='flex items-center gap-2'>
           <ToolsIcon active className='h-6 w-6' />
-          <span className='font-jersey text-xl'>Tools</span>
+          <span className='font-jersey text-xl'>工具</span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
+          <LanguageSwitch />
           <ThemeSwitch />
         </div>
       </Header>
@@ -146,9 +147,9 @@ export function ToolsAnalytics() {
       <Main>
         <div className='mb-6 flex items-center justify-between'>
           <div>
-            <h1 className='text-3xl font-bold tracking-tight'>Tool Analytics</h1>
+            <h1 className='text-3xl font-bold tracking-tight'>工具分析</h1>
             <p className='text-muted-foreground'>
-              Overview of tool calls and statistics
+              查看工具调用与运行统计
             </p>
           </div>
           <Button
@@ -157,7 +158,7 @@ export function ToolsAnalytics() {
             onClick={() => window.open('/api/export/tools?format=csv', '_blank')}
           >
             <Download className='mr-2 h-4 w-4' />
-            Export CSV
+            导出 CSV
           </Button>
         </div>
 
@@ -168,7 +169,7 @@ export function ToolsAnalytics() {
             <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
-                Total Calls
+                总调用数
               </CardTitle>
               <div className='rounded-full bg-red-500/10 p-2'>
                 <Activity className='h-4 w-4 text-red-500' />
@@ -184,7 +185,7 @@ export function ToolsAnalytics() {
                 <>
                   <div className='text-2xl font-bold text-red-600 dark:text-red-400'>{total}</div>
                   <p className='text-xs text-muted-foreground'>
-                    Total tool calls
+                    工具总调用次数
                   </p>
                 </>
               )}
@@ -196,7 +197,7 @@ export function ToolsAnalytics() {
             <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
-                Average Duration
+                平均耗时
               </CardTitle>
               <div className='rounded-full bg-red-500/10 p-2'>
                 <Clock className='h-4 w-4 text-red-500' />
@@ -214,7 +215,7 @@ export function ToolsAnalytics() {
                     {avgDuration > 0 ? `${Math.round(avgDuration)}ms` : '-'}
                   </div>
                   <p className='text-xs text-muted-foreground'>
-                    Per call
+                    每次调用
                   </p>
                 </>
               )}
@@ -225,7 +226,7 @@ export function ToolsAnalytics() {
           <Card className='relative overflow-hidden'>
             <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Error Rate</CardTitle>
+              <CardTitle className='text-sm font-medium'>失败率</CardTitle>
               <div className='rounded-full bg-red-500/10 p-2'>
                 <AlertCircle className='h-4 w-4 text-red-500' />
               </div>
@@ -242,7 +243,7 @@ export function ToolsAnalytics() {
                     {errorRate.toFixed(1)}%
                   </div>
                   <p className='text-xs text-muted-foreground'>
-                    {errorCalls} of {toolCalls.length} failed
+                    共 {toolCalls.length} 次调用，其中失败 {errorCalls} 次
                   </p>
                 </>
               )}
@@ -255,9 +256,9 @@ export function ToolsAnalytics() {
           {/* Tool Usage Chart */}
           <Card>
             <CardHeader>
-              <CardTitle>Tool Usage</CardTitle>
+              <CardTitle>工具使用情况</CardTitle>
               <CardDescription>
-                Most used tools (last 30 days)
+                最近 30 天最常用的工具
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -266,7 +267,7 @@ export function ToolsAnalytics() {
               ) : chartData.length === 0 ? (
                 <div className='flex flex-col items-center justify-center h-[300px]'>
                   <Wrench className='h-12 w-12 text-muted-foreground mb-4' />
-                  <p className='text-muted-foreground'>No data available</p>
+                  <p className='text-muted-foreground'>暂无数据</p>
                 </div>
               ) : (
                 <ResponsiveContainer width='100%' height={300}>
@@ -298,10 +299,10 @@ export function ToolsAnalytics() {
                             <div className='rounded-lg border bg-background p-3 shadow-md'>
                               <p className='font-medium'>{data.fullName}</p>
                               <p className='text-sm text-muted-foreground'>
-                                Calls: {data.count}
+                                调用次数：{data.count}
                               </p>
                               <p className='text-sm text-muted-foreground'>
-                                Average: {data.avgDuration}ms
+                                平均耗时：{data.avgDuration}ms
                               </p>
                             </div>
                           )
@@ -329,9 +330,9 @@ export function ToolsAnalytics() {
           {/* Recent Tool Calls Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Recent Tool Calls</CardTitle>
+              <CardTitle>最近工具调用</CardTitle>
               <CardDescription>
-                Most recent tool calls (last 10)
+                最近 10 条工具调用
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -352,7 +353,7 @@ export function ToolsAnalytics() {
                 <div className='flex flex-col items-center justify-center py-8'>
                   <Activity className='h-12 w-12 text-muted-foreground mb-4' />
                   <p className='text-muted-foreground'>
-                    No tool calls found
+                    未找到工具调用
                   </p>
                 </div>
               ) : (
@@ -360,10 +361,10 @@ export function ToolsAnalytics() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Tool</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className='text-right'>Duration</TableHead>
-                        <TableHead>Time</TableHead>
+                        <TableHead>工具</TableHead>
+                        <TableHead>状态</TableHead>
+                        <TableHead className='text-right'>耗时</TableHead>
+                        <TableHead>时间</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -402,10 +403,7 @@ export function ToolsAnalytics() {
                                 : '-'}
                             </TableCell>
                             <TableCell className='text-sm text-muted-foreground'>
-                              {formatDistanceToNow(new Date(call.timestamp), {
-                                addSuffix: true,
-                                locale: enUS,
-                              })}
+                              {formatRelativeTime(call.timestamp)}
                             </TableCell>
                           </TableRow>
                         )
@@ -421,12 +419,12 @@ export function ToolsAnalytics() {
         {/* Full Tool Calls Table with Pagination */}
         <Card className='mt-6'>
           <CardHeader>
-            <CardTitle>All Tool Calls</CardTitle>
-            <CardDescription>
+          <CardTitle>全部工具调用</CardTitle>
+          <CardDescription>
               {total > 0
-                ? `Showing ${startItem}-${endItem} of ${total} calls`
-                : 'No calls found'}
-            </CardDescription>
+                ? `显示第 ${startItem}-${endItem} 条，共 ${total} 次调用`
+                : '未找到调用记录'}
+          </CardDescription>
           </CardHeader>
           <CardContent>
             {/* Search and Filter Controls */}
@@ -434,7 +432,7 @@ export function ToolsAnalytics() {
               <div className='relative flex-1 max-w-sm'>
                 <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
                 <Input
-                  placeholder='Search by tool name...'
+                  placeholder='按工具名称搜索...'
                   value={toolNameSearch}
                   onChange={(e) => {
                     setToolNameSearch(e.target.value)
@@ -451,7 +449,7 @@ export function ToolsAnalytics() {
                 }}
               >
                 <SelectTrigger className='w-[150px]'>
-                  <SelectValue placeholder='Filter by status' />
+                  <SelectValue placeholder='按状态筛选' />
                 </SelectTrigger>
                 <SelectContent>
                   {statusOptions.map((option) => (
@@ -473,7 +471,7 @@ export function ToolsAnalytics() {
               <div className='flex flex-col items-center justify-center py-8'>
                 <Activity className='h-12 w-12 text-muted-foreground mb-4' />
                 <p className='text-muted-foreground'>
-                  No tool calls found
+                  未找到工具调用
                 </p>
               </div>
             ) : (
@@ -482,11 +480,11 @@ export function ToolsAnalytics() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Tool</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className='text-right'>Duration</TableHead>
-                        <TableHead>Time</TableHead>
-                        <TableHead>Agent</TableHead>
+                        <TableHead>工具</TableHead>
+                        <TableHead>状态</TableHead>
+                        <TableHead className='text-right'>耗时</TableHead>
+                        <TableHead>时间</TableHead>
+                        <TableHead>代理</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -525,10 +523,7 @@ export function ToolsAnalytics() {
                                 : '-'}
                             </TableCell>
                             <TableCell className='text-sm text-muted-foreground'>
-                              {formatDistanceToNow(new Date(call.timestamp), {
-                                addSuffix: true,
-                                locale: enUS,
-                              })}
+                              {formatRelativeTime(call.timestamp)}
                             </TableCell>
                             <TableCell className='text-sm text-muted-foreground'>
                               {call.agent_id
@@ -547,11 +542,11 @@ export function ToolsAnalytics() {
                 {/* Pagination Controls */}
                 <div className='mt-4 flex items-center justify-between'>
                   <p className='text-sm text-muted-foreground'>
-                    {total} total calls
+                    共 {total} 次调用
                   </p>
                   <div className='flex items-center gap-2'>
                     <span className='text-sm text-muted-foreground'>
-                      Page {page + 1} of {Math.max(1, totalPages)}
+                      第 {page + 1} 页，共 {Math.max(1, totalPages)} 页
                     </span>
                     <Button
                       variant='outline'
@@ -559,7 +554,7 @@ export function ToolsAnalytics() {
                       onClick={() => setPage((p) => Math.max(0, p - 1))}
                       disabled={page === 0}
                     >
-                      Previous
+                      上一页
                     </Button>
                     <Button
                       variant='outline'
@@ -567,7 +562,7 @@ export function ToolsAnalytics() {
                       onClick={() => setPage((p) => p + 1)}
                       disabled={page >= totalPages - 1}
                     >
-                      Next
+                      下一页
                     </Button>
                   </div>
                 </div>

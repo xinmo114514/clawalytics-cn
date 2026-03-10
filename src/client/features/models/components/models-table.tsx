@@ -46,7 +46,7 @@ export function ModelsTable({ models }: ModelsTableProps) {
   if (models.length === 0) {
     return (
       <div className='text-center py-8 text-muted-foreground'>
-        No model usage data yet. Start using OpenClaw to see model analytics.
+        还没有模型使用数据。开始使用 OpenClaw 后，这里会显示模型分析。
       </div>
     )
   }
@@ -56,12 +56,12 @@ export function ModelsTable({ models }: ModelsTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Model</TableHead>
-            <TableHead>Provider</TableHead>
-            <TableHead className='text-right'>Input Tokens</TableHead>
-            <TableHead className='text-right'>Output Tokens</TableHead>
-            <TableHead className='text-right'>Requests</TableHead>
-            <TableHead className='text-right'>Cost</TableHead>
+            <TableHead>模型</TableHead>
+            <TableHead>提供商</TableHead>
+            <TableHead className='text-right'>输入 Token</TableHead>
+            <TableHead className='text-right'>输出 Token</TableHead>
+            <TableHead className='text-right'>请求数</TableHead>
+            <TableHead className='text-right'>成本</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

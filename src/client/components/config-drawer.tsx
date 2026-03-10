@@ -12,6 +12,7 @@ import { IconThemeDark } from '@/assets/custom/icon-theme-dark'
 import { IconThemeLight } from '@/assets/custom/icon-theme-light'
 import { IconThemeSystem } from '@/assets/custom/icon-theme-system'
 import { cn } from '@/lib/utils'
+import { useLocale } from '@/context/locale-provider'
 import { useDirection } from '@/context/direction-provider'
 import { type Collapsible, useLayout } from '@/context/layout-provider'
 import { useTheme } from '@/context/theme-provider'
@@ -29,6 +30,7 @@ import { useSidebar } from './ui/sidebar'
 
 export function ConfigDrawer() {
   const { setOpen } = useSidebar()
+  const { text } = useLocale()
   const { resetDir } = useDirection()
   const { resetTheme } = useTheme()
   const { resetLayout } = useLayout()
@@ -46,7 +48,7 @@ export function ConfigDrawer() {
         <Button
           size='icon'
           variant='ghost'
-          aria-label='Open theme settings'
+          aria-label={text('打开主题设置', 'Open theme settings')}
           aria-describedby='config-drawer-description'
           className='rounded-full'
         >
@@ -55,9 +57,12 @@ export function ConfigDrawer() {
       </SheetTrigger>
       <SheetContent className='flex flex-col'>
         <SheetHeader className='pb-0 text-start'>
-          <SheetTitle>Theme Settings</SheetTitle>
+          <SheetTitle>{text('界面设置', 'Theme Settings')}</SheetTitle>
           <SheetDescription id='config-drawer-description'>
-            Adjust the appearance and layout to suit your preferences.
+            {text(
+              '调整界面外观和布局，按你的偏好进行显示。',
+              'Adjust the appearance and layout to suit your preferences.'
+            )}
           </SheetDescription>
         </SheetHeader>
         <div className='space-y-6 overflow-y-auto px-4'>
@@ -70,9 +75,9 @@ export function ConfigDrawer() {
           <Button
             variant='destructive'
             onClick={handleReset}
-            aria-label='Reset all settings to default values'
+            aria-label={text('将所有设置重置为默认值', 'Reset all settings to default values')}
           >
-            Reset
+            {text('重置', 'Reset')}
           </Button>
         </SheetFooter>
       </SheetContent>
@@ -170,10 +175,11 @@ function RadioGroupItem({
 
 function ThemeConfig() {
   const { defaultTheme, theme, setTheme } = useTheme()
+  const { text } = useLocale()
   return (
     <div>
       <SectionTitle
-        title='Theme'
+        title={text('主题', 'Theme')}
         showReset={theme !== defaultTheme}
         onReset={() => setTheme(defaultTheme)}
       />
@@ -181,23 +187,23 @@ function ThemeConfig() {
         value={theme}
         onValueChange={setTheme}
         className='grid w-full max-w-md grid-cols-3 gap-4'
-        aria-label='Select theme preference'
+        aria-label={text('选择主题偏好', 'Select theme preference')}
         aria-describedby='theme-description'
       >
         {[
           {
             value: 'system',
-            label: 'System',
+            label: text('跟随系统', 'System'),
             icon: IconThemeSystem,
           },
           {
             value: 'light',
-            label: 'Light',
+            label: text('浅色', 'Light'),
             icon: IconThemeLight,
           },
           {
             value: 'dark',
-            label: 'Dark',
+            label: text('深色', 'Dark'),
             icon: IconThemeDark,
           },
         ].map((item) => (
@@ -205,7 +211,10 @@ function ThemeConfig() {
         ))}
       </Radio>
       <div id='theme-description' className='sr-only'>
-        Choose between system preference, light mode, or dark mode
+        {text(
+          '选择跟随系统、浅色模式或深色模式',
+          'Choose between system preference, light mode, or dark mode'
+        )}
       </div>
     </div>
   )
@@ -213,10 +222,11 @@ function ThemeConfig() {
 
 function SidebarConfig() {
   const { defaultVariant, variant, setVariant } = useLayout()
+  const { text } = useLocale()
   return (
     <div className='max-md:hidden'>
       <SectionTitle
-        title='Sidebar'
+        title={text('侧边栏', 'Sidebar')}
         showReset={defaultVariant !== variant}
         onReset={() => setVariant(defaultVariant)}
       />
@@ -224,23 +234,23 @@ function SidebarConfig() {
         value={variant}
         onValueChange={setVariant}
         className='grid w-full max-w-md grid-cols-3 gap-4'
-        aria-label='Select sidebar style'
+        aria-label={text('选择侧边栏样式', 'Select sidebar style')}
         aria-describedby='sidebar-description'
       >
         {[
           {
             value: 'inset',
-            label: 'Inset',
+            label: text('内嵌', 'Inset'),
             icon: IconSidebarInset,
           },
           {
             value: 'floating',
-            label: 'Floating',
+            label: text('悬浮', 'Floating'),
             icon: IconSidebarFloating,
           },
           {
             value: 'sidebar',
-            label: 'Sidebar',
+            label: text('标准侧边栏', 'Sidebar'),
             icon: IconSidebarSidebar,
           },
         ].map((item) => (
@@ -248,7 +258,10 @@ function SidebarConfig() {
         ))}
       </Radio>
       <div id='sidebar-description' className='sr-only'>
-        Choose between inset, floating, or standard sidebar layout
+        {text(
+          '选择内嵌、悬浮或标准侧边栏布局',
+          'Choose between inset, floating, or standard sidebar layout'
+        )}
       </div>
     </div>
   )
@@ -257,13 +270,14 @@ function SidebarConfig() {
 function LayoutConfig() {
   const { open, setOpen } = useSidebar()
   const { defaultCollapsible, collapsible, setCollapsible } = useLayout()
+  const { text } = useLocale()
 
   const radioState = open ? 'default' : collapsible
 
   return (
     <div className='max-md:hidden'>
       <SectionTitle
-        title='Layout'
+        title={text('布局', 'Layout')}
         showReset={radioState !== 'default'}
         onReset={() => {
           setOpen(true)
@@ -281,23 +295,23 @@ function LayoutConfig() {
           setCollapsible(v as Collapsible)
         }}
         className='grid w-full max-w-md grid-cols-3 gap-4'
-        aria-label='Select layout style'
+        aria-label={text('选择布局样式', 'Select layout style')}
         aria-describedby='layout-description'
       >
         {[
           {
             value: 'default',
-            label: 'Default',
+            label: text('默认', 'Default'),
             icon: IconLayoutDefault,
           },
           {
             value: 'icon',
-            label: 'Compact',
+            label: text('紧凑', 'Compact'),
             icon: IconLayoutCompact,
           },
           {
             value: 'offcanvas',
-            label: 'Full layout',
+            label: text('完整布局', 'Full layout'),
             icon: IconLayoutFull,
           },
         ].map((item) => (
@@ -305,7 +319,10 @@ function LayoutConfig() {
         ))}
       </Radio>
       <div id='layout-description' className='sr-only'>
-        Choose between default expanded, compact icon-only, or full layout mode
+        {text(
+          '选择默认展开、紧凑图标模式或完整布局模式',
+          'Choose between default expanded, compact icon-only, or full layout mode'
+        )}
       </div>
     </div>
   )
@@ -313,10 +330,11 @@ function LayoutConfig() {
 
 function DirConfig() {
   const { defaultDir, dir, setDir } = useDirection()
+  const { text } = useLocale()
   return (
     <div>
       <SectionTitle
-        title='Direction'
+        title={text('方向', 'Direction')}
         showReset={defaultDir !== dir}
         onReset={() => setDir(defaultDir)}
       />
@@ -324,20 +342,20 @@ function DirConfig() {
         value={dir}
         onValueChange={setDir}
         className='grid w-full max-w-md grid-cols-3 gap-4'
-        aria-label='Select site direction'
+        aria-label={text('选择页面方向', 'Select site direction')}
         aria-describedby='direction-description'
       >
         {[
           {
             value: 'ltr',
-            label: 'Left to Right',
+            label: text('从左到右', 'Left to Right'),
             icon: (props: SVGProps<SVGSVGElement>) => (
               <IconDir dir='ltr' {...props} />
             ),
           },
           {
             value: 'rtl',
-            label: 'Right to Left',
+            label: text('从右到左', 'Right to Left'),
             icon: (props: SVGProps<SVGSVGElement>) => (
               <IconDir dir='rtl' {...props} />
             ),
@@ -347,7 +365,10 @@ function DirConfig() {
         ))}
       </Radio>
       <div id='direction-description' className='sr-only'>
-        Choose between left-to-right or right-to-left site direction
+        {text(
+          '选择从左到右或从右到左的页面方向',
+          'Choose between left-to-right or right-to-left site direction'
+        )}
       </div>
     </div>
   )

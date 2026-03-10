@@ -1,5 +1,4 @@
-import { formatDistanceToNow, differenceInMinutes, differenceInHours } from 'date-fns'
-import { enUS } from 'date-fns/locale'
+import { differenceInMinutes, differenceInHours } from 'date-fns'
 import { ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronDown } from 'lucide-react'
 import {
   Table,
@@ -12,6 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatNumber } from '@/lib/format'
 import type { EnhancedSession } from '@/lib/api'
+import { formatDurationZh, formatRelativeTime } from '@/lib/i18n'
 import { SessionDetailRow } from './session-detail-row'
 
 interface SessionsTableProps {
@@ -58,9 +58,9 @@ function formatDuration(startedAt: string, lastActivity: string): string {
   const end = new Date(lastActivity)
   const hours = differenceInHours(end, start)
   const minutes = differenceInMinutes(end, start) % 60
-  if (hours > 0) return `${hours}h ${minutes}m`
-  if (minutes > 0) return `${minutes}m`
-  return '<1m'
+  if (hours > 0) return formatDurationZh(hours, minutes)
+  if (minutes > 0) return formatDurationZh(0, minutes)
+  return '少于 1 分钟'
 }
 
 type SortableField = 'last_activity' | 'request_count' | 'total_input_tokens' | 'total_output_tokens' | 'total_cost'
@@ -109,7 +109,7 @@ export function SessionsTable({
     return (
       <div className='rounded-md border'>
         <div className='flex h-[200px] items-center justify-center text-muted-foreground'>
-          No sessions found matching your filters.
+          没有匹配当前筛选条件的会话。
         </div>
       </div>
     )
@@ -121,13 +121,13 @@ export function SessionsTable({
         <TableHeader>
           <TableRow>
             <TableHead className='w-8' />
-            <TableHead>Project</TableHead>
-            <SortableHeader label='Last Activity' field='last_activity' sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
-            <TableHead className='hidden md:table-cell'>Duration</TableHead>
-            <SortableHeader label='Requests' field='request_count' sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
-            <SortableHeader label='Input' field='total_input_tokens' sortBy={sortBy} sortDir={sortDir} onSort={onSort} className='hidden sm:table-cell' />
-            <SortableHeader label='Output' field='total_output_tokens' sortBy={sortBy} sortDir={sortDir} onSort={onSort} className='hidden sm:table-cell' />
-            <SortableHeader label='Cost' field='total_cost' sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
+            <TableHead>项目</TableHead>
+            <SortableHeader label='最近活动' field='last_activity' sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
+            <TableHead className='hidden md:table-cell'>持续时长</TableHead>
+            <SortableHeader label='请求数' field='request_count' sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader label='输入' field='total_input_tokens' sortBy={sortBy} sortDir={sortDir} onSort={onSort} className='hidden sm:table-cell' />
+            <SortableHeader label='输出' field='total_output_tokens' sortBy={sortBy} sortDir={sortDir} onSort={onSort} className='hidden sm:table-cell' />
+            <SortableHeader label='成本' field='total_cost' sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -203,10 +203,7 @@ function SessionTableRow({
           </div>
         </TableCell>
         <TableCell className='py-2 text-muted-foreground text-sm'>
-          {formatDistanceToNow(new Date(session.last_activity), {
-            addSuffix: true,
-            locale: enUS,
-          })}
+          {formatRelativeTime(session.last_activity)}
         </TableCell>
         <TableCell className='py-2 text-muted-foreground text-sm hidden md:table-cell'>
           {formatDuration(session.started_at, session.last_activity)}

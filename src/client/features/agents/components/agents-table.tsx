@@ -1,6 +1,4 @@
 import { Link } from '@tanstack/react-router'
-import { formatDistanceToNow } from 'date-fns'
-import { enUS } from 'date-fns/locale'
 import { ArrowUpDown, ExternalLink } from 'lucide-react'
 import { useState } from 'react'
 import {
@@ -14,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { Agent } from '@/lib/api'
+import { formatRelativeTime } from '@/lib/i18n'
 
 interface AgentsTableProps {
   agents: Agent[]
@@ -71,7 +70,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
   if (agents.length === 0) {
     return (
       <div className='flex h-32 items-center justify-center text-muted-foreground'>
-        No agents found. Connect OpenClaw with a messaging channel.
+        未找到代理。请先把 OpenClaw 连接到消息渠道。
       </div>
     )
   }
@@ -88,11 +87,11 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 className='-ml-3 h-8'
                 onClick={() => handleSort('name')}
               >
-                Name
+                名称
                 <ArrowUpDown className='ml-2 h-4 w-4' />
               </Button>
             </TableHead>
-            <TableHead>Workspace</TableHead>
+            <TableHead>工作区</TableHead>
             <TableHead className='text-right'>
               <Button
                 variant='ghost'
@@ -100,12 +99,12 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 className='-mr-3 h-8'
                 onClick={() => handleSort('total_cost')}
               >
-                Cost
+                成本
                 <ArrowUpDown className='ml-2 h-4 w-4' />
               </Button>
             </TableHead>
-            <TableHead className='text-right'>Input Tokens</TableHead>
-            <TableHead className='text-right'>Output Tokens</TableHead>
+            <TableHead className='text-right'>输入 Token</TableHead>
+            <TableHead className='text-right'>输出 Token</TableHead>
             <TableHead className='text-right'>
               <Button
                 variant='ghost'
@@ -113,7 +112,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 className='-mr-3 h-8'
                 onClick={() => handleSort('session_count')}
               >
-                Sessions
+                会话数
                 <ArrowUpDown className='ml-2 h-4 w-4' />
               </Button>
             </TableHead>
@@ -124,7 +123,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 className='-ml-3 h-8'
                 onClick={() => handleSort('created_at')}
               >
-                Created
+                创建时间
                 <ArrowUpDown className='ml-2 h-4 w-4' />
               </Button>
             </TableHead>
@@ -157,10 +156,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 <Badge variant='outline'>{agent.session_count}</Badge>
               </TableCell>
               <TableCell className='text-muted-foreground'>
-                {formatDistanceToNow(new Date(agent.created_at), {
-                  addSuffix: true,
-                  locale: enUS,
-                })}
+                {formatRelativeTime(agent.created_at)}
               </TableCell>
               <TableCell>
                 <Link
@@ -170,7 +166,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 >
                   <Button variant='ghost' size='icon' className='h-8 w-8'>
                     <ExternalLink className='h-4 w-4' />
-                    <span className='sr-only'>View details</span>
+                    <span className='sr-only'>查看详情</span>
                   </Button>
                 </Link>
               </TableCell>

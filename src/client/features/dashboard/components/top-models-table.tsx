@@ -47,7 +47,7 @@ export function TopModelsTable({ models }: TopModelsTableProps) {
   if (topModels.length === 0) {
     return (
       <div className='text-center py-8 text-muted-foreground'>
-        No model usage data yet. Start using OpenClaw to see model analytics.
+        还没有模型使用数据。开始使用 OpenClaw 后，这里会显示模型分析。
       </div>
     )
   }
@@ -56,10 +56,10 @@ export function TopModelsTable({ models }: TopModelsTableProps) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Model</TableHead>
-          <TableHead>Provider</TableHead>
-          <TableHead className='text-right'>Tokens</TableHead>
-          <TableHead className='text-right'>Cost</TableHead>
+          <TableHead>模型</TableHead>
+          <TableHead>提供商</TableHead>
+          <TableHead className='text-right'>Token</TableHead>
+          <TableHead className='text-right'>成本</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>

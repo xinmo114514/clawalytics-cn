@@ -29,6 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
+import { LanguageSwitch } from '@/components/language-switch'
 import { ThemeSwitch } from '@/components/theme-switch'
 import {
   getSecurityDashboard,
@@ -48,22 +49,22 @@ SecurityPage.displayName = 'SecurityPage'
 const PAGE_SIZE = 50
 
 const actionOptions = [
-  { value: 'all', label: 'All Actions' },
-  { value: 'create', label: 'Create' },
-  { value: 'update', label: 'Update' },
-  { value: 'delete', label: 'Delete' },
-  { value: 'login', label: 'Login' },
-  { value: 'logout', label: 'Logout' },
-  { value: 'access', label: 'Access' },
+  { value: 'all', label: '全部操作' },
+  { value: 'create', label: '创建' },
+  { value: 'update', label: '更新' },
+  { value: 'delete', label: '删除' },
+  { value: 'login', label: '登录' },
+  { value: 'logout', label: '登出' },
+  { value: 'access', label: '访问' },
 ]
 
 const entityTypeOptions = [
-  { value: 'all', label: 'All Entities' },
-  { value: 'device', label: 'Device' },
-  { value: 'session', label: 'Session' },
-  { value: 'config', label: 'Configuration' },
-  { value: 'alert', label: 'Alert' },
-  { value: 'user', label: 'User' },
+  { value: 'all', label: '全部对象' },
+  { value: 'device', label: '设备' },
+  { value: 'session', label: '会话' },
+  { value: 'config', label: '配置' },
+  { value: 'alert', label: '告警' },
+  { value: 'user', label: '用户' },
 ]
 
 export function SecurityPage() {
@@ -202,9 +203,10 @@ export function SecurityPage() {
       <Header>
         <div className='flex items-center gap-2'>
           <SecurityIcon active className='h-6 w-6' />
-          <span className='font-jersey text-xl'>Security</span>
+          <span className='font-jersey text-xl'>安全中心</span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
+          <LanguageSwitch />
           <ThemeSwitch />
         </div>
       </Header>
@@ -212,9 +214,9 @@ export function SecurityPage() {
       <Main>
         <div className='mb-6 flex items-center justify-between'>
           <div>
-            <h1 className='text-3xl font-bold tracking-tight'>Security</h1>
+            <h1 className='text-3xl font-bold tracking-tight'>安全中心</h1>
             <p className='text-muted-foreground'>
-              Monitor devices, alerts, and connections
+              监控设备、告警和连接活动
             </p>
           </div>
         </div>
@@ -224,7 +226,7 @@ export function SecurityPage() {
           <Card className='relative overflow-hidden'>
             <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Active Devices</CardTitle>
+              <CardTitle className='text-sm font-medium'>活跃设备</CardTitle>
               <div className='rounded-full bg-red-500 p-2'>
                 <Smartphone className='h-4 w-4 text-white' />
               </div>
@@ -240,7 +242,7 @@ export function SecurityPage() {
                   <div className='text-2xl font-bold text-red-500'>
                     {dashboardStats?.activeDevices ?? 0}
                   </div>
-                  <p className='text-xs text-muted-foreground'>Paired devices</p>
+                  <p className='text-xs text-muted-foreground'>已配对设备</p>
                 </>
               )}
             </CardContent>
@@ -249,7 +251,7 @@ export function SecurityPage() {
           <Card className='relative overflow-hidden'>
             <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Unacknowledged Alerts</CardTitle>
+              <CardTitle className='text-sm font-medium'>未确认告警</CardTitle>
               <div className='rounded-full bg-red-500 p-2'>
                 <AlertTriangle className='h-4 w-4 text-white' />
               </div>
@@ -265,7 +267,7 @@ export function SecurityPage() {
                   <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                     {dashboardStats?.unacknowledgedAlerts ?? 0}
                   </div>
-                  <p className='text-xs text-muted-foreground'>Unacknowledged</p>
+                  <p className='text-xs text-muted-foreground'>待处理</p>
                 </>
               )}
             </CardContent>
@@ -274,7 +276,7 @@ export function SecurityPage() {
           <Card className='relative overflow-hidden'>
             <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Connections (24h)</CardTitle>
+              <CardTitle className='text-sm font-medium'>连接数（24 小时）</CardTitle>
               <div className='rounded-full bg-red-500 p-2'>
                 <Link className='h-4 w-4 text-white' />
               </div>
@@ -290,7 +292,7 @@ export function SecurityPage() {
                   <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                     {dashboardStats?.recentConnections ?? 0}
                   </div>
-                  <p className='text-xs text-muted-foreground'>Last 24 hours</p>
+                  <p className='text-xs text-muted-foreground'>最近 24 小时</p>
                 </>
               )}
             </CardContent>
@@ -303,7 +305,7 @@ export function SecurityPage() {
             <Card className='border-l-4 border-l-red-500'>
               <CardContent className='pt-4'>
                 <div className='flex items-center justify-between'>
-                  <span className='text-sm font-medium'>Critical</span>
+                  <span className='text-sm font-medium'>严重</span>
                   <span className='text-2xl font-bold text-red-600 dark:text-red-400'>
                     {dashboardStats.alertsByLevel.critical}
                   </span>
@@ -313,7 +315,7 @@ export function SecurityPage() {
             <Card className='border-l-4 border-l-orange-500'>
               <CardContent className='pt-4'>
                 <div className='flex items-center justify-between'>
-                  <span className='text-sm font-medium'>High</span>
+                  <span className='text-sm font-medium'>高</span>
                   <span className='text-2xl font-bold text-orange-600 dark:text-orange-400'>
                     {dashboardStats.alertsByLevel.high}
                   </span>
@@ -323,7 +325,7 @@ export function SecurityPage() {
             <Card className='border-l-4 border-l-yellow-500'>
               <CardContent className='pt-4'>
                 <div className='flex items-center justify-between'>
-                  <span className='text-sm font-medium'>Medium</span>
+                  <span className='text-sm font-medium'>中</span>
                   <span className='text-2xl font-bold text-yellow-600 dark:text-yellow-400'>
                     {dashboardStats.alertsByLevel.medium}
                   </span>
@@ -333,7 +335,7 @@ export function SecurityPage() {
             <Card className='border-l-4 border-l-gray-400'>
               <CardContent className='pt-4'>
                 <div className='flex items-center justify-between'>
-                  <span className='text-sm font-medium'>Low</span>
+                  <span className='text-sm font-medium'>低</span>
                   <span className='text-2xl font-bold text-gray-600 dark:text-gray-400'>
                     {dashboardStats.alertsByLevel.low}
                   </span>
@@ -346,9 +348,9 @@ export function SecurityPage() {
         {/* Tabbed Content */}
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList>
-            <TabsTrigger value='overview'>Overview</TabsTrigger>
-            <TabsTrigger value='devices'>Devices</TabsTrigger>
-            <TabsTrigger value='audit'>Audit Log</TabsTrigger>
+            <TabsTrigger value='overview'>概览</TabsTrigger>
+            <TabsTrigger value='devices'>设备</TabsTrigger>
+            <TabsTrigger value='audit'>审计日志</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -362,8 +364,8 @@ export function SecurityPage() {
               <ConnectionsList
                 connections={connections ?? []}
                 isLoading={connectionsLoading}
-                title='Recent Connections'
-                description='Connection activity from the last 24 hours'
+                title='最近连接'
+                description='最近 24 小时的连接活动'
               />
             </div>
           </TabsContent>
@@ -380,7 +382,7 @@ export function SecurityPage() {
               <div className='relative'>
                 <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
                 <Input
-                  placeholder='Actor...'
+                  placeholder='操作人...'
                   value={actor}
                   onChange={(e) => {
                     setActor(e.target.value)
@@ -393,7 +395,7 @@ export function SecurityPage() {
               <div className='relative'>
                 <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
                 <Input
-                  placeholder='IP address...'
+                  placeholder='IP 地址...'
                   value={ipAddress}
                   onChange={(e) => {
                     setIpAddress(e.target.value)
@@ -405,7 +407,7 @@ export function SecurityPage() {
 
               <Select value={action} onValueChange={(v) => { setAction(v); handleFilterChange(); }}>
                 <SelectTrigger className='h-9 w-[140px]'>
-                  <SelectValue placeholder='All Actions' />
+                  <SelectValue placeholder='全部操作' />
                 </SelectTrigger>
                 <SelectContent>
                   {actionOptions.map((option) => (
@@ -418,7 +420,7 @@ export function SecurityPage() {
 
               <Select value={entityType} onValueChange={(v) => { setEntityType(v); handleFilterChange(); }}>
                 <SelectTrigger className='h-9 w-[140px]'>
-                  <SelectValue placeholder='All Entities' />
+                  <SelectValue placeholder='全部对象' />
                 </SelectTrigger>
                 <SelectContent>
                   {entityTypeOptions.map((option) => (
@@ -459,7 +461,7 @@ export function SecurityPage() {
                   onClick={handleResetFilters}
                 >
                   <X className='mr-1 h-3.5 w-3.5' />
-                  Reset
+                  重置
                 </Button>
               )}
 
@@ -472,7 +474,7 @@ export function SecurityPage() {
                   disabled={!auditEntries || auditEntries.length === 0}
                 >
                   <Download className='mr-2 h-4 w-4' />
-                  Export CSV
+                  导出 CSV
                 </Button>
               </div>
             </div>
@@ -484,11 +486,11 @@ export function SecurityPage() {
                 {total > 0 && (
                   <div className='mt-4 flex items-center justify-between'>
                     <p className='text-sm text-muted-foreground'>
-                      {startItem}&ndash;{endItem} of {total} entries
+                      显示第 {startItem}&ndash;{endItem} 条，共 {total} 条记录
                     </p>
                     <div className='flex items-center gap-2'>
                       <span className='text-sm text-muted-foreground'>
-                        Page {page + 1} / {Math.max(1, totalPages)}
+                        第 {page + 1} 页 / 共 {Math.max(1, totalPages)} 页
                       </span>
                       <Button
                         variant='outline'
@@ -496,7 +498,7 @@ export function SecurityPage() {
                         onClick={() => setPage((p) => Math.max(0, p - 1))}
                         disabled={page === 0}
                       >
-                        Previous
+                        上一页
                       </Button>
                       <Button
                         variant='outline'
@@ -504,7 +506,7 @@ export function SecurityPage() {
                         onClick={() => setPage((p) => p + 1)}
                         disabled={page >= totalPages - 1}
                       >
-                        Next
+                        下一页
                       </Button>
                     </div>
                   </div>

@@ -80,7 +80,7 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
   if (!requests || requests.length === 0) {
     return (
       <div className='p-4 text-sm text-muted-foreground text-center'>
-        No request data available for this session.
+        当前会话暂无请求数据。
       </div>
     )
   }
@@ -96,7 +96,7 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
     <div className='space-y-4 p-4'>
       {/* Model breakdown */}
       <div>
-        <h4 className='text-sm font-medium mb-2'>Model Breakdown</h4>
+        <h4 className='text-sm font-medium mb-2'>模型拆分</h4>
         <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-3'>
           {models.map((m) => (
             <div
@@ -112,9 +112,9 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
                 </span>
               </div>
               <div className='flex items-center justify-between text-xs text-muted-foreground'>
-                <span>{m.count} requests</span>
+                <span>{m.count} 次请求</span>
                 <span>
-                  {formatNumber(m.inputTokens)} in / {formatNumber(m.outputTokens)} out
+                  输入 {formatNumber(m.inputTokens)} / 输出 {formatNumber(m.outputTokens)}
                 </span>
               </div>
             </div>
@@ -127,31 +127,31 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
         <div className='rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3'>
           <div className='flex items-center justify-between'>
             <span className='text-sm font-medium text-emerald-700 dark:text-emerald-400'>
-              Cache Efficiency
+              缓存效率
             </span>
             <span className='text-sm font-mono font-medium text-emerald-700 dark:text-emerald-400'>
-              {cacheHitPercent}% hit rate
+              命中率 {cacheHitPercent}%
             </span>
           </div>
           <p className='text-xs text-muted-foreground mt-1'>
-            {formatNumber(totalCacheRead)} tokens read from cache
+            从缓存中读取了 {formatNumber(totalCacheRead)} 个 Token
           </p>
         </div>
       )}
 
       {/* Request timeline */}
       <div>
-        <h4 className='text-sm font-medium mb-2'>Request Timeline ({requests.length})</h4>
+        <h4 className='text-sm font-medium mb-2'>请求时间线（{requests.length}）</h4>
         <div className='rounded-md border max-h-[300px] overflow-y-auto'>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className='text-xs'>Time</TableHead>
-                <TableHead className='text-xs'>Model</TableHead>
-                <TableHead className='text-xs text-right'>Input</TableHead>
-                <TableHead className='text-xs text-right'>Output</TableHead>
-                <TableHead className='text-xs text-right hidden sm:table-cell'>Cache</TableHead>
-                <TableHead className='text-xs text-right'>Cost</TableHead>
+                <TableHead className='text-xs'>时间</TableHead>
+                <TableHead className='text-xs'>模型</TableHead>
+                <TableHead className='text-xs text-right'>输入</TableHead>
+                <TableHead className='text-xs text-right'>输出</TableHead>
+                <TableHead className='text-xs text-right hidden sm:table-cell'>缓存</TableHead>
+                <TableHead className='text-xs text-right'>成本</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

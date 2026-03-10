@@ -26,6 +26,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
+import { LanguageSwitch } from '@/components/language-switch'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { formatCurrency, formatNumber } from '@/lib/format'
 import {
@@ -95,9 +96,10 @@ export function Dashboard() {
       <Header>
         <div className='flex items-center gap-2'>
           <HomeIcon active className='h-6 w-6' />
-          <span className='font-jersey text-xl'>Dashboard</span>
+          <span className='font-jersey text-xl'>仪表盘</span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
+          <LanguageSwitch />
           <ThemeSwitch />
         </div>
       </Header>
@@ -105,9 +107,9 @@ export function Dashboard() {
       <Main>
         <div className='mb-6 flex items-center justify-between'>
           <div>
-            <h1 className='text-3xl font-bold tracking-tight'>Overview</h1>
+            <h1 className='text-3xl font-bold tracking-tight'>概览</h1>
             <p className='text-muted-foreground'>
-              Your cost analytics at a glance
+              一眼掌握你的成本分析概览
             </p>
           </div>
           <Button
@@ -116,7 +118,7 @@ export function Dashboard() {
             onClick={() => window.open('/api/export/costs?format=csv', '_blank')}
           >
             <Download className='mr-2 h-4 w-4' />
-            Export CSV
+            导出 CSV
           </Button>
         </div>
 
@@ -125,7 +127,7 @@ export function Dashboard() {
           <Card className='relative overflow-hidden'>
             <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Total Cost</CardTitle>
+              <CardTitle className='text-sm font-medium'>总成本</CardTitle>
               <div className='rounded-full bg-red-500/10 p-2'>
                 <DollarSign className='h-4 w-4 text-red-500' />
               </div>
@@ -142,7 +144,7 @@ export function Dashboard() {
                     {formatCurrency(stats?.totalCost ?? 0)}
                   </div>
                   <p className='text-xs text-muted-foreground'>
-                    {formatCurrency(stats?.monthCost ?? 0)} this month
+                    本月 {formatCurrency(stats?.monthCost ?? 0)}
                   </p>
                 </>
               )}
@@ -152,7 +154,7 @@ export function Dashboard() {
           <Card className='relative overflow-hidden'>
             <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-rose-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Total Tokens</CardTitle>
+              <CardTitle className='text-sm font-medium'>总 Token 数</CardTitle>
               <div className='rounded-full bg-rose-500/10 p-2'>
                 <Coins className='h-4 w-4 text-rose-500' />
               </div>
@@ -174,25 +176,25 @@ export function Dashboard() {
                     <TooltipContent side='bottom' className='text-sm'>
                       <div className='space-y-1'>
                         <div className='flex justify-between gap-4'>
-                          <span>Input:</span>
+                          <span>输入：</span>
                           <span className='font-mono'>
                             {stats?.totalTokens.input.toLocaleString()}
                           </span>
                         </div>
                         <div className='flex justify-between gap-4'>
-                          <span>Output:</span>
+                          <span>输出：</span>
                           <span className='font-mono'>
                             {stats?.totalTokens.output.toLocaleString()}
                           </span>
                         </div>
                         <div className='flex justify-between gap-4'>
-                          <span>Cache (read):</span>
+                          <span>缓存读取：</span>
                           <span className='font-mono'>
                             {stats?.totalTokens.cacheRead.toLocaleString()}
                           </span>
                         </div>
                         <div className='flex justify-between gap-4'>
-                          <span>Cache (write):</span>
+                          <span>缓存写入：</span>
                           <span className='font-mono'>
                             {stats?.totalTokens.cacheCreation.toLocaleString()}
                           </span>
@@ -201,8 +203,8 @@ export function Dashboard() {
                     </TooltipContent>
                   </Tooltip>
                   <p className='text-xs text-muted-foreground'>
-                    {formatNumber(stats?.totalTokens.input ?? 0)} in /{' '}
-                    {formatNumber(stats?.totalTokens.output ?? 0)} out
+                    输入 {formatNumber(stats?.totalTokens.input ?? 0)} / 输出{' '}
+                    {formatNumber(stats?.totalTokens.output ?? 0)}
                   </p>
                 </>
               )}
@@ -212,7 +214,7 @@ export function Dashboard() {
           <Card className='relative overflow-hidden'>
             <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Cache Savings</CardTitle>
+              <CardTitle className='text-sm font-medium'>缓存节省</CardTitle>
               <div className='rounded-full bg-red-500/10 p-2'>
                 <Database className='h-4 w-4 text-red-500' />
               </div>
@@ -228,7 +230,7 @@ export function Dashboard() {
                   <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                     {formatCurrency(stats?.cacheSavings ?? 0)}
                   </div>
-                  <p className='text-xs text-muted-foreground'>Saved via prompt caching</p>
+                  <p className='text-xs text-muted-foreground'>来自提示缓存带来的节省</p>
                 </>
               )}
             </CardContent>
@@ -237,7 +239,7 @@ export function Dashboard() {
           <Card className='relative overflow-hidden'>
             <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Active Sessions</CardTitle>
+              <CardTitle className='text-sm font-medium'>活跃会话</CardTitle>
               <div className='rounded-full bg-red-500/10 p-2'>
                 <Activity className='h-4 w-4 text-red-500' />
               </div>
@@ -253,7 +255,7 @@ export function Dashboard() {
                   <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                     {stats?.activeSessionsThisMonth ?? 0}
                   </div>
-                  <p className='text-xs text-muted-foreground'>This month</p>
+                  <p className='text-xs text-muted-foreground'>本月</p>
                 </>
               )}
             </CardContent>
@@ -264,13 +266,13 @@ export function Dashboard() {
         {budgetStatus && (budgetStatus.daily || budgetStatus.weekly || budgetStatus.monthly) && (
           <div className='grid gap-4 sm:grid-cols-3 mb-6'>
             {budgetStatus.daily && (
-              <BudgetBar label='Daily Budget' period={budgetStatus.daily} />
+              <BudgetBar label='日预算' period={budgetStatus.daily} />
             )}
             {budgetStatus.weekly && (
-              <BudgetBar label='Weekly Budget' period={budgetStatus.weekly} />
+              <BudgetBar label='周预算' period={budgetStatus.weekly} />
             )}
             {budgetStatus.monthly && (
-              <BudgetBar label='Monthly Budget' period={budgetStatus.monthly} />
+              <BudgetBar label='月预算' period={budgetStatus.monthly} />
             )}
           </div>
         )}
@@ -280,9 +282,9 @@ export function Dashboard() {
           <CardHeader>
             <CardTitle className='flex items-center gap-2'>
               <TrendingUp className='h-5 w-5' />
-              Daily Costs
+              每日成本
             </CardTitle>
-            <CardDescription>Your spending over the last 30 days</CardDescription>
+            <CardDescription>最近 30 天的花费趋势</CardDescription>
           </CardHeader>
           <CardContent className='ps-2'>
             {dailyCostsLoading ? (
@@ -296,10 +298,10 @@ export function Dashboard() {
         {/* Tabbed Breakdown */}
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList>
-            <TabsTrigger value='overview'>Overview</TabsTrigger>
-            <TabsTrigger value='models'>Models</TabsTrigger>
-            <TabsTrigger value='agents'>Agents</TabsTrigger>
-            <TabsTrigger value='channels'>Channels</TabsTrigger>
+            <TabsTrigger value='overview'>概览</TabsTrigger>
+            <TabsTrigger value='models'>模型</TabsTrigger>
+            <TabsTrigger value='agents'>代理</TabsTrigger>
+            <TabsTrigger value='channels'>渠道</TabsTrigger>
           </TabsList>
 
           <TabsContent value='overview'>
@@ -365,7 +367,7 @@ function BudgetBar({
         />
       </div>
       <p className='text-xs text-muted-foreground mt-1'>
-        {period.percent.toFixed(0)}% used
+        已使用 {period.percent.toFixed(0)}%
       </p>
     </Card>
   )

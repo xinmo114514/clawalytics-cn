@@ -15,6 +15,7 @@ import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
+import { LanguageSwitch } from '@/components/language-switch'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { formatCurrency } from '@/lib/format'
 import {
@@ -67,10 +68,10 @@ export function BudgetPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['config'] })
       queryClient.invalidateQueries({ queryKey: ['budgetStatus'] })
-      toast.success('Budget updated')
+      toast.success('预算已更新')
     },
     onError: () => {
-      toast.error('Failed to update budget')
+      toast.error('预算更新失败')
     },
   })
 
@@ -93,18 +94,19 @@ export function BudgetPage() {
       <Header>
         <div className='flex items-center gap-2'>
           <DollarSign className='h-6 w-6' />
-          <span className='font-jersey text-xl'>Budget</span>
+          <span className='font-jersey text-xl'>预算</span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
+          <LanguageSwitch />
           <ThemeSwitch />
         </div>
       </Header>
 
       <Main>
         <div className='mb-6'>
-          <h1 className='text-3xl font-bold tracking-tight'>Budget</h1>
+          <h1 className='text-3xl font-bold tracking-tight'>预算</h1>
           <p className='text-muted-foreground'>
-            Set spending limits and track your budget usage
+            设置花费上限并跟踪预算使用情况
           </p>
         </div>
 
@@ -118,20 +120,20 @@ export function BudgetPage() {
         ) : budgetStatus && (budgetStatus.daily || budgetStatus.weekly || budgetStatus.monthly) ? (
           <div className='grid gap-4 sm:grid-cols-3 mb-6'>
             {budgetStatus.daily && (
-              <BudgetBar label='Daily Budget' period={budgetStatus.daily} />
+              <BudgetBar label='日预算' period={budgetStatus.daily} />
             )}
             {budgetStatus.weekly && (
-              <BudgetBar label='Weekly Budget' period={budgetStatus.weekly} />
+              <BudgetBar label='周预算' period={budgetStatus.weekly} />
             )}
             {budgetStatus.monthly && (
-              <BudgetBar label='Monthly Budget' period={budgetStatus.monthly} />
+              <BudgetBar label='月预算' period={budgetStatus.monthly} />
             )}
           </div>
         ) : (
           <Card className='mb-6'>
             <CardContent className='pt-6'>
               <p className='text-sm text-muted-foreground text-center'>
-                No budgets configured yet. Set your limits below.
+                还没有配置预算，请在下方设置额度。
               </p>
             </CardContent>
           </Card>
@@ -140,9 +142,9 @@ export function BudgetPage() {
         {/* Budget Configuration */}
         <Card>
           <CardHeader>
-            <CardTitle>Budget Limits</CardTitle>
+            <CardTitle>预算限制</CardTitle>
             <CardDescription>
-              Set spending thresholds for alerts. Disable a period to turn off its alert.
+              设置告警阈值。关闭某个周期即可停用对应提醒。
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -155,21 +157,21 @@ export function BudgetPage() {
             ) : (
               <div className='space-y-6'>
                 <BudgetRow
-                  label='Daily'
+                  label='每日'
                   value={daily}
                   enabled={dailyEnabled}
                   onValueChange={setDaily}
                   onEnabledChange={setDailyEnabled}
                 />
                 <BudgetRow
-                  label='Weekly'
+                  label='每周'
                   value={weekly}
                   enabled={weeklyEnabled}
                   onValueChange={setWeekly}
                   onEnabledChange={setWeeklyEnabled}
                 />
                 <BudgetRow
-                  label='Monthly'
+                  label='每月'
                   value={monthly}
                   enabled={monthlyEnabled}
                   onValueChange={setMonthly}
@@ -186,7 +188,7 @@ export function BudgetPage() {
                     ) : (
                       <Save className='mr-2 h-4 w-4' />
                     )}
-                    Save
+                    保存
                   </Button>
                 </div>
               </div>
@@ -231,7 +233,7 @@ function BudgetRow({
       </div>
       <Switch checked={enabled} onCheckedChange={onEnabledChange} />
       <span className='text-sm text-muted-foreground w-16'>
-        {enabled ? 'Active' : 'Off'}
+        {enabled ? '启用' : '关闭'}
       </span>
     </div>
   )
@@ -273,7 +275,7 @@ function BudgetBar({
         />
       </div>
       <p className='text-xs text-muted-foreground mt-1'>
-        {period.percent.toFixed(0)}% used
+        已使用 {period.percent.toFixed(0)}%
       </p>
     </Card>
   )

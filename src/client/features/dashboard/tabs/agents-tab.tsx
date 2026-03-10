@@ -44,7 +44,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
         <Card className='relative overflow-hidden'>
           <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-            <CardTitle className='text-sm font-medium'>Total Agent Costs</CardTitle>
+            <CardTitle className='text-sm font-medium'>代理总成本</CardTitle>
             <div className='rounded-full bg-red-500/10 p-2'>
               <DollarSign className='h-4 w-4 text-red-500' />
             </div>
@@ -60,7 +60,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
                 <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                   {formatCurrency(agentStats?.totalCost ?? 0)}
                 </div>
-                <p className='text-xs text-muted-foreground'>All agents combined</p>
+                <p className='text-xs text-muted-foreground'>所有代理合计</p>
               </>
             )}
           </CardContent>
@@ -69,7 +69,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
         <Card className='relative overflow-hidden'>
           <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-rose-500/10 to-transparent rounded-bl-full' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-            <CardTitle className='text-sm font-medium'>Number of Agents</CardTitle>
+            <CardTitle className='text-sm font-medium'>代理数量</CardTitle>
             <div className='rounded-full bg-rose-500/10 p-2'>
               <Bot className='h-4 w-4 text-rose-500' />
             </div>
@@ -83,7 +83,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
             ) : (
               <>
                 <div className='text-2xl font-bold text-rose-600 dark:text-rose-400'>{agents.length}</div>
-                <p className='text-xs text-muted-foreground'>Registered agents</p>
+                <p className='text-xs text-muted-foreground'>已注册代理</p>
               </>
             )}
           </CardContent>
@@ -92,7 +92,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
         <Card className='relative overflow-hidden'>
           <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-            <CardTitle className='text-sm font-medium'>Total Tokens</CardTitle>
+            <CardTitle className='text-sm font-medium'>总 Token 数</CardTitle>
             <div className='rounded-full bg-red-500/10 p-2'>
               <Coins className='h-4 w-4 text-red-500' />
             </div>
@@ -109,7 +109,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
                   {formatNumber(totalInputTokens + totalOutputTokens)}
                 </div>
                 <p className='text-xs text-muted-foreground'>
-                  {formatNumber(totalInputTokens)} in / {formatNumber(totalOutputTokens)} out
+                  输入 {formatNumber(totalInputTokens)} / 输出 {formatNumber(totalOutputTokens)}
                 </p>
               </>
             )}
@@ -119,7 +119,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
         <Card className='relative overflow-hidden'>
           <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-            <CardTitle className='text-sm font-medium'>Total Sessions</CardTitle>
+            <CardTitle className='text-sm font-medium'>总会话数</CardTitle>
             <div className='rounded-full bg-red-500/10 p-2'>
               <Activity className='h-4 w-4 text-red-500' />
             </div>
@@ -135,7 +135,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
                 <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                   {agentStats?.totalSessions ?? 0}
                 </div>
-                <p className='text-xs text-muted-foreground'>All agent sessions</p>
+                <p className='text-xs text-muted-foreground'>全部代理会话</p>
               </>
             )}
           </CardContent>
@@ -148,9 +148,9 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
           <CardHeader>
             <CardTitle className='flex items-center gap-2'>
               <TrendingUp className='h-5 w-5' />
-              Daily Costs
+              每日成本
             </CardTitle>
-            <CardDescription>Agent costs for the last 30 days</CardDescription>
+            <CardDescription>最近 30 天的代理成本</CardDescription>
           </CardHeader>
           <CardContent className='ps-2'>
             {dailyCostsLoading ? (
@@ -163,8 +163,8 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
 
         <Card className='col-span-1 lg:col-span-3'>
           <CardHeader>
-            <CardTitle>Cost Distribution</CardTitle>
-            <CardDescription>Costs by agent</CardDescription>
+            <CardTitle>成本分布</CardTitle>
+            <CardDescription>按代理查看成本</CardDescription>
           </CardHeader>
           <CardContent>
             {statsLoading ? (
@@ -179,8 +179,8 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
       {/* Agents Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Agents</CardTitle>
-          <CardDescription>List of all registered OpenClaw Agents</CardDescription>
+          <CardTitle>全部代理</CardTitle>
+          <CardDescription>所有已注册的 OpenClaw 代理</CardDescription>
         </CardHeader>
         <CardContent>
           {statsLoading ? (

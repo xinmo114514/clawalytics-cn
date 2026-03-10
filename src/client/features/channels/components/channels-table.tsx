@@ -63,7 +63,7 @@ export function ChannelsTable({ channels }: ChannelsTableProps) {
   if (channels.length === 0) {
     return (
       <div className='flex h-32 items-center justify-center text-muted-foreground'>
-        No channels found. Connect OpenClaw with a messaging service.
+        未找到渠道。请将 OpenClaw 连接到消息服务后再查看。
       </div>
     )
   }
@@ -80,7 +80,7 @@ export function ChannelsTable({ channels }: ChannelsTableProps) {
                 className='-ml-3 h-8'
                 onClick={() => handleSort('name')}
               >
-                Channel
+                渠道
                 <ArrowUpDown className='ml-2 h-4 w-4' />
               </Button>
             </TableHead>
@@ -91,12 +91,12 @@ export function ChannelsTable({ channels }: ChannelsTableProps) {
                 className='-mr-3 h-8'
                 onClick={() => handleSort('total_cost')}
               >
-                Cost
+                成本
                 <ArrowUpDown className='ml-2 h-4 w-4' />
               </Button>
             </TableHead>
-            <TableHead className='text-right'>Input Tokens</TableHead>
-            <TableHead className='text-right'>Output Tokens</TableHead>
+            <TableHead className='text-right'>输入 Token</TableHead>
+            <TableHead className='text-right'>输出 Token</TableHead>
             <TableHead className='text-right'>
               <Button
                 variant='ghost'
@@ -104,7 +104,7 @@ export function ChannelsTable({ channels }: ChannelsTableProps) {
                 className='-mr-3 h-8'
                 onClick={() => handleSort('message_count')}
               >
-                Messages
+                消息数
                 <ArrowUpDown className='ml-2 h-4 w-4' />
               </Button>
             </TableHead>

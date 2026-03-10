@@ -13,9 +13,9 @@ const LocaleContext = createContext<LocaleContextValue | null>(null)
 const STORAGE_KEY = 'clawalytics-locale'
 
 export function getStoredLocale(): Locale {
-  if (typeof window === 'undefined') return 'zh'
+  if (typeof window === 'undefined') return 'en'
   const saved = window.localStorage.getItem(STORAGE_KEY)
-  return saved === 'en' ? 'en' : 'zh'
+  return saved === 'zh' ? 'zh' : 'en'
 }
 
 export function translateStatic(zh: string, en: string): string {
@@ -23,7 +23,7 @@ export function translateStatic(zh: string, en: string): string {
 }
 
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>('zh')
+  const [locale, setLocaleState] = useState<Locale>('en')
 
   useEffect(() => {
     const saved = window.localStorage.getItem(STORAGE_KEY)

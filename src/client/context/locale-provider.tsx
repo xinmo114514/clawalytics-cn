@@ -1,10 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
-type Locale = 'zh' | 'en'
+export type AppLocale = 'zh' | 'en'
 
 type LocaleContextValue = {
-  locale: Locale
-  setLocale: (locale: Locale) => void
+  locale: AppLocale
+  setLocale: (locale: AppLocale) => void
   text: (zh: string, en: string) => string
 }
 
@@ -12,7 +12,7 @@ const LocaleContext = createContext<LocaleContextValue | null>(null)
 
 const STORAGE_KEY = 'clawalytics-locale'
 
-export function getStoredLocale(): Locale {
+export function getStoredLocale(): AppLocale {
   if (typeof window === 'undefined') return 'en'
   const saved = window.localStorage.getItem(STORAGE_KEY)
   return saved === 'zh' ? 'zh' : 'en'
@@ -23,7 +23,7 @@ export function translateStatic(zh: string, en: string): string {
 }
 
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>('en')
+  const [locale, setLocaleState] = useState<AppLocale>('en')
 
   useEffect(() => {
     const saved = window.localStorage.getItem(STORAGE_KEY)
@@ -32,7 +32,7 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const setLocale = (nextLocale: Locale) => {
+  const setLocale = (nextLocale: AppLocale) => {
     setLocaleState(nextLocale)
     window.localStorage.setItem(STORAGE_KEY, nextLocale)
     document.documentElement.lang = nextLocale === 'zh' ? 'zh-CN' : 'en'

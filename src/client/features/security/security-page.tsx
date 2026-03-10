@@ -1,22 +1,26 @@
-import { useState, useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, subDays } from 'date-fns'
 import {
-  Smartphone,
   AlertTriangle,
-  Link,
-  X,
   Download,
+  Link,
   Search,
+  Smartphone,
+  X,
 } from 'lucide-react'
 import { SecurityIcon } from '@/components/icons/security-icon'
+import { Header } from '@/components/layout/header'
+import { Main } from '@/components/layout/main'
+import { LanguageSwitch } from '@/components/language-switch'
+import { ThemeSwitch } from '@/components/theme-switch'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -27,51 +31,56 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Header } from '@/components/layout/header'
-import { Main } from '@/components/layout/main'
-import { LanguageSwitch } from '@/components/language-switch'
-import { ThemeSwitch } from '@/components/theme-switch'
+import { useLocale } from '@/context/locale-provider'
 import {
-  getSecurityDashboard,
   getAlerts,
-  getRecentConnections,
-  getDevices,
   getAuditLog,
+  getDevices,
+  getRecentConnections,
+  getSecurityDashboard,
   type AuditFilters,
 } from '@/lib/api'
 import { AlertsList } from './components/alerts-list'
+import { AuditTable } from './components/audit-table'
 import { ConnectionsList } from './components/connections-list'
 import { DevicesTable } from './components/devices-table'
-import { AuditTable } from './components/audit-table'
-
-SecurityPage.displayName = 'SecurityPage'
 
 const PAGE_SIZE = 50
 
 const actionOptions = [
-  { value: 'all', label: '全部操作' },
-  { value: 'create', label: '创建' },
-  { value: 'update', label: '更新' },
-  { value: 'delete', label: '删除' },
-  { value: 'login', label: '登录' },
-  { value: 'logout', label: '登出' },
-  { value: 'access', label: '访问' },
+  { value: 'all', zh: '全部操作', en: 'All Actions' },
+  { value: 'create', zh: '创建', en: 'Create' },
+  { value: 'update', zh: '更新', en: 'Update' },
+  { value: 'delete', zh: '删除', en: 'Delete' },
+  { value: 'login', zh: '登录', en: 'Login' },
+  { value: 'logout', zh: '登出', en: 'Logout' },
+  { value: 'access', zh: '访问', en: 'Access' },
 ]
 
 const entityTypeOptions = [
-  { value: 'all', label: '全部对象' },
-  { value: 'device', label: '设备' },
-  { value: 'session', label: '会话' },
-  { value: 'config', label: '配置' },
-  { value: 'alert', label: '告警' },
-  { value: 'user', label: '用户' },
+  { value: 'all', zh: '全部对象', en: 'All Entities' },
+  { value: 'device', zh: '设备', en: 'Device' },
+  { value: 'session', zh: '会话', en: 'Session' },
+  { value: 'config', zh: '配置', en: 'Config' },
+  { value: 'alert', zh: '告警', en: 'Alert' },
+  { value: 'user', zh: '用户', en: 'User' },
 ]
 
 export function SecurityPage() {
+  const { text } = useLocale()
   const [activeTab, setActiveTab] = useState('overview')
-
-  // Track which tabs have been visited for lazy loading
   const visitedTabs = useRef(new Set(['overview']))
+
+  const defaultStartDate = format(subDays(new Date(), 7), 'yyyy-MM-dd')
+  const defaultEndDate = format(new Date(), 'yyyy-MM-dd')
+
+  const [page, setPage] = useState(0)
+  const [action, setAction] = useState<string>('all')
+  const [entityType, setEntityType] = useState<string>('all')
+  const [actor, setActor] = useState('')
+  const [ipAddress, setIpAddress] = useState('')
+  const [startDate, setStartDate] = useState(defaultStartDate)
+  const [endDate, setEndDate] = useState(defaultEndDate)
 
   const handleTabChange = (tab: string) => {
     visitedTabs.current.add(tab)
@@ -80,7 +89,6 @@ export function SecurityPage() {
 
   const hasVisited = (tab: string) => visitedTabs.current.has(tab)
 
-  // ----- Overview queries (always loaded) -----
   const { data: dashboardStats, isLoading: statsLoading } = useQuery({
     queryKey: ['securityDashboard'],
     queryFn: getSecurityDashboard,
@@ -99,24 +107,12 @@ export function SecurityPage() {
     refetchInterval: 10000,
   })
 
-  // ----- Devices queries (lazy) -----
   const { data: devices, isLoading: devicesLoading } = useQuery({
     queryKey: ['devices'],
     queryFn: getDevices,
     refetchInterval: 10000,
     enabled: hasVisited('devices'),
   })
-
-  // ----- Audit state -----
-  const [page, setPage] = useState(0)
-  const [action, setAction] = useState<string>('all')
-  const [entityType, setEntityType] = useState<string>('all')
-  const [actor, setActor] = useState<string>('')
-  const [ipAddress, setIpAddress] = useState<string>('')
-  const [startDate, setStartDate] = useState<string>(
-    format(subDays(new Date(), 7), 'yyyy-MM-dd')
-  )
-  const [endDate, setEndDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
 
   const activeFilters: AuditFilters = {
     action: action !== 'all' ? action : undefined,
@@ -142,29 +138,36 @@ export function SecurityPage() {
   const startItem = page * PAGE_SIZE + 1
   const endItem = Math.min((page + 1) * PAGE_SIZE, total)
 
+  const hasActiveFilters =
+    action !== 'all' ||
+    entityType !== 'all' ||
+    Boolean(actor) ||
+    Boolean(ipAddress) ||
+    startDate !== defaultStartDate ||
+    endDate !== defaultEndDate
+
   const handleResetFilters = () => {
     setAction('all')
     setEntityType('all')
     setActor('')
     setIpAddress('')
-    setStartDate(format(subDays(new Date(), 7), 'yyyy-MM-dd'))
-    setEndDate(format(new Date(), 'yyyy-MM-dd'))
-    setPage(0)
-  }
-
-  const hasActiveFilters =
-    action !== 'all' || entityType !== 'all' || actor || ipAddress || startDate || endDate
-
-  const handleFilterChange = () => {
+    setStartDate(defaultStartDate)
+    setEndDate(defaultEndDate)
     setPage(0)
   }
 
   const exportAuditCSV = () => {
-    if (!auditEntries || auditEntries.length === 0) return
+    if (auditEntries.length === 0) return
 
     const headers = [
-      'ID', 'Action', 'Entity Type', 'Entity ID',
-      'Timestamp', 'Actor', 'IP Address', 'Details',
+      'ID',
+      'Action',
+      'Entity Type',
+      'Entity ID',
+      'Timestamp',
+      'Actor',
+      'IP Address',
+      'Details',
     ]
     const rows = auditEntries.map((entry) => [
       entry.id,
@@ -203,7 +206,9 @@ export function SecurityPage() {
       <Header>
         <div className='flex items-center gap-2'>
           <SecurityIcon active className='h-6 w-6' />
-          <span className='font-jersey text-xl'>安全中心</span>
+          <span className='font-jersey text-xl'>
+            {text('安全中心', 'Security Center')}
+          </span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
           <LanguageSwitch />
@@ -214,19 +219,25 @@ export function SecurityPage() {
       <Main>
         <div className='mb-6 flex items-center justify-between'>
           <div>
-            <h1 className='text-3xl font-bold tracking-tight'>安全中心</h1>
+            <h1 className='text-3xl font-bold tracking-tight'>
+              {text('安全中心', 'Security Center')}
+            </h1>
             <p className='text-muted-foreground'>
-              监控设备、告警和连接活动
+              {text(
+                '监控设备、告警和连接活动',
+                'Monitor devices, alerts, and connection activity'
+              )}
             </p>
           </div>
         </div>
 
-        {/* Stats Cards Row */}
-        <div className='grid gap-4 sm:grid-cols-3 mb-6'>
+        <div className='mb-6 grid gap-4 sm:grid-cols-3'>
           <Card className='relative overflow-hidden'>
-            <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>活跃设备</CardTitle>
+              <CardTitle className='text-sm font-medium'>
+                {text('活跃设备', 'Active Devices')}
+              </CardTitle>
               <div className='rounded-full bg-red-500 p-2'>
                 <Smartphone className='h-4 w-4 text-white' />
               </div>
@@ -234,7 +245,7 @@ export function SecurityPage() {
             <CardContent>
               {statsLoading ? (
                 <>
-                  <Skeleton className='h-8 w-16 mb-1' />
+                  <Skeleton className='mb-1 h-8 w-16' />
                   <Skeleton className='h-4 w-24' />
                 </>
               ) : (
@@ -242,16 +253,20 @@ export function SecurityPage() {
                   <div className='text-2xl font-bold text-red-500'>
                     {dashboardStats?.activeDevices ?? 0}
                   </div>
-                  <p className='text-xs text-muted-foreground'>已配对设备</p>
+                  <p className='text-xs text-muted-foreground'>
+                    {text('已配对设备', 'Paired devices')}
+                  </p>
                 </>
               )}
             </CardContent>
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>未确认告警</CardTitle>
+              <CardTitle className='text-sm font-medium'>
+                {text('未确认告警', 'Unacknowledged Alerts')}
+              </CardTitle>
               <div className='rounded-full bg-red-500 p-2'>
                 <AlertTriangle className='h-4 w-4 text-white' />
               </div>
@@ -259,7 +274,7 @@ export function SecurityPage() {
             <CardContent>
               {statsLoading ? (
                 <>
-                  <Skeleton className='h-8 w-16 mb-1' />
+                  <Skeleton className='mb-1 h-8 w-16' />
                   <Skeleton className='h-4 w-24' />
                 </>
               ) : (
@@ -267,16 +282,20 @@ export function SecurityPage() {
                   <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                     {dashboardStats?.unacknowledgedAlerts ?? 0}
                   </div>
-                  <p className='text-xs text-muted-foreground'>待处理</p>
+                  <p className='text-xs text-muted-foreground'>
+                    {text('待处理', 'Needs attention')}
+                  </p>
                 </>
               )}
             </CardContent>
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>连接数（24 小时）</CardTitle>
+              <CardTitle className='text-sm font-medium'>
+                {text('连接数（24 小时）', 'Connections (24h)')}
+              </CardTitle>
               <div className='rounded-full bg-red-500 p-2'>
                 <Link className='h-4 w-4 text-white' />
               </div>
@@ -284,7 +303,7 @@ export function SecurityPage() {
             <CardContent>
               {statsLoading ? (
                 <>
-                  <Skeleton className='h-8 w-16 mb-1' />
+                  <Skeleton className='mb-1 h-8 w-16' />
                   <Skeleton className='h-4 w-24' />
                 </>
               ) : (
@@ -292,68 +311,47 @@ export function SecurityPage() {
                   <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
                     {dashboardStats?.recentConnections ?? 0}
                   </div>
-                  <p className='text-xs text-muted-foreground'>最近 24 小时</p>
+                  <p className='text-xs text-muted-foreground'>
+                    {text('最近 24 小时', 'Last 24 hours')}
+                  </p>
                 </>
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Alerts by Severity Row */}
         {dashboardStats?.alertsByLevel && (
-          <div className='grid gap-4 sm:grid-cols-4 mb-6'>
-            <Card className='border-l-4 border-l-red-500'>
-              <CardContent className='pt-4'>
-                <div className='flex items-center justify-between'>
-                  <span className='text-sm font-medium'>严重</span>
-                  <span className='text-2xl font-bold text-red-600 dark:text-red-400'>
-                    {dashboardStats.alertsByLevel.critical}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className='border-l-4 border-l-orange-500'>
-              <CardContent className='pt-4'>
-                <div className='flex items-center justify-between'>
-                  <span className='text-sm font-medium'>高</span>
-                  <span className='text-2xl font-bold text-orange-600 dark:text-orange-400'>
-                    {dashboardStats.alertsByLevel.high}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className='border-l-4 border-l-yellow-500'>
-              <CardContent className='pt-4'>
-                <div className='flex items-center justify-between'>
-                  <span className='text-sm font-medium'>中</span>
-                  <span className='text-2xl font-bold text-yellow-600 dark:text-yellow-400'>
-                    {dashboardStats.alertsByLevel.medium}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className='border-l-4 border-l-gray-400'>
-              <CardContent className='pt-4'>
-                <div className='flex items-center justify-between'>
-                  <span className='text-sm font-medium'>低</span>
-                  <span className='text-2xl font-bold text-gray-600 dark:text-gray-400'>
-                    {dashboardStats.alertsByLevel.low}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
+          <div className='mb-6 grid gap-4 sm:grid-cols-4'>
+            <SeverityCard
+              label={text('严重', 'Critical')}
+              value={dashboardStats.alertsByLevel.critical}
+              className='border-l-red-500 text-red-600 dark:text-red-400'
+            />
+            <SeverityCard
+              label={text('高', 'High')}
+              value={dashboardStats.alertsByLevel.high}
+              className='border-l-orange-500 text-orange-600 dark:text-orange-400'
+            />
+            <SeverityCard
+              label={text('中', 'Medium')}
+              value={dashboardStats.alertsByLevel.medium}
+              className='border-l-yellow-500 text-yellow-600 dark:text-yellow-400'
+            />
+            <SeverityCard
+              label={text('低', 'Low')}
+              value={dashboardStats.alertsByLevel.low}
+              className='border-l-gray-400 text-gray-600 dark:text-gray-400'
+            />
           </div>
         )}
 
-        {/* Tabbed Content */}
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList>
-            <TabsTrigger value='overview'>概览</TabsTrigger>
-            <TabsTrigger value='devices'>设备</TabsTrigger>
-            <TabsTrigger value='audit'>审计日志</TabsTrigger>
+            <TabsTrigger value='overview'>{text('概览', 'Overview')}</TabsTrigger>
+            <TabsTrigger value='devices'>{text('设备', 'Devices')}</TabsTrigger>
+            <TabsTrigger value='audit'>{text('审计日志', 'Audit Log')}</TabsTrigger>
           </TabsList>
 
-          {/* Overview Tab */}
           <TabsContent value='overview'>
             <div className='grid gap-6 lg:grid-cols-2'>
               <AlertsList
@@ -364,68 +362,80 @@ export function SecurityPage() {
               <ConnectionsList
                 connections={connections ?? []}
                 isLoading={connectionsLoading}
-                title='最近连接'
-                description='最近 24 小时的连接活动'
+                title={text('最近连接', 'Recent Connections')}
+                description={text(
+                  '最近 24 小时的连接活动',
+                  'Connection activity in the last 24 hours'
+                )}
               />
             </div>
           </TabsContent>
 
-          {/* Devices Tab */}
           <TabsContent value='devices'>
             <DevicesTable devices={devices ?? []} isLoading={devicesLoading} />
           </TabsContent>
 
-          {/* Audit Tab */}
           <TabsContent value='audit'>
-            {/* Compact filter bar */}
-            <div className='flex flex-wrap items-end gap-3 mb-4'>
+            <div className='mb-4 flex flex-wrap items-end gap-3'>
               <div className='relative'>
                 <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
                 <Input
-                  placeholder='操作人...'
+                  placeholder={text('操作人...', 'Actor...')}
                   value={actor}
                   onChange={(e) => {
                     setActor(e.target.value)
-                    handleFilterChange()
+                    setPage(0)
                   }}
-                  className='pl-8 h-9 w-36'
+                  className='h-9 w-36 pl-8'
                 />
               </div>
 
               <div className='relative'>
                 <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
                 <Input
-                  placeholder='IP 地址...'
+                  placeholder={text('IP 地址...', 'IP address...')}
                   value={ipAddress}
                   onChange={(e) => {
                     setIpAddress(e.target.value)
-                    handleFilterChange()
+                    setPage(0)
                   }}
-                  className='pl-8 h-9 w-36'
+                  className='h-9 w-36 pl-8'
                 />
               </div>
 
-              <Select value={action} onValueChange={(v) => { setAction(v); handleFilterChange(); }}>
+              <Select
+                value={action}
+                onValueChange={(value) => {
+                  setAction(value)
+                  setPage(0)
+                }}
+              >
                 <SelectTrigger className='h-9 w-[140px]'>
-                  <SelectValue placeholder='全部操作' />
+                  <SelectValue placeholder={text('全部操作', 'All Actions')} />
                 </SelectTrigger>
                 <SelectContent>
                   {actionOptions.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
-                      {option.label}
+                      {text(option.zh, option.en)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
 
-              <Select value={entityType} onValueChange={(v) => { setEntityType(v); handleFilterChange(); }}>
+              <Select
+                value={entityType}
+                onValueChange={(value) => {
+                  setEntityType(value)
+                  setPage(0)
+                }}
+              >
                 <SelectTrigger className='h-9 w-[140px]'>
-                  <SelectValue placeholder='全部对象' />
+                  <SelectValue placeholder={text('全部对象', 'All Entities')} />
                 </SelectTrigger>
                 <SelectContent>
                   {entityTypeOptions.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
-                      {option.label}
+                      {text(option.zh, option.en)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -436,19 +446,19 @@ export function SecurityPage() {
                 value={startDate}
                 onChange={(e) => {
                   setStartDate(e.target.value)
-                  handleFilterChange()
+                  setPage(0)
                 }}
                 className='h-9 w-[140px]'
               />
 
-              <span className='text-muted-foreground text-sm pb-1'>&ndash;</span>
+              <span className='pb-1 text-sm text-muted-foreground'>&ndash;</span>
 
               <Input
                 type='date'
                 value={endDate}
                 onChange={(e) => {
                   setEndDate(e.target.value)
-                  handleFilterChange()
+                  setPage(0)
                 }}
                 className='h-9 w-[140px]'
               />
@@ -461,7 +471,7 @@ export function SecurityPage() {
                   onClick={handleResetFilters}
                 >
                   <X className='mr-1 h-3.5 w-3.5' />
-                  重置
+                  {text('重置', 'Reset')}
                 </Button>
               )}
 
@@ -471,10 +481,10 @@ export function SecurityPage() {
                   size='sm'
                   className='h-9'
                   onClick={exportAuditCSV}
-                  disabled={!auditEntries || auditEntries.length === 0}
+                  disabled={auditEntries.length === 0}
                 >
                   <Download className='mr-2 h-4 w-4' />
-                  导出 CSV
+                  {text('导出 CSV', 'Export CSV')}
                 </Button>
               </div>
             </div>
@@ -486,27 +496,33 @@ export function SecurityPage() {
                 {total > 0 && (
                   <div className='mt-4 flex items-center justify-between'>
                     <p className='text-sm text-muted-foreground'>
-                      显示第 {startItem}&ndash;{endItem} 条，共 {total} 条记录
+                      {text(
+                        `显示第 ${startItem}-${endItem} 条，共 ${total} 条记录`,
+                        `Showing ${startItem}-${endItem} of ${total} records`
+                      )}
                     </p>
                     <div className='flex items-center gap-2'>
                       <span className='text-sm text-muted-foreground'>
-                        第 {page + 1} 页 / 共 {Math.max(1, totalPages)} 页
+                        {text(
+                          `第 ${page + 1} 页 / 共 ${Math.max(1, totalPages)} 页`,
+                          `Page ${page + 1} / ${Math.max(1, totalPages)}`
+                        )}
                       </span>
                       <Button
                         variant='outline'
                         size='sm'
-                        onClick={() => setPage((p) => Math.max(0, p - 1))}
+                        onClick={() => setPage((current) => Math.max(0, current - 1))}
                         disabled={page === 0}
                       >
-                        上一页
+                        {text('上一页', 'Previous')}
                       </Button>
                       <Button
                         variant='outline'
                         size='sm'
-                        onClick={() => setPage((p) => p + 1)}
+                        onClick={() => setPage((current) => current + 1)}
                         disabled={page >= totalPages - 1}
                       >
-                        下一页
+                        {text('下一页', 'Next')}
                       </Button>
                     </div>
                   </div>
@@ -519,3 +535,29 @@ export function SecurityPage() {
     </>
   )
 }
+
+function SeverityCard({
+  label,
+  value,
+  className,
+}: {
+  label: string
+  value: number
+  className: string
+}) {
+  const borderClass = className.split(' ')[0]
+  const textClass = className.split(' ').slice(1).join(' ')
+
+  return (
+    <Card className={`border-l-4 ${borderClass}`}>
+      <CardContent className='pt-4'>
+        <div className='flex items-center justify-between'>
+          <span className='text-sm font-medium'>{label}</span>
+          <span className={`text-2xl font-bold ${textClass}`}>{value}</span>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+SecurityPage.displayName = 'SecurityPage'

@@ -24,6 +24,7 @@ import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { LanguageSwitch } from '@/components/language-switch'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { useLocale } from '@/context/locale-provider'
 import {
   getSessions,
   getSessionStats,
@@ -36,7 +37,12 @@ import { SessionsTable } from './components/sessions-table'
 
 const PAGE_SIZE = 50
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
 export function Sessions() {
+  const { text } = useLocale()
   const [page, setPage] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchInput, setSearchInput] = useState('')
@@ -82,6 +88,8 @@ export function Sessions() {
   const totalPages = sessionsData?.total ? Math.ceil(sessionsData.total / PAGE_SIZE) : 0
   const startItem = page * PAGE_SIZE + 1
   const endItem = Math.min((page + 1) * PAGE_SIZE, sessionsData?.total ?? 0)
+  const projectOptions = (filters?.projects ?? []).filter(isNonEmptyString)
+  const modelOptions = (filters?.models ?? []).filter(isNonEmptyString)
 
   const handleSort = (field: string) => {
     if (sortBy === field) {
@@ -143,7 +151,7 @@ export function Sessions() {
       <Header>
         <div className='flex items-center gap-2'>
           <SessionsIcon active className='h-6 w-6' />
-          <span className='font-jersey text-xl'>会话</span>
+          <span className='font-jersey text-xl'>{text('会话', 'Sessions')}</span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
           <LanguageSwitch />
@@ -154,14 +162,19 @@ export function Sessions() {
       <Main>
         <div className='mb-4 flex items-center justify-between'>
           <div>
-            <h1 className='text-3xl font-bold tracking-tight'>会话</h1>
+            <h1 className='text-3xl font-bold tracking-tight'>
+              {text('会话', 'Sessions')}
+            </h1>
             <p className='text-muted-foreground'>
-              按项目查看会话分析与成本拆分
+              {text(
+                '按项目查看会话分析与成本拆分',
+                'Session analytics and cost breakdown by project'
+              )}
             </p>
           </div>
           <Button onClick={exportToCSV} variant='outline' size='sm'>
             <Download className='mr-2 h-4 w-4' />
-            导出 CSV
+            {text('导出 CSV', 'Export CSV')}
           </Button>
         </div>
 
@@ -173,8 +186,10 @@ export function Sessions() {
         {/* Project Cost Chart */}
         <Card className='mb-6'>
           <CardHeader>
-            <CardTitle>按项目查看成本</CardTitle>
-            <CardDescription>点击柱状条可筛选下方表格</CardDescription>
+            <CardTitle>{text('按项目查看成本', 'Cost by Project')}</CardTitle>
+            <CardDescription>
+              {text('点击柱状条可筛选下方表格', 'Click a bar to filter the table below')}
+            </CardDescription>
           </CardHeader>
           <CardContent className='ps-2'>
             {chartLoading ? (
@@ -194,7 +209,7 @@ export function Sessions() {
           <div className='relative flex-1 min-w-[200px]'>
             <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
             <Input
-              placeholder='按项目或模型搜索...'
+              placeholder={text('按项目或模型搜索...', 'Search by project or model...')}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => {
@@ -211,11 +226,11 @@ export function Sessions() {
             }}
           >
             <SelectTrigger className='w-[180px]'>
-              <SelectValue placeholder='全部项目' />
+              <SelectValue placeholder={text('全部项目', 'All Projects')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value='all'>全部项目</SelectItem>
-              {(filters?.projects ?? []).map((p) => {
+              <SelectItem value='all'>{text('全部项目', 'All Projects')}</SelectItem>
+              {projectOptions.map((p) => {
                 const parts = p.split('-')
                 const name = parts[parts.length - 1] || p
                 return (
@@ -234,11 +249,11 @@ export function Sessions() {
             }}
           >
             <SelectTrigger className='w-[180px]'>
-              <SelectValue placeholder='全部模型' />
+              <SelectValue placeholder={text('全部模型', 'All Models')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value='all'>全部模型</SelectItem>
-              {(filters?.models ?? []).map((m) => (
+              <SelectItem value='all'>{text('全部模型', 'All Models')}</SelectItem>
+              {modelOptions.map((m) => (
                 <SelectItem key={m} value={m}>
                   {m}
                 </SelectItem>
@@ -271,12 +286,18 @@ export function Sessions() {
             <div className='mt-4 flex items-center justify-between'>
               <p className='text-sm text-muted-foreground'>
                 {sessionsData?.total && sessionsData.total > 0
-                  ? `显示第 ${startItem}-${endItem} 条，共 ${sessionsData.total} 条会话`
-                  : '暂无会话'}
+                  ? text(
+                      `显示第 ${startItem}-${endItem} 条，共 ${sessionsData.total} 条会话`,
+                      `Showing ${startItem}-${endItem} of ${sessionsData.total} sessions`
+                    )
+                  : text('暂无会话', 'No sessions')}
               </p>
               <div className='flex items-center gap-2'>
                 <span className='text-sm text-muted-foreground'>
-                  第 {page + 1} 页，共 {Math.max(1, totalPages)} 页
+                  {text(
+                    `第 ${page + 1} 页，共 ${Math.max(1, totalPages)} 页`,
+                    `Page ${page + 1} of ${Math.max(1, totalPages)}`
+                  )}
                 </span>
                 <Button
                   variant='outline'
@@ -284,7 +305,7 @@ export function Sessions() {
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                   disabled={page === 0}
                 >
-                  上一页
+                  {text('上一页', 'Previous')}
                 </Button>
                 <Button
                   variant='outline'
@@ -292,7 +313,7 @@ export function Sessions() {
                   onClick={() => setPage((p) => p + 1)}
                   disabled={!sessionsData?.hasMore}
                 >
-                  下一页
+                  {text('下一页', 'Next')}
                 </Button>
               </div>
             </div>

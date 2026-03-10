@@ -1,14 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { format } from 'date-fns'
-import {
-  DollarSign,
-  Coins,
-  Calendar,
-  ArrowLeft,
-  FolderOpen,
-} from 'lucide-react'
+import { ArrowLeft, Calendar, Coins, DollarSign, FolderOpen } from 'lucide-react'
 import { AgentsIcon } from '@/components/icons/agents-icon'
+import { Header } from '@/components/layout/header'
+import { Main } from '@/components/layout/main'
+import { LanguageSwitch } from '@/components/language-switch'
+import { ThemeSwitch } from '@/components/theme-switch'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -17,15 +16,9 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Header } from '@/components/layout/header'
-import { Main } from '@/components/layout/main'
-import { LanguageSwitch } from '@/components/language-switch'
-import { ThemeSwitch } from '@/components/theme-switch'
 import { useLocale } from '@/context/locale-provider'
-import { appLocale, formatRelativeTime } from '@/lib/i18n'
 import { getAgent, getAgentDailyCosts } from '@/lib/api'
+import { formatDate, formatRelativeTime } from '@/lib/i18n'
 import { AgentCostChart } from './components/agent-cost-chart'
 
 interface AgentDetailProps {
@@ -33,7 +26,8 @@ interface AgentDetailProps {
 }
 
 export function AgentDetail({ agentId }: AgentDetailProps) {
-  const { text } = useLocale()
+  const { locale, text } = useLocale()
+
   const { data: agent, isLoading: agentLoading } = useQuery({
     queryKey: ['agent', agentId],
     queryFn: () => getAgent(agentId),
@@ -107,9 +101,7 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
           </p>
         </div>
 
-        {/* Stats Cards Row */}
-        <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6'>
-          {/* Total Cost Card */}
+        <div className='mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
           <Card>
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
@@ -120,7 +112,7 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
             <CardContent>
               {agentLoading ? (
                 <>
-                  <Skeleton className='h-8 w-24 mb-1' />
+                  <Skeleton className='mb-1 h-8 w-24' />
                   <Skeleton className='h-4 w-32' />
                 </>
               ) : (
@@ -136,7 +128,6 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
             </CardContent>
           </Card>
 
-          {/* Input Tokens Card */}
           <Card>
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
@@ -147,7 +138,7 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
             <CardContent>
               {agentLoading ? (
                 <>
-                  <Skeleton className='h-8 w-24 mb-1' />
+                  <Skeleton className='mb-1 h-8 w-24' />
                   <Skeleton className='h-4 w-32' />
                 </>
               ) : (
@@ -163,7 +154,6 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
             </CardContent>
           </Card>
 
-          {/* Output Tokens Card */}
           <Card>
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
@@ -174,7 +164,7 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
             <CardContent>
               {agentLoading ? (
                 <>
-                  <Skeleton className='h-8 w-24 mb-1' />
+                  <Skeleton className='mb-1 h-8 w-24' />
                   <Skeleton className='h-4 w-32' />
                 </>
               ) : (
@@ -190,7 +180,6 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
             </CardContent>
           </Card>
 
-          {/* Sessions Card */}
           <Card>
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
@@ -201,7 +190,7 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
             <CardContent>
               {agentLoading ? (
                 <>
-                  <Skeleton className='h-8 w-16 mb-1' />
+                  <Skeleton className='mb-1 h-8 w-16' />
                   <Skeleton className='h-4 w-24' />
                 </>
               ) : (
@@ -211,8 +200,9 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
                   </div>
                   <p className='text-xs text-muted-foreground'>
                     {text('创建于', 'Created')}{' '}
-                    {agent?.created_at &&
-                      formatRelativeTime(agent.created_at)}
+                    {agent?.created_at
+                      ? formatRelativeTime(agent.created_at, locale)
+                      : '--'}
                   </p>
                 </>
               )}
@@ -220,7 +210,6 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
           </Card>
         </div>
 
-        {/* Cost Chart */}
         <Card>
           <CardHeader>
             <CardTitle>{text('成本历史', 'Cost History')}</CardTitle>
@@ -240,7 +229,6 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
           </CardContent>
         </Card>
 
-        {/* Agent Info Card */}
         {!agentLoading && agent && (
           <Card className='mt-6'>
             <CardHeader>
@@ -262,9 +250,7 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
                     {text('创建时间', 'Created')}
                   </dt>
                   <dd className='mt-1 text-sm'>
-                    {format(new Date(agent.created_at), 'PPPp', {
-                      locale: appLocale,
-                    })}
+                    {formatDate(agent.created_at, 'PPpp', locale)}
                   </dd>
                 </div>
                 {agent.workspace && (

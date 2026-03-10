@@ -1,6 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import { ArrowUpDown, ExternalLink } from 'lucide-react'
 import { useState } from 'react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Table,
   TableBody,
@@ -9,8 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { useLocale } from '@/context/locale-provider'
 import type { Agent } from '@/lib/api'
 import { formatRelativeTime } from '@/lib/i18n'
 
@@ -22,6 +23,7 @@ type SortField = 'name' | 'total_cost' | 'session_count' | 'created_at'
 type SortDirection = 'asc' | 'desc'
 
 export function AgentsTable({ agents }: AgentsTableProps) {
+  const { locale, text } = useLocale()
   const [sortField, setSortField] = useState<SortField>('total_cost')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
@@ -70,7 +72,10 @@ export function AgentsTable({ agents }: AgentsTableProps) {
   if (agents.length === 0) {
     return (
       <div className='flex h-32 items-center justify-center text-muted-foreground'>
-        未找到代理。请先把 OpenClaw 连接到消息渠道。
+        {text(
+          '未找到代理。请先把 OpenClaw 连接到消息渠道。',
+          'No agents found. Connect OpenClaw to a message channel first.'
+        )}
       </div>
     )
   }
@@ -87,11 +92,11 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 className='-ml-3 h-8'
                 onClick={() => handleSort('name')}
               >
-                名称
+                {text('名称', 'Name')}
                 <ArrowUpDown className='ml-2 h-4 w-4' />
               </Button>
             </TableHead>
-            <TableHead>工作区</TableHead>
+            <TableHead>{text('工作区', 'Workspace')}</TableHead>
             <TableHead className='text-right'>
               <Button
                 variant='ghost'
@@ -99,12 +104,16 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 className='-mr-3 h-8'
                 onClick={() => handleSort('total_cost')}
               >
-                成本
+                {text('成本', 'Cost')}
                 <ArrowUpDown className='ml-2 h-4 w-4' />
               </Button>
             </TableHead>
-            <TableHead className='text-right'>输入 Token</TableHead>
-            <TableHead className='text-right'>输出 Token</TableHead>
+            <TableHead className='text-right'>
+              {text('输入 Token', 'Input Tokens')}
+            </TableHead>
+            <TableHead className='text-right'>
+              {text('输出 Token', 'Output Tokens')}
+            </TableHead>
             <TableHead className='text-right'>
               <Button
                 variant='ghost'
@@ -112,7 +121,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 className='-mr-3 h-8'
                 onClick={() => handleSort('session_count')}
               >
-                会话数
+                {text('会话数', 'Sessions')}
                 <ArrowUpDown className='ml-2 h-4 w-4' />
               </Button>
             </TableHead>
@@ -123,7 +132,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 className='-ml-3 h-8'
                 onClick={() => handleSort('created_at')}
               >
-                创建时间
+                {text('创建时间', 'Created')}
                 <ArrowUpDown className='ml-2 h-4 w-4' />
               </Button>
             </TableHead>
@@ -156,7 +165,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 <Badge variant='outline'>{agent.session_count}</Badge>
               </TableCell>
               <TableCell className='text-muted-foreground'>
-                {formatRelativeTime(agent.created_at)}
+                {formatRelativeTime(agent.created_at, locale)}
               </TableCell>
               <TableCell>
                 <Link
@@ -166,7 +175,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 >
                   <Button variant='ghost' size='icon' className='h-8 w-8'>
                     <ExternalLink className='h-4 w-4' />
-                    <span className='sr-only'>查看详情</span>
+                    <span className='sr-only'>{text('查看详情', 'View details')}</span>
                   </Button>
                 </Link>
               </TableCell>

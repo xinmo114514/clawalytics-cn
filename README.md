@@ -1,224 +1,290 @@
 # Clawalytics
 
-> 面向 Claude Code 与 OpenClaw 的 AI 成本分析仪表盘。  
-> 用一个本地面板看清你的花费、Token、模型使用、Agent 表现、渠道数据和安全状态。
+**Cost-tracking analytics dashboard for Claude Code and OpenClaw users.**
 
-Clawalytics 把原本分散在日志、会话记录和网关事件里的信息整理成一个更容易读懂的界面。你可以快速回答这些问题：
+Track your AI spending, monitor agent performance, analyze channel usage, and maintain security oversight — all in one unified dashboard.
 
-- 今天、本周、本月一共花了多少钱
-- 哪个模型、哪个 Agent、哪个渠道最耗资源
-- Prompt Cache 帮你省了多少成本
-- 最近有哪些会话、设备、配对请求和安全告警
-- 当前预算有没有接近阈值
+## Features
 
-## 中文用户友好版
+### Core Analytics
 
-为了方便中文用户使用，项目内置了汉化版界面与双语文案支持。打开仪表盘后可以直接在界面里切换 `中文 / English`，日期、相对时间和部分展示文案也会跟随语言一起切换。
+#### Dashboard Overview
+- **Total cost tracking** — Lifetime, monthly, weekly, and daily spending
+- **Token breakdown** — Input, output, cache creation, and cache read tokens
+- **Cache savings calculator** — See how much you save with prompt caching (90% discount on cache reads)
+- **Daily cost chart** — 30-day spending trends
+- **Model usage distribution** — Pie chart breakdown by model (Claude Opus, Sonnet, Haiku, etc.)
+- **Recent sessions** — Quick view of latest coding sessions
 
-如果你希望把它部署给中文团队、中文运营或中文开发者使用，这一版会比纯英文工具更容易上手。
+#### Session History
+- **Full session list** — Paginated view of all coding sessions
+- **Session details** — Project path, model used, tokens consumed, cost
+- **Filtering & search** — Find sessions by project or date range
+- **Cost per session** — Granular cost attribution
 
-## 亮点
+### OpenClaw Integration
 
-| 模块 | 你能看到什么 |
-| --- | --- |
-| 成本总览 | 生命周期、月、周、日花费，趋势图，缓存节省，模型占比 |
-| 会话分析 | 每次会话的项目路径、模型、Token、成本、最近活跃时间 |
-| 模型分析 | 不同模型和供应商的成本分布、调用次数、输入输出 Token |
-| Agent 分析 | OpenClaw 多 Agent 的成本、趋势、请求量与表现对比 |
-| 渠道分析 | WhatsApp、Telegram、Slack 等渠道的成本、消息数、单条消息成本 |
-| 安全监控 | 设备列表、配对请求、安全告警、连接历史、审计日志 |
-| 运维体验 | 本地 SQLite、后台服务、自启动、预算提醒、日志查看、MCP 接入 |
+#### Agent Analytics
+- **Multi-agent tracking** — Monitor costs across all your OpenClaw agents
+- **Per-agent cost breakdown** — See which agents consume the most resources
+- **Agent detail view** — Deep dive into individual agent performance
+- **Daily cost charts** — 30-day trends per agent
+- **Token analysis** — Input/output token distribution by agent
 
-## 为什么适合日常使用
+#### Channel Analytics
+- **Channel cost comparison** — Compare spending across WhatsApp, Telegram, Slack
+- **Message volume tracking** — Monitor message counts per channel
+- **Cost per message** — Understand the true cost of each conversation
+- **Channel breakdown table** — Detailed metrics for each channel
 
-- 本地优先：数据默认保存在本机 SQLite，不依赖外部 SaaS
-- 安装后可常驻后台：支持 macOS、Linux、Windows 自动注册服务
-- 不只看总账：还能拆到模型、会话、Agent、渠道、工具调用
-- 对 OpenClaw 友好：适合多 Agent 场景下的成本治理
-- 对中文用户友好：内置中文界面，不需要自己再做一轮汉化
+### Security & Monitoring
 
-## 快速开始
+#### Security Dashboard
+- **Active devices** — Monitor all paired devices
+- **Pending pairing requests** — Approve or deny new device connections
+- **Security alerts** — Real-time alerts for suspicious activity
+- **Connection history** — 24-hour connection event log
 
-### 1. 安装
+#### Device Management
+- **Paired devices list** — View all authorized devices
+- **Device status** — Active, inactive, or suspended states
+- **Last seen tracking** — Know when devices were last active
+- **Pairing request queue** — Manage incoming device requests
+
+#### Audit Log
+- **Complete audit trail** — Every action logged with timestamps
+- **Filterable history** — Filter by action type, entity, actor, or date range
+- **Export capability** — Download audit logs as CSV
+- **Action tracking** — Create, update, delete, and system events
+
+#### Tool Usage Analytics
+- **Tool call tracking** — Monitor API and tool invocations
+- **Success/error rates** — Track tool reliability
+- **Duration metrics** — Average execution time per tool
+- **Recent calls list** — View latest tool invocations
+
+### Configuration
+
+#### Settings
+- **Log path configuration** — Set custom Claude Code log locations
+- **OpenClaw integration** — Enable/disable OpenClaw features
+- **Security alerts** — Toggle security monitoring
+- **Gateway logs path** — Configure gateway log location
+
+#### Appearance
+- **Theme switching** — Light, dark, or system theme
+- **Font preferences** — Customize dashboard typography
+
+#### Notifications
+- **Alert preferences** — Configure which alerts to receive
+- **Email notifications** — Set up email alerts (coming soon)
+
+## Installation
 
 ```bash
+# Install globally
 npm install -g clawalytics
 
-# 或
+# Or with pnpm
 pnpm add -g clawalytics
 ```
 
-安装完成后，Clawalytics 会尝试自动安装为系统后台服务：
-
-- macOS: LaunchAgent
-- Linux: `systemd --user`
-- Windows: Task Scheduler
-
-### 2. 启动并查看状态
+## Usage
 
 ```bash
-clawalytics
+# Start the dashboard
+clawalytics start
+
+# Start on a custom port
+clawalytics start --port 3005
+
+# View current configuration
+clawalytics config
+
+# Set log path
+clawalytics path /path/to/claude/logs
+
+# Check status
+clawalytics status
 ```
 
-默认仪表盘地址：
+The dashboard will be available at `http://localhost:9174` by default.
 
-```text
-http://localhost:9174
-```
+## Configuration
 
-### 3. 常用命令
-
-| 命令 | 说明 |
-| --- | --- |
-| `clawalytics` | 显示迷你状态面板，并告诉你仪表盘地址 |
-| `clawalytics status` | 查看完整状态、成本统计、预算使用情况 |
-| `clawalytics logs -f` | 跟踪服务日志 |
-| `clawalytics config` | 打开配置文件 |
-| `clawalytics path` | 查看配置、数据库、日志等路径 |
-| `clawalytics budget` | 交互式设置预算阈值 |
-| `clawalytics budget --daily 10 --weekly 50 --monthly 200` | 直接设置预算阈值 |
-| `clawalytics start --port 3005` | 前台启动，适合开发或调试 |
-| `clawalytics tunnel` | 查看远程访问仪表盘的 SSH 隧道说明 |
-| `clawalytics install-service` | 手动安装后台服务 |
-| `clawalytics uninstall-service` | 卸载后台服务 |
-| `clawalytics mcp` | 启动 MCP 服务，供 AI 工具接入 |
-
-## 典型使用场景
-
-### 只使用 Claude Code
-
-即使你没有接入 OpenClaw，Clawalytics 也可以单独工作，用来分析：
-
-- Claude Code 日志中的成本与 Token
-- 会话趋势与项目分布
-- 模型使用占比
-- Prompt Cache 带来的节省
-
-### 配合 OpenClaw 使用
-
-接入 OpenClaw 后，你还可以额外获得：
-
-- 多 Agent 成本归因
-- 渠道维度的成本和消息统计
-- 设备配对与安全监控
-- 审计日志与工具调用分析
-
-## 功能概览
-
-### 成本与 Token 分析
-
-- 生命周期、月、周、日成本统计
-- 30 天花费趋势
-- 输入、输出、缓存创建、缓存读取 Token 拆分
-- Prompt Cache 节省估算
-- 按模型查看成本分布
-
-### 会话历史
-
-- 全量会话列表
-- 按项目、日期、关键字筛选
-- 每次会话的成本归因
-- 最近活跃时间与持续时长
-
-### Agent 与渠道洞察
-
-- 多 Agent 成本对比
-- 单 Agent 趋势图与详情页
-- 渠道消息量与成本对比
-- 单条消息成本估算
-
-### 安全与审计
-
-- 已配对设备列表
-- 待处理配对请求
-- 安全告警面板
-- 连接事件历史
-- 可筛选的审计日志
-- 工具调用成功率与耗时统计
-
-### 使用体验
-
-- `中文 / English` 语言切换
-- `Light / Dark / System` 主题切换
-- 本地数据库，无需单独部署外部数据库
-- 命令行与 Web 仪表盘配合使用
-
-## 配置与数据位置
-
-Clawalytics 默认把配置和数据放在用户目录下：
-
-- 配置文件：`~/.clawalytics/config.yaml`
-- 数据库：`~/.clawalytics/clawalytics.db`
-- 日志文件：`~/.clawalytics/clawalytics.log`
-
-一个常见配置示例：
+Configuration is stored at `~/.clawalytics/config.yaml`:
 
 ```yaml
-# Claude Code 日志目录，默认会自动检测
+# Claude Code log path (auto-detected by default)
 logPath: ~/.claude/projects
 
-# OpenClaw 集成
+# OpenClaw integration
 openClawEnabled: true
 openClawPath: ~/.openclaw
 
-# 安全监控
+# Security monitoring
 securityAlertsEnabled: true
 gatewayLogsPath: /tmp/openclaw
-
-# 预算阈值
-alertThresholds:
-  dailyBudget: 10
-  weeklyBudget: 50
-  monthlyBudget: 200
 ```
 
-## 支持的模型与供应商
+## Database
 
-Clawalytics 支持对多家 AI 供应商的调用成本进行分析，包含但不限于：
+Clawalytics uses SQLite for data storage, located at `~/.clawalytics/clawalytics.db`.
 
-| 供应商 | 典型模型 |
-| --- | --- |
-| Anthropic | Claude Opus 4、Claude Sonnet 4、Claude Sonnet 3.5、Claude Haiku 3.5 |
-| OpenAI | GPT-4o、GPT-4o-mini |
-| Google | Gemini 系列 |
-| DeepSeek | DeepSeek Chat、DeepSeek Coder |
-| Kimi | Kimi 系列 |
+### Tables
 
-对支持缓存定价的模型，系统会自动把缓存相关成本纳入统计。
+| Table | Purpose |
+|-------|---------|
+| `sessions` | Coding session records |
+| `daily_costs` | Aggregated daily spending |
+| `agents` | OpenClaw agent registry |
+| `channels` | Messaging channel tracking |
+| `agent_daily_costs` | Per-agent daily costs |
+| `channel_daily_costs` | Per-channel daily costs |
+| `devices` | Paired device records |
+| `pairing_requests` | Device pairing queue |
+| `connection_events` | Connection log |
+| `outbound_calls` | Tool/API call tracking |
+| `security_alerts` | Alert storage |
+| `audit_log` | Complete audit trail |
 
-## 开发
+## API Reference
+
+### Core Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/stats` | Basic statistics |
+| `GET /api/stats/enhanced` | Full stats with cache savings |
+| `GET /api/sessions` | Session list (paginated) |
+| `GET /api/costs/summary` | Cost summary (lifetime/month/week/today) |
+| `GET /api/costs/daily` | Daily cost data (30 days) |
+| `GET /api/costs/by-model` | Per-model cost breakdown |
+| `GET /api/costs/cache-savings` | Cache savings details |
+| `GET /api/tokens/breakdown` | Token distribution |
+| `GET /api/trends/weekly` | Week-over-week comparison |
+| `GET /api/config` | Current configuration |
+| `POST /api/config` | Update configuration |
+
+### Agent Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/agents` | List all agents |
+| `GET /api/agents/:id` | Agent details |
+| `GET /api/agents/stats` | Agent statistics |
+
+### Channel Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/channels` | List all channels |
+| `GET /api/channels/:id` | Channel details |
+| `GET /api/channels/stats` | Channel statistics |
+
+### Security Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/devices` | List paired devices |
+| `GET /api/devices/pending` | Pending pairing requests |
+| `POST /api/devices/:id/approve` | Approve pairing request |
+| `POST /api/devices/:id/deny` | Deny pairing request |
+| `GET /api/security/dashboard` | Security overview |
+| `GET /api/security/alerts` | Alert list |
+| `POST /api/security/alerts/:id/acknowledge` | Acknowledge alert |
+| `GET /api/security/connections` | Connection events |
+
+### Audit Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/audit` | Audit log (filterable) |
+| `GET /api/audit/stats` | Audit statistics |
+| `GET /api/audit/recent` | Recent audit entries |
+| `GET /api/audit/:id` | Single audit entry |
+
+### Tool Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/tools` | Tool usage list |
+| `GET /api/tools/stats` | Tool statistics |
+
+## Supported Providers
+
+Clawalytics supports cost tracking for multiple AI providers:
+
+| Provider | Models |
+|----------|--------|
+| **Anthropic** | Claude Opus 4, Claude Sonnet 4, Claude Sonnet 3.5, Claude Haiku 3.5 |
+| **OpenAI** | GPT-4o, GPT-4o-mini |
+| **Google** | Gemini Pro, Gemini Flash |
+| **DeepSeek** | DeepSeek Chat, DeepSeek Coder |
+| **Kimi** | Kimi models |
+
+Cache pricing is automatically applied for supported models (Anthropic).
+
+## Development
 
 ```bash
-git clone https://github.com/clawalytics/clawalytics.git
-cd clawalytics
+# Clone the repository
+git clone https://github.com/yourusername/clawalytics.git
+cd clawalytics/clawalytics
 
+# Install dependencies
 pnpm install
+
+# Start development servers (client + API)
 pnpm dev
-```
 
-其他常用开发命令：
-
-```bash
+# Build for production
 pnpm build
+
+# Run production build
 pnpm start
-pnpm lint
-pnpm format:check
 ```
 
-## 技术栈
+### Project Structure
 
-- 前端：React 19、TanStack Router、TanStack Query、Tailwind CSS、Recharts
-- 后端：Express 5、better-sqlite3
-- 构建：Vite、TypeScript
-- 文件监听：chokidar
+```
+clawalytics/
+├── src/
+│   ├── client/              # React frontend
+│   │   ├── components/      # Shared UI components
+│   │   ├── features/        # Feature modules
+│   │   │   ├── agents/      # Agent analytics
+│   │   │   ├── channels/    # Channel analytics
+│   │   │   ├── security/    # Security dashboard
+│   │   │   └── tools/       # Tool analytics
+│   │   ├── lib/             # Utilities & API client
+│   │   └── routes/          # TanStack Router pages
+│   └── server/              # Express backend
+│       ├── config/          # Configuration management
+│       ├── db/              # SQLite database & queries
+│       ├── parser/          # Log file parsers
+│       │   └── openclaw/    # OpenClaw-specific parsers
+│       ├── routes/          # API route handlers
+│       └── services/        # Business logic services
+├── dist/                    # Production build output
+└── bin/                     # CLI entry point
+```
 
-## 适合谁
+## Tech Stack
 
-- 想控制 Claude Code 或 OpenClaw 成本的个人开发者
-- 正在跑多 Agent、多渠道业务的团队
-- 需要本地部署、低门槛查看日志和审计数据的使用者
-- 更希望直接使用中文界面的用户
+- **Frontend**: React 19, TanStack Router, TanStack Query, shadcn/ui, Tailwind CSS, Recharts
+- **Backend**: Express.js, better-sqlite3
+- **Build**: Vite, TypeScript
+- **File Watching**: chokidar
 
 ## License
 
 MIT
+
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request.
+
+---
+
+Built with :crab: for the Claude Code community

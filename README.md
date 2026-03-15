@@ -4,14 +4,6 @@
 
 Track your AI spending, monitor agent performance, analyze channel usage, and maintain security oversight — all in one unified dashboard.
 
-## 汉化说明
-
-本仓库基于原项目进行汉化和本地化维护，主要目标是降低中文用户的使用门槛，让界面文案、配置流程和日常操作更符合中文语境与阅读习惯。
-
-当前分支用于维护面向中文用户的汉化版本说明与相关适配内容，目标是提供一个可以直接使用、持续更新的中文化版本。除了基础翻译外，也会同步处理影响中文用户体验的细节问题，例如术语统一、默认语言切换、页面文案补全，以及后续版本更新时的汉化跟进。
-
-如果你希望直接部署、体验或继续扩展一个更适合中文用户的 Clawalytics 版本，这个仓库就是为这个目的而准备的。
-
 ## Features
 
 ### Core Analytics

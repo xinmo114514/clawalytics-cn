@@ -9,6 +9,7 @@ import agentsRoutes from './routes/agents.js';
 import channelsRoutes from './routes/channels.js';
 import configRoutes from './routes/config.js';
 import costsRoutes from './routes/costs.js';
+import desktopRoutes from './routes/desktop.js';
 import devicesRoutes from './routes/devices.js';
 import exportRoutes from './routes/export.js';
 import modelsRoutes from './routes/models.js';
@@ -21,12 +22,17 @@ import trendsRoutes from './routes/trends.js';
 import { ensureConfigDir, loadConfig } from './config/loader.js';
 import { closeDatabase, getDatabase } from './db/schema.js';
 import { startSecurityWatcher, stopSecurityWatcher } from './parser/security-watcher.js';
+import { clearDesktopBridge, setDesktopBridge } from './services/desktop-service.js';
 import {
   initializeAnalyticsService,
   shutdownAnalyticsService,
 } from './services/analytics-service.js';
 import { initPricingService } from './services/pricing-service.js';
-import { closeWebSocket, initWebSocket } from './ws/index.js';
+import {
+  broadcastDesktopCloseRequested,
+  closeWebSocket,
+  initWebSocket,
+} from './ws/index.js';
 
 import type { Express } from 'express';
 
@@ -55,6 +61,7 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/sessions', sessionsRoutes);
 app.use('/api/costs', costsRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/desktop', desktopRoutes);
 app.use('/api/tokens', tokensRoutes);
 app.use('/api/trends', trendsRoutes);
 app.use('/api/agents', agentsRoutes);
@@ -119,6 +126,7 @@ async function cleanupServerState(): Promise<void> {
   shutdownAnalyticsService();
   stopSecurityWatcher();
   closeWebSocket();
+  clearDesktopBridge();
   closeDatabase();
 
   if (!server) {
@@ -254,3 +262,5 @@ if (isMainModule) {
 }
 
 export { app };
+export { setDesktopBridge };
+export { broadcastDesktopCloseRequested as requestDesktopCloseChoice };

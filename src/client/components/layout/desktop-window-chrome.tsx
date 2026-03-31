@@ -1,3 +1,5 @@
+import { useLocale } from '@/context/locale-provider'
+
 export function isWindowsDesktopShell() {
   if (typeof navigator === 'undefined') {
     return false
@@ -7,6 +9,8 @@ export function isWindowsDesktopShell() {
 }
 
 export function DesktopWindowChrome() {
+  const { text } = useLocale()
+
   return (
     <div
       data-desktop-chrome
@@ -26,12 +30,12 @@ export function DesktopWindowChrome() {
               Clawalytics
             </p>
             <p className='truncate text-[11px] uppercase tracking-[0.24em] text-muted-foreground'>
-              Windows Desktop
+              {text('Windows 桌面版', 'Windows Desktop')}
             </p>
           </div>
         </div>
         <div className='hidden items-center gap-2 rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] font-medium tracking-[0.18em] text-muted-foreground lg:flex'>
-          Native Window Controls
+          {text('原生窗口控件', 'Native Window Controls')}
         </div>
       </div>
     </div>

@@ -11,6 +11,7 @@ import {
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import WebSocket from 'ws';
@@ -45,6 +46,7 @@ let hasQueuedCostRefresh = false;
 let isHandlingCloseChoice = false;
 let forceQuitTimer = null;
 let desktopPreferences = {
+  locale: 'en',
   closeAction: CLOSE_ACTION_ASK,
 };
 
@@ -61,7 +63,7 @@ function getAppAssetPath(...segments) {
 }
 
 function getDesktopPreferencesPath() {
-  return path.join(app.getPath('userData'), DESKTOP_PREFERENCES_FILE);
+  return path.join(os.homedir(), '.clawalytics', DESKTOP_PREFERENCES_FILE);
 }
 
 function getIcon() {
@@ -120,6 +122,10 @@ function hasMeaningfulCostDelta(delta) {
   return delta.totalCost > 0.000001 || getTotalTokens(delta) > 0;
 }
 
+function normalizeLocale(value) {
+  return value === 'zh' ? 'zh' : 'en';
+}
+
 function normalizeCloseAction(value) {
   if (value === CLOSE_ACTION_TRAY || value === CLOSE_ACTION_QUIT) {
     return value;
@@ -128,18 +134,28 @@ function normalizeCloseAction(value) {
   return CLOSE_ACTION_ASK;
 }
 
+function getSavedLocale() {
+  loadDesktopPreferences();
+  return normalizeLocale(desktopPreferences?.locale);
+}
+
 function getSavedCloseAction() {
+  loadDesktopPreferences();
   return normalizeCloseAction(desktopPreferences?.closeAction);
+}
+
+function translateDesktop(zh, en) {
+  return getSavedLocale() === 'zh' ? zh : en;
 }
 
 function getCloseActionLabel(action) {
   switch (action) {
     case CLOSE_ACTION_TRAY:
-      return 'Minimize to tray';
+      return translateDesktop('最小化到托盘', 'Minimize to tray');
     case CLOSE_ACTION_QUIT:
-      return 'Quit app';
+      return translateDesktop('退出应用', 'Quit app');
     default:
-      return 'Ask every time';
+      return translateDesktop('每次都询问', 'Ask every time');
   }
 }
 
@@ -148,17 +164,24 @@ function loadDesktopPreferences() {
     const filePath = getDesktopPreferencesPath();
 
     if (!fs.existsSync(filePath)) {
-      desktopPreferences = { closeAction: CLOSE_ACTION_ASK };
+      desktopPreferences = {
+        locale: 'en',
+        closeAction: CLOSE_ACTION_ASK,
+      };
       return;
     }
 
     const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     desktopPreferences = {
+      locale: normalizeLocale(parsed?.locale),
       closeAction: normalizeCloseAction(parsed?.closeAction),
     };
   } catch (error) {
     console.error('Failed to load desktop preferences:', error);
-    desktopPreferences = { closeAction: CLOSE_ACTION_ASK };
+    desktopPreferences = {
+      locale: 'en',
+      closeAction: CLOSE_ACTION_ASK,
+    };
   }
 }
 
@@ -218,8 +241,11 @@ function maybeShowTrayHint() {
 
   trayHintShown = true;
   showNativeNotification({
-    title: 'Clawalytics is still running',
-    body: 'Open it from the system tray or right-click the tray icon to quit.',
+    title: translateDesktop('Clawalytics 仍在后台运行', 'Clawalytics is still running'),
+    body: translateDesktop(
+      '可在系统托盘中重新打开，或右键托盘图标退出。',
+      'Open it from the system tray or right-click the tray icon to quit.'
+    ),
     silent: true,
   });
 }
@@ -238,21 +264,22 @@ function updateTrayMenu() {
     return;
   }
 
+  loadDesktopPreferences();
   const savedCloseAction = getSavedCloseAction();
 
   tray.setContextMenu(Menu.buildFromTemplate([
     {
-      label: 'Open Clawalytics',
+      label: translateDesktop('打开 Clawalytics', 'Open Clawalytics'),
       click: () => {
         showMainWindow();
       },
     },
     {
-      label: `Close button: ${getCloseActionLabel(savedCloseAction)}`,
+      label: `${translateDesktop('关闭按钮', 'Close button')}: ${getCloseActionLabel(savedCloseAction)}`,
       enabled: false,
     },
     {
-      label: 'Ask on close again',
+      label: translateDesktop('下次关闭时再次询问', 'Ask on close again'),
       enabled: savedCloseAction !== CLOSE_ACTION_ASK,
       click: () => {
         setCloseActionPreference(CLOSE_ACTION_ASK);
@@ -260,7 +287,7 @@ function updateTrayMenu() {
     },
     { type: 'separator' },
     {
-      label: 'Quit',
+      label: translateDesktop('退出', 'Quit'),
       click: () => {
         requestAppQuit();
       },
@@ -323,38 +350,35 @@ function requestAppQuit() {
   });
 }
 
-async function promptForCloseAction(window) {
-  const result = await dialog.showMessageBox(window, {
-    type: 'question',
-    buttons: ['Minimize to tray', 'Quit', 'Cancel'],
-    defaultId: 0,
-    cancelId: 2,
-    noLink: true,
-    title: 'Close Clawalytics',
-    message: 'What should happen when you close Clawalytics?',
-    detail: 'You can keep it running in the background or fully exit the app.',
-    checkboxLabel: 'Remember my choice for next time',
-  });
+function syncDesktopPreferences() {
+  loadDesktopPreferences();
+  updateTrayMenu();
+}
 
-  if (result.response === 0) {
-    if (result.checkboxChecked) {
-      setCloseActionPreference(CLOSE_ACTION_TRAY);
-    }
+async function handleDesktopCloseChoice(action) {
+  isHandlingCloseChoice = false;
 
+  if (action === 'tray') {
     hideWindowToTray();
     return;
   }
 
-  if (result.response === 1) {
-    if (result.checkboxChecked) {
-      setCloseActionPreference(CLOSE_ACTION_QUIT);
-    }
-
+  if (action === 'quit') {
     requestAppQuit();
   }
 }
 
-async function handleMainWindowClose(window) {
+function requestDesktopCloseChoice() {
+  if (!backendModule || typeof backendModule.requestDesktopCloseChoice !== 'function') {
+    isHandlingCloseChoice = false;
+    hideWindowToTray();
+    return;
+  }
+
+  backendModule.requestDesktopCloseChoice();
+}
+
+function handleMainWindowClose() {
   const savedCloseAction = getSavedCloseAction();
 
   if (savedCloseAction === CLOSE_ACTION_TRAY) {
@@ -373,11 +397,7 @@ async function handleMainWindowClose(window) {
 
   isHandlingCloseChoice = true;
 
-  try {
-    await promptForCloseAction(window);
-  } finally {
-    isHandlingCloseChoice = false;
-  }
+  requestDesktopCloseChoice();
 }
 
 async function fetchEnhancedStats(port) {
@@ -406,16 +426,28 @@ function showCostsNotification(currentStats) {
   const totalDeltaTokens = getTotalTokens(delta);
 
   if (totalDeltaTokens > 0) {
-    messageParts.push(`Added ${formatInteger(totalDeltaTokens)} tokens`);
+    messageParts.push(
+      translateDesktop(
+        `新增 ${formatInteger(totalDeltaTokens)} 词元`,
+        `Added ${formatInteger(totalDeltaTokens)} tokens`
+      )
+    );
   }
 
   if (delta.totalCost > 0) {
-    messageParts.push(`Cost +${formatUsd(delta.totalCost)}`);
+    messageParts.push(
+      translateDesktop(
+        `成本 +${formatUsd(delta.totalCost)}`,
+        `Cost +${formatUsd(delta.totalCost)}`
+      )
+    );
   }
 
   showNativeNotification({
-    title: 'OpenClaw usage updated',
-    body: `${messageParts.join(', ')}\nTotal cost ${formatUsd(currentStats.totalCost)}`,
+    title: translateDesktop('OpenClaw 用量已更新', 'OpenClaw usage updated'),
+    body: `${messageParts.join(
+      translateDesktop('，', ', ')
+    )}\n${translateDesktop('累计成本', 'Total cost')} ${formatUsd(currentStats.totalCost)}`,
   });
 
   lastNotifiedStatsSnapshot = currentStats;
@@ -643,6 +675,12 @@ async function startBackend() {
   }
 
   await backendModule.start({ port });
+  if (typeof backendModule.setDesktopBridge === 'function') {
+    backendModule.setDesktopBridge({
+      handleCloseChoice: (action) => handleDesktopCloseChoice(action),
+      syncPreferences: () => syncDesktopPreferences(),
+    });
+  }
   await waitForHealth(port);
 
   backendPort = port;
@@ -655,10 +693,15 @@ async function stopBackend() {
   lastNotifiedStatsSnapshot = null;
   lastCostsNotificationAt = 0;
   trayHintShown = false;
+  isHandlingCloseChoice = false;
 
   if (tray) {
     tray.destroy();
     tray = null;
+  }
+
+  if (backendModule && typeof backendModule.clearDesktopBridge === 'function') {
+    backendModule.clearDesktopBridge();
   }
 
   if (!backendModule || typeof backendModule.stop !== 'function') {
@@ -724,7 +767,7 @@ async function createMainWindow() {
     }
 
     event.preventDefault();
-    void handleMainWindowClose(window);
+    handleMainWindowClose();
   });
 
   window.on('closed', () => {

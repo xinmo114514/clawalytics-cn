@@ -9,6 +9,7 @@ import {
   DesktopWindowChrome,
   isWindowsDesktopShell,
 } from '@/components/layout/desktop-window-chrome'
+import { DesktopCloseDialog } from '@/components/layout/desktop-close-dialog'
 import { SkipToMain } from '@/components/skip-to-main'
 import { useWebSocket } from '@/lib/ws'
 
@@ -30,6 +31,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
         >
           <SkipToMain />
           {desktopShell && <DesktopWindowChrome />}
+          {desktopShell && <DesktopCloseDialog />}
           <AppSidebar />
           <SidebarInset
             className={cn(

@@ -6,12 +6,12 @@ export function LanguageSwitch() {
   const { locale, setLocale } = useLocale()
 
   return (
-    <div className='flex items-center rounded-full border p-1'>
+    <div className='flex items-center rounded-full border border-white/12 bg-white/45 p-1 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.72)] backdrop-blur-xl dark:bg-white/8'>
       <Languages className='mx-1 size-4 text-muted-foreground' />
       <Button
         variant={locale === 'zh' ? 'secondary' : 'ghost'}
         size='sm'
-        className='h-7 rounded-full px-2 text-xs'
+        className='h-7 rounded-full px-2.5 text-xs'
         onClick={() => setLocale('zh')}
       >
         中文
@@ -19,10 +19,10 @@ export function LanguageSwitch() {
       <Button
         variant={locale === 'en' ? 'secondary' : 'ghost'}
         size='sm'
-        className='h-7 rounded-full px-2 text-xs'
+        className='h-7 rounded-full px-2.5 text-xs'
         onClick={() => setLocale('en')}
       >
-        EN
+        English
       </Button>
     </div>
   )

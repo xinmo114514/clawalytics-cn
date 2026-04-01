@@ -1,21 +1,5 @@
 /* Jersey 15 Font - Pixel style for headers */
-@font-face {
-  font-family: 'Jersey 15';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/jersey15-latin-ext.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-
-@font-face {
-  font-family: 'Jersey 15';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/jersey15-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Jersey+15&display=swap');
 
 :root {
   --radius: 0.625rem;
@@ -42,6 +26,9 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
+
+  --windows-accent: oklch(0.55 0.2 265);
+  --windows-accent-dark: oklch(0.55 0.2 265);
 
   --sidebar: oklch(0.97 0.005 250);
   --sidebar-foreground: var(--foreground);
@@ -80,6 +67,90 @@
 
   --sidebar: oklch(0.12 0.005 285);
   --sidebar-accent: oklch(0.18 0.008 285);
+}
+
+:root.color-blue {
+  --primary: oklch(0.208 0.042 265.755);
+  --primary-foreground: oklch(0.984 0.003 247.858);
+  --ring: oklch(0.704 0.04 256.788);
+  --chart-1: oklch(0.646 0.222 41.116);
+}
+
+:root.color-purple {
+  --primary: oklch(0.558 0.221 291.231);
+  --primary-foreground: oklch(0.985 0.003 247.858);
+  --ring: oklch(0.67 0.15 291.231);
+  --chart-1: oklch(0.558 0.221 291.231);
+}
+
+:root.color-green {
+  --primary: oklch(0.596 0.172 148.233);
+  --primary-foreground: oklch(0.985 0.003 247.858);
+  --ring: oklch(0.596 0.172 148.233);
+  --chart-1: oklch(0.596 0.172 148.233);
+}
+
+:root.color-orange {
+  --primary: oklch(0.705 0.213 47.739);
+  --primary-foreground: oklch(0.985 0.003 247.858);
+  --ring: oklch(0.705 0.213 47.739);
+  --chart-1: oklch(0.705 0.213 47.739);
+}
+
+:root.color-pink {
+  --primary: oklch(0.584 0.244 352.323);
+  --primary-foreground: oklch(0.985 0.003 247.858);
+  --ring: oklch(0.584 0.244 352.323);
+  --chart-1: oklch(0.584 0.244 352.323);
+}
+
+.dark.color-blue {
+  --primary: oklch(0.92 0.01 285);
+  --primary-foreground: oklch(0.18 0.005 285);
+  --ring: oklch(0.55 0.01 285);
+  --chart-1: oklch(0.488 0.243 264.376);
+}
+
+.dark.color-purple {
+  --primary: oklch(0.75 0.16 291.231);
+  --primary-foreground: oklch(0.985 0.003 247.858);
+  --ring: oklch(0.67 0.15 291.231);
+  --chart-1: oklch(0.558 0.221 291.231);
+}
+
+.dark.color-green {
+  --primary: oklch(0.78 0.15 148.233);
+  --primary-foreground: oklch(0.18 0.005 285);
+  --ring: oklch(0.596 0.172 148.233);
+  --chart-1: oklch(0.596 0.172 148.233);
+}
+
+.dark.color-orange {
+  --primary: oklch(0.85 0.18 47.739);
+  --primary-foreground: oklch(0.18 0.005 285);
+  --ring: oklch(0.705 0.213 47.739);
+  --chart-1: oklch(0.705 0.213 47.739);
+}
+
+.dark.color-pink {
+  --primary: oklch(0.78 0.22 352.323);
+  --primary-foreground: oklch(0.18 0.005 285);
+  --ring: oklch(0.584 0.244 352.323);
+  --chart-1: oklch(0.584 0.244 352.323);
+}
+
+:root.color-windows {
+  --primary: var(--windows-accent);
+  --primary-foreground: oklch(0.984 0.003 247.858);
+  --ring: var(--windows-accent);
+  --chart-1: var(--windows-accent);
+}
+
+.dark.color-windows {
+  --primary: var(--windows-accent-dark);
+  --primary-foreground: oklch(0.18 0.005 285);
+  --ring: var(--windows-accent-dark);
+  --chart-1: var(--windows-accent-dark);
 }
 
 @theme inline {

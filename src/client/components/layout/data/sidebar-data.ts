@@ -1,4 +1,4 @@
-import { DollarSign, HelpCircle, Wallet } from 'lucide-react'
+import { DollarSign, HelpCircle, Settings, Wallet } from 'lucide-react'
 import { HomeIcon } from '@/components/icons/home-icon'
 import { SessionsIcon } from '@/components/icons/sessions-icon'
 import { SecurityIcon } from '@/components/icons/security-icon'
@@ -59,6 +59,16 @@ export function getSidebarData(
             title: text('帮助中心', 'Help Center'),
             url: '/help-center',
             icon: HelpCircle,
+          },
+        ],
+      },
+      {
+        title: text('系统', 'System'),
+        items: [
+          {
+            title: text('设置', 'Settings'),
+            url: '/settings',
+            icon: Settings,
           },
         ],
       },

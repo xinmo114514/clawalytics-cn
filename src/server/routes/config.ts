@@ -1,5 +1,8 @@
 import { Router, type Request, type Response } from 'express';
+import fs from 'fs';
 import { loadConfig, saveConfig, getConfigPath, type Config } from '../config/loader.js';
+import { shutdownAnalyticsService, initializeAnalyticsService } from '../services/analytics-service.js';
+import { stopSecurityWatcher, startSecurityWatcher } from '../parser/security-watcher.js';
 
 const router: Router = Router();
 
@@ -60,6 +63,52 @@ router.post('/rates/:provider/:model', (req: Request, res: Response): void => {
   } catch (error) {
     console.error('Error updating rate:', error);
     res.status(500).json({ error: 'Failed to update rate' });
+  }
+});
+
+router.post('/openclaw/reload', (req: Request, res: Response): void => {
+  try {
+    const config = loadConfig();
+    const openClawPath = config.openClawPath;
+
+    if (!openClawPath) {
+      res.status(400).json({ error: 'OpenClaw path not configured' });
+      return;
+    }
+
+    if (!fs.existsSync(openClawPath)) {
+      res.status(400).json({ error: 'OpenClaw directory does not exist', path: openClawPath });
+      return;
+    }
+
+    shutdownAnalyticsService();
+
+    if (config.securityAlertsEnabled) {
+      stopSecurityWatcher();
+    }
+
+    initializeAnalyticsService(openClawPath);
+
+    if (config.securityAlertsEnabled) {
+      startSecurityWatcher({
+        openClawPath: config.openClawPath,
+        gatewayLogsPath: config.gatewayLogsPath,
+        enabled: config.securityAlertsEnabled,
+      });
+    }
+
+    const { getAnalyticsService } = require('../services/analytics-service.js');
+    const sessionCount = getAnalyticsService().getSessionCount();
+
+    res.json({
+      success: true,
+      sessionCount,
+      openClawPath,
+      message: `Successfully reloaded OpenClaw data from ${openClawPath}`,
+    });
+  } catch (error) {
+    console.error('Error reloading OpenClaw data:', error);
+    res.status(500).json({ error: 'Failed to reload OpenClaw data' });
   }
 });
 

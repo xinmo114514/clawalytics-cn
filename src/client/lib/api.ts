@@ -85,6 +85,10 @@ export interface Config {
     monthlyBudget: number;
   };
   configPath?: string;
+  openClawPath?: string;
+  gatewayLogsPath?: string;
+  securityAlertsEnabled?: boolean;
+  pricingEndpoint?: string | null;
 }
 
 export interface DesktopPreferences {

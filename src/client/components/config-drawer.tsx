@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils'
 import { useLocale } from '@/context/locale-provider'
 import { useDirection } from '@/context/direction-provider'
 import { type Collapsible, useLayout } from '@/context/layout-provider'
-import { useTheme } from '@/context/theme-provider'
+import { useTheme, colorThemes } from '@/context/theme-provider'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -101,6 +101,7 @@ export function ConfigDrawer() {
         <div className='space-y-6 overflow-y-auto px-4'>
           {desktopShell && <DesktopConfig />}
           <ThemeConfig />
+          <ColorThemeConfig />
           <SidebarConfig />
           <LayoutConfig />
           <DirConfig />
@@ -458,6 +459,52 @@ function ThemeConfig() {
           '选择跟随系统、浅色模式或深色模式',
           'Choose between system preference, light mode, or dark mode'
         )}
+      </div>
+    </div>
+  )
+}
+
+function ColorThemeConfig() {
+  const { defaultColorTheme, colorTheme, setColorTheme } = useTheme()
+  const { text } = useLocale()
+
+  const colorStyles: Record<string, string> = {
+    blue: 'bg-blue-500',
+    purple: 'bg-purple-500',
+    green: 'bg-green-500',
+    orange: 'bg-orange-500',
+    pink: 'bg-pink-500',
+  }
+
+  return (
+    <div>
+      <SectionTitle
+        title={text('主色调', 'Accent Color')}
+        showReset={colorTheme !== defaultColorTheme}
+        onReset={() => setColorTheme(defaultColorTheme)}
+      />
+      <div className='flex gap-3'>
+        {colorThemes.map((theme) => {
+          const isActive = colorTheme === theme.value
+          return (
+            <button
+              key={theme.value}
+              onClick={() => setColorTheme(theme.value)}
+              className={cn(
+                'flex h-12 w-12 items-center justify-center rounded-lg border-2 transition-all',
+                isActive
+                  ? 'border-ring ring-2 ring-ring ring-offset-2 ring-offset-background'
+                  : 'border-border hover:border-muted-foreground'
+              )}
+              aria-label={text(theme.zh, theme.en)}
+              aria-pressed={isActive}
+            >
+              <span
+                className={cn('h-6 w-6 rounded-full', colorStyles[theme.value])}
+              />
+            </button>
+          )
+        })}
       </div>
     </div>
   )

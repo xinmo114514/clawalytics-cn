@@ -90,9 +90,12 @@ export interface Config {
 export interface DesktopPreferences {
   locale: 'zh' | 'en';
   closeAction: 'ask' | 'tray' | 'quit';
+  launchOnStartup: boolean;
+  startupMode: 'window' | 'tray';
 }
 
 export type DesktopCloseChoiceAction = 'tray' | 'quit' | 'cancel';
+export type DesktopStartupMode = DesktopPreferences['startupMode'];
 
 // API functions
 export async function getStats(): Promise<Stats> {

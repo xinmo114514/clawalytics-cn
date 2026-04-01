@@ -28,6 +28,9 @@ const DESKTOP_PREFERENCES_FILE = 'desktop-preferences.json';
 const CLOSE_ACTION_ASK = 'ask';
 const CLOSE_ACTION_TRAY = 'tray';
 const CLOSE_ACTION_QUIT = 'quit';
+const STARTUP_MODE_WINDOW = 'window';
+const STARTUP_MODE_TRAY = 'tray';
+const STARTUP_HIDDEN_ARG = '--clawalytics-start-hidden';
 
 let backendModule = null;
 let backendPort = null;
@@ -48,6 +51,8 @@ let forceQuitTimer = null;
 let desktopPreferences = {
   locale: 'en',
   closeAction: CLOSE_ACTION_ASK,
+  launchOnStartup: false,
+  startupMode: STARTUP_MODE_WINDOW,
 };
 
 const integerFormatter = new Intl.NumberFormat('en-US');
@@ -134,6 +139,14 @@ function normalizeCloseAction(value) {
   return CLOSE_ACTION_ASK;
 }
 
+function normalizeLaunchOnStartup(value) {
+  return value === true;
+}
+
+function normalizeStartupMode(value) {
+  return value === STARTUP_MODE_TRAY ? STARTUP_MODE_TRAY : STARTUP_MODE_WINDOW;
+}
+
 function getSavedLocale() {
   loadDesktopPreferences();
   return normalizeLocale(desktopPreferences?.locale);
@@ -142,6 +155,16 @@ function getSavedLocale() {
 function getSavedCloseAction() {
   loadDesktopPreferences();
   return normalizeCloseAction(desktopPreferences?.closeAction);
+}
+
+function getSavedLaunchOnStartup() {
+  loadDesktopPreferences();
+  return normalizeLaunchOnStartup(desktopPreferences?.launchOnStartup);
+}
+
+function getSavedStartupMode() {
+  loadDesktopPreferences();
+  return normalizeStartupMode(desktopPreferences?.startupMode);
 }
 
 function translateDesktop(zh, en) {
@@ -167,6 +190,8 @@ function loadDesktopPreferences() {
       desktopPreferences = {
         locale: 'en',
         closeAction: CLOSE_ACTION_ASK,
+        launchOnStartup: false,
+        startupMode: STARTUP_MODE_WINDOW,
       };
       return;
     }
@@ -175,12 +200,16 @@ function loadDesktopPreferences() {
     desktopPreferences = {
       locale: normalizeLocale(parsed?.locale),
       closeAction: normalizeCloseAction(parsed?.closeAction),
+      launchOnStartup: normalizeLaunchOnStartup(parsed?.launchOnStartup),
+      startupMode: normalizeStartupMode(parsed?.startupMode),
     };
   } catch (error) {
     console.error('Failed to load desktop preferences:', error);
     desktopPreferences = {
       locale: 'en',
       closeAction: CLOSE_ACTION_ASK,
+      launchOnStartup: false,
+      startupMode: STARTUP_MODE_WINDOW,
     };
   }
 }
@@ -202,6 +231,28 @@ function setCloseActionPreference(action) {
   };
   saveDesktopPreferences();
   updateTrayMenu();
+}
+
+function getStartupLaunchArgs() {
+  return getSavedStartupMode() === STARTUP_MODE_TRAY
+    ? [STARTUP_HIDDEN_ARG]
+    : [];
+}
+
+function syncLaunchOnStartupSettings() {
+  if (!app.isPackaged) {
+    return;
+  }
+
+  app.setLoginItemSettings({
+    openAtLogin: getSavedLaunchOnStartup(),
+    path: process.execPath,
+    args: getStartupLaunchArgs(),
+  });
+}
+
+function shouldStartHidden() {
+  return process.argv.includes(STARTUP_HIDDEN_ARG);
 }
 
 function showMainWindow() {
@@ -352,6 +403,7 @@ function requestAppQuit() {
 
 function syncDesktopPreferences() {
   loadDesktopPreferences();
+  syncLaunchOnStartupSettings();
   updateTrayMenu();
 }
 
@@ -720,6 +772,7 @@ async function stopBackend() {
 
 async function createMainWindow() {
   const port = await startBackend();
+  const startHidden = shouldStartHidden();
 
   const window = new BrowserWindow({
     width: 1440,
@@ -758,7 +811,9 @@ async function createMainWindow() {
   window.setMenuBarVisibility(false);
 
   window.once('ready-to-show', () => {
-    window.show();
+    if (!startHidden) {
+      window.show();
+    }
   });
 
   window.on('close', (event) => {
@@ -804,6 +859,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     app.setAppUserModelId(APP_ID);
     loadDesktopPreferences();
+    syncLaunchOnStartupSettings();
     Menu.setApplicationMenu(null);
     createTray();
     await createMainWindow();

@@ -7,6 +7,7 @@ import {
   type DesktopCloseAction,
   type DesktopCloseChoiceAction,
   type DesktopLocale,
+  type DesktopStartupMode,
 } from '../services/desktop-service.js';
 
 const router: Router = Router();
@@ -25,11 +26,15 @@ router.post('/preferences', (req: Request, res: Response): void => {
     const updates = req.body as Partial<{
       locale: DesktopLocale;
       closeAction: DesktopCloseAction;
+      launchOnStartup: boolean;
+      startupMode: DesktopStartupMode;
     }>;
 
     const preferences = saveDesktopPreferences({
       locale: updates.locale,
       closeAction: updates.closeAction,
+      launchOnStartup: updates.launchOnStartup,
+      startupMode: updates.startupMode,
     });
 
     void notifyDesktopPreferencesChanged(preferences);

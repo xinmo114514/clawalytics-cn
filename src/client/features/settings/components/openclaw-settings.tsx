@@ -94,6 +94,18 @@ export function OpenClawSettings() {
     setOpenClawPath(defaultPath)
   }
 
+  const handleSelectFolder = async () => {
+    if (window.electronAPI) {
+      const selectedPath = await window.electronAPI.selectFolder()
+      if (selectedPath) {
+        setOpenClawPath(selectedPath)
+        setValidationStatus('idle')
+      }
+    } else {
+      toast.error(text('文件夹选择器仅在桌面应用中可用', 'Folder selection is only available in the desktop app'))
+    }
+  }
+
   const getDefaultOpenClawPath = () => {
     const platform = navigator.platform.toLowerCase()
     const home = getHomeDirectory()
@@ -158,10 +170,17 @@ export function OpenClawSettings() {
             </div>
             <Button
               variant='outline'
-              onClick={handleResetToDefault}
+              onClick={handleSelectFolder}
               disabled={isLoading}
             >
               <FolderOpen className='mr-2 h-4 w-4' />
+              {text('浏览', 'Browse')}
+            </Button>
+            <Button
+              variant='outline'
+              onClick={handleResetToDefault}
+              disabled={isLoading}
+            >
               {text('默认', 'Default')}
             </Button>
           </div>

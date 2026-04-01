@@ -2,11 +2,12 @@ import {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
   Menu,
-  Notification,
-  Tray,
   nativeImage,
   shell,
+  systemPreferences,
+  Tray,
 } from 'electron';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -62,6 +63,87 @@ const usdFormatter = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 4,
 });
+
+function hexToOklch(hex) {
+  if (!hex || typeof hex !== 'string') {
+    return null;
+  }
+
+  const cleanHex = hex.replace('#', '');
+  if (!/^[0-9A-Fa-f]{6}$/.test(cleanHex)) {
+    return null;
+  }
+
+  const r = parseInt(cleanHex.substr(0, 2), 16) / 255;
+  const g = parseInt(cleanHex.substr(2, 2), 16) / 255;
+  const b = parseInt(cleanHex.substr(4, 2), 16) / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+
+  let h = 0;
+  let s = 0;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+
+    switch (max) {
+      case r:
+        h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        break;
+      case g:
+        h = ((b - r) / d + 2) / 6;
+        break;
+      case b:
+        h = ((r - g) / d + 4) / 6;
+        break;
+    }
+  }
+
+  const hDeg = h * 360;
+
+  return `oklch(0.55 0.2 ${hDeg.toFixed(0)})`;
+}
+
+function getWindowsAccentColor() {
+  if (!isWindows) {
+    return null;
+  }
+
+  try {
+    const accentColorHex = systemPreferences.getAccentColor();
+    if (!accentColorHex) {
+      return null;
+    }
+
+    return hexToOklch(accentColorHex);
+  } catch (error) {
+    console.error('Failed to get Windows accent color:', error);
+    return null;
+  }
+}
+
+function setupWindowsAccentColorListener() {
+  if (!isWindows) {
+    return;
+  }
+
+  let lastAccentColor = getWindowsAccentColor();
+
+  setInterval(() => {
+    const currentAccentColor = getWindowsAccentColor();
+
+    if (currentAccentColor && currentAccentColor !== lastAccentColor) {
+      lastAccentColor = currentAccentColor;
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('windows-accent-color-changed', currentAccentColor);
+      }
+    }
+  }, 1000);
+}
 
 function getAppAssetPath(...segments) {
   return path.join(app.getAppPath(), ...segments);
@@ -774,6 +856,8 @@ async function createMainWindow() {
   const port = await startBackend();
   const startHidden = shouldStartHidden();
 
+  const preloadPath = getAppAssetPath('electron', 'preload.mjs');
+
   const window = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -798,8 +882,9 @@ async function createMainWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      sandbox: false,
       spellcheck: false,
+      preload: preloadPath,
     },
   });
 
@@ -862,6 +947,26 @@ if (!app.requestSingleInstanceLock()) {
     syncLaunchOnStartupSettings();
     Menu.setApplicationMenu(null);
     createTray();
+
+    ipcMain.handle('get-windows-accent-color', () => {
+      return getWindowsAccentColor();
+    });
+
+    ipcMain.handle('select-folder', async () => {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory'],
+        title: 'Select OpenClaw Directory',
+      });
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return null;
+      }
+
+      return result.filePaths[0];
+    });
+
+    setupWindowsAccentColorListener();
+
     await createMainWindow();
 
     app.on('activate', () => {

@@ -115,7 +115,9 @@ class AnalyticsService {
   private _modelUsage: Map<string, { provider: string; model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number; cost: number; requestCount: number }> | null = null;
 
   initialize(openClawPath?: string): void {
+    console.log('=== AnalyticsService.initialize ===');
     const agentConfigPath = openClawPath || path.join(os.homedir(), '.openclaw');
+    console.log('Using OpenClaw path:', agentConfigPath);
 
     if (this.initialized) {
       console.log('AnalyticsService already initialized, stopping previous instance...');
@@ -130,7 +132,9 @@ class AnalyticsService {
 
     // Load agents
     const agents = loadAgents(agentConfigPath);
+    console.log(`Found ${agents.length} agent(s)`);
     for (const agent of agents) {
+      console.log(`Loading agent: ${agent.name} (${agent.id})`);
       this.agents.set(agent.id, agent);
       this.loadAgentSessions(agentConfigPath, agent);
     }
@@ -176,10 +180,15 @@ class AnalyticsService {
 
   private loadAgentSessions(openClawPath: string, agent: OpenClawAgent): void {
     const agentPath = path.join(openClawPath, 'agents', agent.id);
-    if (!fs.existsSync(agentPath)) return;
+    console.log(`Checking agent path: ${agentPath}`);
+    if (!fs.existsSync(agentPath)) {
+      console.log(`Agent path does not exist: ${agentPath}`);
+      return;
+    }
 
     // Load session metadata from sessions.json for channel info
     const sessionMetas = loadSessionIndex(agentPath);
+    console.log(`Found ${sessionMetas.length} session metadata entries for agent ${agent.id}`);
     const metaBySessionId = new Map<string, SessionMetadata>();
     for (const meta of sessionMetas) {
       metaBySessionId.set(meta.id, meta);
@@ -187,6 +196,7 @@ class AnalyticsService {
 
     // Parse all JSONL files
     const files = listSessionFiles(agentPath);
+    console.log(`Found ${files.length} session file(s) for agent ${agent.id}`);
     let parsed = 0;
 
     for (const filePath of files) {

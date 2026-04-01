@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import fs from 'fs';
 import { loadConfig, saveConfig, getConfigPath, type Config } from '../config/loader.js';
-import { shutdownAnalyticsService, initializeAnalyticsService } from '../services/analytics-service.js';
+import { shutdownAnalyticsService, initializeAnalyticsService, getAnalyticsService } from '../services/analytics-service.js';
 import { stopSecurityWatcher, startSecurityWatcher } from '../parser/security-watcher.js';
 
 const router: Router = Router();
@@ -68,28 +68,41 @@ router.post('/rates/:provider/:model', (req: Request, res: Response): void => {
 
 router.post('/openclaw/reload', (req: Request, res: Response): void => {
   try {
+    console.log('=== OpenClaw Reload Request ===');
     const config = loadConfig();
     const openClawPath = config.openClawPath;
 
+    console.log('Configured OpenClaw path:', openClawPath);
+
     if (!openClawPath) {
+      console.log('Error: OpenClaw path not configured');
       res.status(400).json({ error: 'OpenClaw path not configured' });
       return;
     }
 
     if (!fs.existsSync(openClawPath)) {
+      console.log('Error: OpenClaw directory does not exist:', openClawPath);
       res.status(400).json({ error: 'OpenClaw directory does not exist', path: openClawPath });
       return;
     }
 
+    console.log('Directory exists. Checking contents...');
+    const contents = fs.readdirSync(openClawPath);
+    console.log('Directory contents:', contents);
+
+    console.log('Shutting down analytics service...');
     shutdownAnalyticsService();
 
     if (config.securityAlertsEnabled) {
+      console.log('Stopping security watcher...');
       stopSecurityWatcher();
     }
 
+    console.log('Initializing analytics service with path:', openClawPath);
     initializeAnalyticsService(openClawPath);
 
     if (config.securityAlertsEnabled) {
+      console.log('Starting security watcher...');
       startSecurityWatcher({
         openClawPath: config.openClawPath,
         gatewayLogsPath: config.gatewayLogsPath,
@@ -97,8 +110,8 @@ router.post('/openclaw/reload', (req: Request, res: Response): void => {
       });
     }
 
-    const { getAnalyticsService } = require('../services/analytics-service.js');
     const sessionCount = getAnalyticsService().getSessionCount();
+    console.log('Session count after reload:', sessionCount);
 
     res.json({
       success: true,
@@ -108,7 +121,7 @@ router.post('/openclaw/reload', (req: Request, res: Response): void => {
     });
   } catch (error) {
     console.error('Error reloading OpenClaw data:', error);
-    res.status(500).json({ error: 'Failed to reload OpenClaw data' });
+    res.status(500).json({ error: 'Failed to reload OpenClaw data', details: error instanceof Error ? error.message : String(error) });
   }
 });
 

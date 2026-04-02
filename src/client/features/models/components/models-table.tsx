@@ -35,17 +35,17 @@ export function ModelsTable({ models }: ModelsTableProps) {
   const getProviderColor = (provider: string): string => {
     const colors: Record<string, string> = {
       anthropic:
-        'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+        'bg-warning/10 text-warning',
       openai:
-        'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+        'bg-success/10 text-success',
       google:
-        'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+        'bg-info/10 text-info',
       moonshot:
-        'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+        'bg-chart-3/10 text-chart-3',
       deepseek:
-        'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300',
+        'bg-chart-4/10 text-chart-4',
       openrouter:
-        'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300',
+        'bg-chart-5/10 text-chart-5',
       meta:
         'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
       mistral:
@@ -54,7 +54,7 @@ export function ModelsTable({ models }: ModelsTableProps) {
 
     return (
       colors[provider.toLowerCase()] ||
-      'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300'
+      'bg-muted/10 text-muted-foreground'
     )
   }
 
@@ -104,7 +104,7 @@ export function ModelsTable({ models }: ModelsTableProps) {
               <TableCell className='text-right tabular-nums'>
                 {formatNumber(model.requestCount)}
               </TableCell>
-              <TableCell className='text-right tabular-nums font-medium text-red-600 dark:text-red-400'>
+              <TableCell className='text-right tabular-nums font-medium text-primary'>
                 {formatCurrency(model.cost)}
               </TableCell>
             </TableRow>

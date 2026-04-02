@@ -280,17 +280,17 @@ function BudgetBar({
 
   const color =
     period.percent >= 90
-      ? 'bg-red-500'
+      ? 'bg-primary'
       : period.percent >= 70
-        ? 'bg-yellow-500'
-        : 'bg-green-500'
+        ? 'bg-warning'
+        : 'bg-success'
 
   const textColor =
     period.percent >= 90
-      ? 'text-red-600 dark:text-red-400'
+      ? 'text-primary'
       : period.percent >= 70
-        ? 'text-yellow-600 dark:text-yellow-400'
-        : 'text-green-600 dark:text-green-400'
+        ? 'text-warning'
+        : 'text-success'
 
   return (
     <Card className='p-4'>

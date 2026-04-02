@@ -161,9 +161,9 @@ export function OpenClawSettings() {
               {validationStatus !== 'idle' && (
                 <div className='absolute right-3 top-1/2 -translate-y-1/2'>
                   {validationStatus === 'valid' ? (
-                    <Check className='h-4 w-4 text-green-500' />
+                    <Check className='h-4 w-4 text-success' />
                   ) : (
-                    <X className='h-4 w-4 text-red-500' />
+                    <X className='h-4 w-4 text-destructive' />
                   )}
                 </div>
               )}

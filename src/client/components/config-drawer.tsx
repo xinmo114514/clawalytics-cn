@@ -392,7 +392,7 @@ function RadioGroupItem({
       >
         <CircleCheck
           className={cn(
-            'size-6 fill-primary stroke-white',
+            'size-6 fill-primary stroke-[hsl(var(--primary-foreground))]',
             'group-data-[state=unchecked]:hidden',
             'absolute top-0 right-0 translate-x-1/2 -translate-y-1/2'
           )}
@@ -469,11 +469,11 @@ function ColorThemeConfig() {
   const { text } = useLocale()
 
   const colorStyles: Record<string, string> = {
-    blue: 'bg-blue-500',
-    purple: 'bg-purple-500',
-    green: 'bg-green-500',
-    orange: 'bg-orange-500',
-    pink: 'bg-pink-500',
+    blue: 'bg-[hsl(var(--chart-1))]',
+    purple: 'bg-[hsl(var(--chart-2))]',
+    green: 'bg-[hsl(var(--chart-3))]',
+    orange: 'bg-[hsl(var(--chart-4))]',
+    pink: 'bg-[hsl(var(--chart-5))]',
   }
 
   return (

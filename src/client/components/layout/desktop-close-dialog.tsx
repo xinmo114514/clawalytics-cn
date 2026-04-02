@@ -72,15 +72,15 @@ export function DesktopCloseDialog() {
         onInteractOutside={(event) => {
           event.preventDefault()
         }}
-        className='max-w-[min(92vw,38rem)] overflow-hidden border-white/18 bg-transparent p-0 shadow-[0_45px_120px_-36px_rgba(15,23,42,0.62)]'
+        className='max-w-[min(92vw,38rem)] overflow-hidden border-white/18 bg-transparent p-0 shadow-[0_45px_120px_-36px_hsl(var(--foreground)_/_0.62)]'
       >
         <div className='relative overflow-hidden rounded-[30px] border border-white/18 bg-[linear-gradient(160deg,oklch(0.985_0.003_247.858_/_0.82),oklch(0.96_0.01_250_/_0.68))] text-foreground backdrop-blur-3xl dark:bg-[linear-gradient(165deg,oklch(0.21_0.01_260_/_0.86),oklch(0.16_0.01_260_/_0.78))]'>
-          <div className='pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.32),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(148,163,184,0.12),transparent_40%)]' />
+          <div className='pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--background)_/_0.32),transparent_42%),radial-gradient(circle_at_bottom_right,hsl(var(--muted-foreground)_/_0.12),transparent_40%)]' />
 
           <div className='relative space-y-6 p-6 sm:p-7'>
             <DialogHeader className='space-y-3 text-left'>
               <div className='flex items-start gap-4'>
-                <div className='flex size-12 shrink-0 items-center justify-center rounded-2xl border border-white/18 bg-white/45 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.8)] dark:bg-white/10'>
+                <div className='flex size-12 shrink-0 items-center justify-center rounded-2xl border border-white/18 bg-white/45 shadow-[0_18px_40px_-26px_hsl(var(--foreground)_/_0.8)] dark:bg-white/10'>
                   <Sparkles className='size-5 text-foreground/80' />
                 </div>
                 <div className='space-y-2'>
@@ -104,7 +104,7 @@ export function DesktopCloseDialog() {
                 onClick={() => {
                   void submitChoice('tray')
                 }}
-                className='group flex min-h-32 flex-col items-start justify-between rounded-[24px] border border-white/16 bg-white/55 p-5 text-left shadow-[0_24px_60px_-42px_rgba(15,23,42,0.75)] transition duration-200 hover:-translate-y-0.5 hover:border-white/28 hover:bg-white/72 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white/8 dark:hover:bg-white/12'
+                className='group flex min-h-32 flex-col items-start justify-between rounded-[24px] border border-white/16 bg-white/55 p-5 text-left shadow-[0_24px_60px_-42px_hsl(var(--foreground)_/_0.75)] transition duration-200 hover:-translate-y-0.5 hover:border-white/28 hover:bg-white/72 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white/8 dark:hover:bg-white/12'
               >
                 <div className='flex size-11 items-center justify-center rounded-2xl border border-white/18 bg-white/55 text-foreground/85 dark:bg-white/10'>
                   <Minimize2 className='size-5' />
@@ -128,9 +128,9 @@ export function DesktopCloseDialog() {
                 onClick={() => {
                   void submitChoice('quit')
                 }}
-                className='group flex min-h-32 flex-col items-start justify-between rounded-[24px] border border-white/16 bg-[linear-gradient(180deg,rgba(255,255,255,0.62),rgba(255,241,242,0.86))] p-5 text-left shadow-[0_24px_60px_-42px_rgba(127,29,29,0.48)] transition duration-200 hover:-translate-y-0.5 hover:border-rose-200/70 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(255,228,230,0.92))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/35 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-[linear-gradient(180deg,rgba(64,16,22,0.72),rgba(42,12,18,0.9))] dark:hover:bg-[linear-gradient(180deg,rgba(82,24,32,0.78),rgba(54,16,24,0.94))]'
+                className='group flex min-h-32 flex-col items-start justify-between rounded-[24px] border border-white/16 bg-[linear-gradient(180deg,hsl(var(--destructive)/0.12),hsl(var(--destructive)/0.18))] p-5 text-left shadow-[0_24px_60px_-42px_hsl(var(--destructive)_/_0.48)] transition duration-200 hover:-translate-y-0.5 hover:border-destructive/30 hover:bg-[linear-gradient(180deg,hsl(var(--destructive)/0.18),hsl(var(--destructive)/0.24))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-[linear-gradient(180deg,hsl(var(--destructive)/0.45),hsl(var(--destructive)/0.55))] dark:hover:bg-[linear-gradient(180deg,hsl(var(--destructive)/0.55),hsl(var(--destructive)/0.65))]'
               >
-                <div className='flex size-11 items-center justify-center rounded-2xl border border-rose-200/55 bg-white/60 text-rose-600 dark:border-rose-500/18 dark:bg-white/10 dark:text-rose-300'>
+                <div className='flex size-11 items-center justify-center rounded-2xl border border-destructive/30 bg-white/60 text-destructive dark:border-destructive/25 dark:bg-white/10 dark:text-destructive-foreground'>
                   <LogOut className='size-5' />
                 </div>
                 <div className='space-y-1.5'>

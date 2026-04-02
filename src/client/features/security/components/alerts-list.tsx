@@ -34,29 +34,29 @@ AlertsList.displayName = 'AlertsList'
 
 const severityConfig = {
   critical: {
-    iconBg: 'bg-red-500',
-    textColor: 'text-red-500',
+    iconBg: 'bg-destructive',
+    textColor: 'text-destructive',
     icon: ShieldAlert,
     zh: '严重',
     en: 'Critical',
   },
   high: {
-    iconBg: 'bg-orange-500',
-    textColor: 'text-orange-500',
+    iconBg: 'bg-warning',
+    textColor: 'text-warning',
     icon: AlertTriangle,
     zh: '高',
     en: 'High',
   },
   medium: {
-    iconBg: 'bg-yellow-500',
-    textColor: 'text-yellow-500',
+    iconBg: 'bg-warning',
+    textColor: 'text-warning',
     icon: Bell,
     zh: '中',
     en: 'Medium',
   },
   low: {
-    iconBg: 'bg-gray-500',
-    textColor: 'text-gray-500',
+    iconBg: 'bg-muted-foreground',
+    textColor: 'text-muted-foreground',
     icon: Info,
     zh: '低',
     en: 'Low',

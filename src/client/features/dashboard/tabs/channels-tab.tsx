@@ -42,13 +42,13 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
     <div className='space-y-6'>
       <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('渠道总成本', 'Total Channel Cost')}
             </CardTitle>
-            <div className='rounded-full bg-red-500/10 p-2'>
-              <DollarSign className='h-4 w-4 text-red-500' />
+            <div className='rounded-full bg-primary/10 p-2'>
+              <DollarSign className='h-4 w-4 text-primary' />
             </div>
           </CardHeader>
           <CardContent>
@@ -59,7 +59,7 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
               </>
             ) : (
               <>
-                <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                <div className='text-2xl font-bold text-primary'>
                   {formatCurrency(channelStats?.totalCost ?? 0)}
                 </div>
                 <p className='text-xs text-muted-foreground'>
@@ -71,13 +71,13 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-rose-500/10 to-transparent' />
+          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('渠道数量', 'Channels')}
             </CardTitle>
-            <div className='rounded-full bg-rose-500/10 p-2'>
-              <MessageSquare className='h-4 w-4 text-rose-500' />
+            <div className='rounded-full bg-primary/10 p-2'>
+              <MessageSquare className='h-4 w-4 text-primary' />
             </div>
           </CardHeader>
           <CardContent>
@@ -88,7 +88,7 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
               </>
             ) : (
               <>
-                <div className='text-2xl font-bold text-rose-600 dark:text-rose-400'>
+                <div className='text-2xl font-bold text-primary'>
                   {channels.length}
                 </div>
                 <p className='text-xs text-muted-foreground'>
@@ -100,13 +100,13 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('总 Token 数', 'Total Tokens')}
             </CardTitle>
-            <div className='rounded-full bg-red-500/10 p-2'>
-              <Coins className='h-4 w-4 text-red-500' />
+            <div className='rounded-full bg-primary/10 p-2'>
+              <Coins className='h-4 w-4 text-primary' />
             </div>
           </CardHeader>
           <CardContent>
@@ -117,7 +117,7 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
               </>
             ) : (
               <>
-                <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                <div className='text-2xl font-bold text-primary'>
                   {formatNumber(totalInputTokens + totalOutputTokens)}
                 </div>
                 <p className='text-xs text-muted-foreground'>
@@ -132,13 +132,13 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('消息总数', 'Total Messages')}
             </CardTitle>
-            <div className='rounded-full bg-red-500/10 p-2'>
-              <Mail className='h-4 w-4 text-red-500' />
+            <div className='rounded-full bg-primary/10 p-2'>
+              <Mail className='h-4 w-4 text-primary' />
             </div>
           </CardHeader>
           <CardContent>
@@ -149,7 +149,7 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
               </>
             ) : (
               <>
-                <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                <div className='text-2xl font-bold text-primary'>
                   {formatNumber(channelStats?.totalMessages ?? 0)}
                 </div>
                 <p className='text-xs text-muted-foreground'>

@@ -233,13 +233,13 @@ export function SecurityPage() {
 
         <div className='mb-6 grid gap-4 sm:grid-cols-3'>
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('活跃设备', 'Active Devices')}
               </CardTitle>
-              <div className='rounded-full bg-red-500 p-2'>
-                <Smartphone className='h-4 w-4 text-white' />
+              <div className='rounded-full bg-primary p-2'>
+                <Smartphone className='h-4 w-4 text-primary-foreground' />
               </div>
             </CardHeader>
             <CardContent>
@@ -250,7 +250,7 @@ export function SecurityPage() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-red-500'>
+                  <div className='text-2xl font-bold text-primary'>
                     {dashboardStats?.activeDevices ?? 0}
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -262,13 +262,13 @@ export function SecurityPage() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('未确认告警', 'Unacknowledged Alerts')}
               </CardTitle>
-              <div className='rounded-full bg-red-500 p-2'>
-                <AlertTriangle className='h-4 w-4 text-white' />
+              <div className='rounded-full bg-primary p-2'>
+                <AlertTriangle className='h-4 w-4 text-primary-foreground' />
               </div>
             </CardHeader>
             <CardContent>
@@ -279,7 +279,7 @@ export function SecurityPage() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                  <div className='text-2xl font-bold text-primary'>
                     {dashboardStats?.unacknowledgedAlerts ?? 0}
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -291,13 +291,13 @@ export function SecurityPage() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('连接数（24 小时）', 'Connections (24h)')}
               </CardTitle>
-              <div className='rounded-full bg-red-500 p-2'>
-                <Link className='h-4 w-4 text-white' />
+              <div className='rounded-full bg-primary p-2'>
+                <Link className='h-4 w-4 text-primary-foreground' />
               </div>
             </CardHeader>
             <CardContent>
@@ -308,7 +308,7 @@ export function SecurityPage() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                  <div className='text-2xl font-bold text-primary'>
                     {dashboardStats?.recentConnections ?? 0}
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -325,22 +325,22 @@ export function SecurityPage() {
             <SeverityCard
               label={text('严重', 'Critical')}
               value={dashboardStats.alertsByLevel.critical}
-              className='border-l-red-500 text-red-600 dark:text-red-400'
+              className='border-l-destructive text-destructive'
             />
             <SeverityCard
               label={text('高', 'High')}
               value={dashboardStats.alertsByLevel.high}
-              className='border-l-orange-500 text-orange-600 dark:text-orange-400'
+              className='border-l-warning text-warning'
             />
             <SeverityCard
               label={text('中', 'Medium')}
               value={dashboardStats.alertsByLevel.medium}
-              className='border-l-yellow-500 text-yellow-600 dark:text-yellow-400'
+              className='border-l-warning text-warning'
             />
             <SeverityCard
               label={text('低', 'Low')}
               value={dashboardStats.alertsByLevel.low}
-              className='border-l-gray-400 text-gray-600 dark:text-gray-400'
+              className='border-l-muted-foreground text-muted-foreground'
             />
           </div>
         )}

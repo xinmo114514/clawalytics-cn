@@ -50,13 +50,13 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
     <div className='space-y-6'>
       <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('代理总成本', 'Total Agent Cost')}
             </CardTitle>
-            <div className='rounded-full bg-red-500/10 p-2'>
-              <DollarSign className='h-4 w-4 text-red-500' />
+            <div className='rounded-full bg-primary/10 p-2'>
+              <DollarSign className='h-4 w-4 text-primary' />
             </div>
           </CardHeader>
           <CardContent>
@@ -67,7 +67,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
               </>
             ) : (
               <>
-                <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                <div className='text-2xl font-bold text-primary'>
                   {formatCurrency(agentStats?.totalCost ?? 0)}
                 </div>
                 <p className='text-xs text-muted-foreground'>
@@ -79,13 +79,13 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-rose-500/10 to-transparent' />
+          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('代理数量', 'Agents')}
             </CardTitle>
-            <div className='rounded-full bg-rose-500/10 p-2'>
-              <Bot className='h-4 w-4 text-rose-500' />
+            <div className='rounded-full bg-primary/10 p-2'>
+              <Bot className='h-4 w-4 text-primary' />
             </div>
           </CardHeader>
           <CardContent>
@@ -96,7 +96,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
               </>
             ) : (
               <>
-                <div className='text-2xl font-bold text-rose-600 dark:text-rose-400'>
+                <div className='text-2xl font-bold text-primary'>
                   {agents.length}
                 </div>
                 <p className='text-xs text-muted-foreground'>
@@ -108,13 +108,13 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('总 Token 数', 'Total Tokens')}
             </CardTitle>
-            <div className='rounded-full bg-red-500/10 p-2'>
-              <Coins className='h-4 w-4 text-red-500' />
+            <div className='rounded-full bg-primary/10 p-2'>
+              <Coins className='h-4 w-4 text-primary' />
             </div>
           </CardHeader>
           <CardContent>
@@ -125,7 +125,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
               </>
             ) : (
               <>
-                <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                <div className='text-2xl font-bold text-primary'>
                   {formatNumber(totalInputTokens + totalOutputTokens)}
                 </div>
                 <p className='text-xs text-muted-foreground'>
@@ -140,13 +140,13 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('总会话数', 'Total Sessions')}
             </CardTitle>
-            <div className='rounded-full bg-red-500/10 p-2'>
-              <Activity className='h-4 w-4 text-red-500' />
+            <div className='rounded-full bg-primary/10 p-2'>
+              <Activity className='h-4 w-4 text-primary' />
             </div>
           </CardHeader>
           <CardContent>
@@ -157,7 +157,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
               </>
             ) : (
               <>
-                <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                <div className='text-2xl font-bold text-primary'>
                   {agentStats?.totalSessions ?? 0}
                 </div>
                 <p className='text-xs text-muted-foreground'>

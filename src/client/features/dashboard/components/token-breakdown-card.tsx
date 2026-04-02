@@ -6,6 +6,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
 import type { TokenBreakdown } from '@/lib/api'
 
 interface TokenBreakdownCardProps {
@@ -28,6 +29,7 @@ function formatTokenCount(value: number): string {
 
 export function TokenBreakdownCard({ data }: TokenBreakdownCardProps) {
   const { text } = useLocale()
+  const colors = useChartColors()
 
   if (!data) {
     return (
@@ -66,30 +68,44 @@ export function TokenBreakdownCard({ data }: TokenBreakdownCardProps) {
     )
   }
 
+  const defaultColors = [
+    'oklch(0.646 0.222 41.116)',
+    'oklch(0.6 0.118 184.704)',
+    'oklch(0.398 0.07 227.392)',
+    'oklch(0.828 0.189 84.429)',
+  ]
+
+  const chartColors = [
+    colors.chart1 || defaultColors[0],
+    colors.chart2 || defaultColors[1],
+    colors.chart3 || defaultColors[2],
+    colors.chart4 || defaultColors[3],
+  ]
+
   const items: TokenBarItem[] = [
     {
       label: text('输入', 'Input'),
       value: data.input,
       percentage: (data.input / total) * 100,
-      color: '#ef4444',
+      color: chartColors[0],
     },
     {
       label: text('输出', 'Output'),
       value: data.output,
       percentage: (data.output / total) * 100,
-      color: '#f43f5e',
+      color: chartColors[1],
     },
     {
       label: text('缓存读取', 'Cache (read)'),
       value: data.cacheRead,
       percentage: (data.cacheRead / total) * 100,
-      color: '#10b981',
+      color: chartColors[2],
     },
     {
       label: text('缓存写入', 'Cache (write)'),
       value: data.cacheCreation,
       percentage: (data.cacheCreation / total) * 100,
-      color: '#ec4899',
+      color: chartColors[3],
     },
   ].filter((item) => item.value > 0)
 

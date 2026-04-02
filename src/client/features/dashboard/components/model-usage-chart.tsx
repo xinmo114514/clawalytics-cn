@@ -1,21 +1,11 @@
 import { ResponsiveContainer, Tooltip, Treemap } from 'recharts'
 import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
 import type { ModelUsage } from '@/lib/api'
 
 interface ModelUsageChartProps {
   data: ModelUsage[]
 }
-
-const COLORS = [
-  '#dc2626',
-  '#2563eb',
-  '#d946ef',
-  '#f59e0b',
-  '#10b981',
-  '#8b5cf6',
-  '#f43f5e',
-  '#06b6d4',
-]
 
 function getModelShortName(model: string): string {
   if (model.includes('claude-opus-4')) return 'Opus 4'
@@ -99,7 +89,26 @@ function CustomTreemapContent({
 
 export function ModelUsageChart({ data }: ModelUsageChartProps) {
   const { text } = useLocale()
+  const colors = useChartColors()
   const totalCost = data.reduce((acc, item) => acc + item.cost, 0)
+
+  const defaultColors = [
+    'oklch(0.646 0.222 41.116)',
+    'oklch(0.6 0.118 184.704)',
+    'oklch(0.398 0.07 227.392)',
+    'oklch(0.828 0.189 84.429)',
+    'oklch(0.769 0.188 70.08)',
+    'oklch(0.488 0.243 264.376)',
+  ]
+
+  const chartColors = [
+    colors.chart1 || defaultColors[0],
+    colors.chart2 || defaultColors[1],
+    colors.chart3 || defaultColors[2],
+    colors.chart4 || defaultColors[3],
+    colors.chart5 || defaultColors[4],
+    colors.primary || defaultColors[5],
+  ]
 
   const chartData = data
     .filter((item) => item.cost > 0)
@@ -109,7 +118,7 @@ export function ModelUsageChart({ data }: ModelUsageChartProps) {
       fullName: `${item.provider}/${item.model}`,
       size: item.cost,
       percentage: totalCost > 0 ? (item.cost / totalCost) * 100 : 0,
-      fill: COLORS[idx % COLORS.length],
+      fill: chartColors[idx % chartColors.length],
       requests: item.request_count,
       inputTokens: item.input_tokens,
       outputTokens: item.output_tokens,

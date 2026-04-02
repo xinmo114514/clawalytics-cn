@@ -6,7 +6,7 @@ export function LanguageSwitch() {
   const { locale, setLocale } = useLocale()
 
   return (
-    <div className='flex items-center rounded-full border border-white/12 bg-white/45 p-1 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.72)] backdrop-blur-xl dark:bg-white/8'>
+    <div className='flex items-center rounded-full border border-white/12 bg-white/45 p-1 shadow-[0_16px_40px_-28px_hsl(var(--foreground)/0.72)] backdrop-blur-xl dark:bg-white/8'>
       <Languages className='mx-1 size-4 text-muted-foreground' />
       <Button
         variant={locale === 'zh' ? 'secondary' : 'ghost'}

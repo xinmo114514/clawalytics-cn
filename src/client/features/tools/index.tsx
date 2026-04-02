@@ -49,6 +49,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
 import { getOutboundCalls, getToolStats } from '@/lib/api'
 import { formatRelativeTime } from '@/lib/i18n'
 
@@ -61,19 +62,6 @@ const statusOptions = [
   { value: 'success', zh: '成功', en: 'Success' },
   { value: 'error', zh: '失败', en: 'Error' },
   { value: 'pending', zh: '处理中', en: 'Pending' },
-]
-
-const BAR_COLORS = [
-  '#7f1d1d',
-  '#991b1b',
-  '#b91c1c',
-  '#dc2626',
-  '#ef4444',
-  '#f87171',
-  '#fca5a5',
-  '#fecaca',
-  '#fee2e2',
-  '#fef2f2',
 ]
 
 function getStatusLabel(
@@ -93,9 +81,30 @@ function getStatusLabel(
 
 export function ToolsAnalytics() {
   const { locale, text } = useLocale()
+  const colors = useChartColors()
   const [page, setPage] = useState(0)
   const [toolNameSearch, setToolNameSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+
+  const defaultColors = [
+    'oklch(0.646 0.222 41.116)',
+    'oklch(0.6 0.118 184.704)',
+    'oklch(0.398 0.07 227.392)',
+    'oklch(0.828 0.189 84.429)',
+    'oklch(0.769 0.188 70.08)',
+    'oklch(0.488 0.243 264.376)',
+  ]
+
+  const chartColors = [
+    colors.chart1 || defaultColors[0],
+    colors.chart2 || defaultColors[1],
+    colors.chart3 || defaultColors[2],
+    colors.chart4 || defaultColors[3],
+    colors.chart5 || defaultColors[4],
+    colors.primary || defaultColors[5],
+  ]
+
+  const getBarColor = (index: number) => chartColors[index % chartColors.length]
 
   const filters = {
     limit: PAGE_SIZE,
@@ -185,13 +194,13 @@ export function ToolsAnalytics() {
 
         <div className='mb-6 grid gap-4 sm:grid-cols-3'>
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('总调用数', 'Total Calls')}
               </CardTitle>
-              <div className='rounded-full bg-red-500/10 p-2'>
-                <Activity className='h-4 w-4 text-red-500' />
+              <div className='rounded-full bg-primary/10 p-2'>
+                <Activity className='h-4 w-4 text-primary' />
               </div>
             </CardHeader>
             <CardContent>
@@ -202,7 +211,7 @@ export function ToolsAnalytics() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                  <div className='text-2xl font-bold text-primary'>
                     {total}
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -214,13 +223,13 @@ export function ToolsAnalytics() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('平均耗时', 'Average Duration')}
               </CardTitle>
-              <div className='rounded-full bg-red-500/10 p-2'>
-                <Clock className='h-4 w-4 text-red-500' />
+              <div className='rounded-full bg-primary/10 p-2'>
+                <Clock className='h-4 w-4 text-primary' />
               </div>
             </CardHeader>
             <CardContent>
@@ -231,7 +240,7 @@ export function ToolsAnalytics() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                  <div className='text-2xl font-bold text-primary'>
                     {avgDuration > 0 ? `${Math.round(avgDuration)}ms` : '-'}
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -243,13 +252,13 @@ export function ToolsAnalytics() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('失败率', 'Error Rate')}
               </CardTitle>
-              <div className='rounded-full bg-red-500/10 p-2'>
-                <AlertCircle className='h-4 w-4 text-red-500' />
+              <div className='rounded-full bg-primary/10 p-2'>
+                <AlertCircle className='h-4 w-4 text-primary' />
               </div>
             </CardHeader>
             <CardContent>
@@ -260,7 +269,7 @@ export function ToolsAnalytics() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                  <div className='text-2xl font-bold text-primary'>
                     {errorRate.toFixed(1)}%
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -333,7 +342,7 @@ export function ToolsAnalytics() {
                       {chartData.map((_, index) => (
                         <Cell
                           key={`cell-${index}`}
-                          fill={BAR_COLORS[index % BAR_COLORS.length]}
+                          fill={getBarColor(index)}
                         />
                       ))}
                     </Bar>
@@ -405,7 +414,7 @@ export function ToolsAnalytics() {
                               <span
                                 className={`font-jersey text-xs uppercase tracking-wider ${
                                   isError
-                                    ? 'text-red-600 dark:text-red-400'
+                                    ? 'text-primary'
                                     : isSuccess
                                       ? 'text-emerald-600 dark:text-emerald-400'
                                       : 'text-muted-foreground'
@@ -526,7 +535,7 @@ export function ToolsAnalytics() {
                               <span
                                 className={`font-jersey text-xs uppercase tracking-wider ${
                                   isError
-                                    ? 'text-red-600 dark:text-red-400'
+                                    ? 'text-primary'
                                     : isSuccess
                                       ? 'text-emerald-600 dark:text-emerald-400'
                                       : 'text-muted-foreground'

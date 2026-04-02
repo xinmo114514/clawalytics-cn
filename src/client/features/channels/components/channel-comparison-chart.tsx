@@ -9,31 +9,11 @@ import {
   YAxis,
 } from 'recharts'
 import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
 import type { Channel } from '@/lib/api'
 
 interface ChannelComparisonChartProps {
   channels: Channel[]
-}
-
-const BAR_COLORS = [
-  '#7f1d1d',
-  '#991b1b',
-  '#b91c1c',
-  '#dc2626',
-  '#ef4444',
-  '#f87171',
-  '#fca5a5',
-  '#fecaca',
-  '#fee2e2',
-  '#fef2f2',
-]
-
-function getBarColor(index: number, total: number): string {
-  const colorIndex = Math.min(
-    Math.floor((index / total) * BAR_COLORS.length),
-    BAR_COLORS.length - 1
-  )
-  return BAR_COLORS[colorIndex]
 }
 
 interface CustomTickProps {
@@ -63,7 +43,28 @@ export function ChannelComparisonChart({
   channels,
 }: ChannelComparisonChartProps) {
   const { locale, text } = useLocale()
+  const colors = useChartColors()
   const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
+
+  const defaultColors = [
+    'oklch(0.646 0.222 41.116)',
+    'oklch(0.6 0.118 184.704)',
+    'oklch(0.398 0.07 227.392)',
+    'oklch(0.828 0.189 84.429)',
+    'oklch(0.769 0.188 70.08)',
+    'oklch(0.488 0.243 264.376)',
+  ]
+
+  const chartColors = [
+    colors.chart1 || defaultColors[0],
+    colors.chart2 || defaultColors[1],
+    colors.chart3 || defaultColors[2],
+    colors.chart4 || defaultColors[3],
+    colors.chart5 || defaultColors[4],
+    colors.primary || defaultColors[5],
+  ]
+
+  const getBarColor = (index: number) => chartColors[index % chartColors.length]
 
   const chartData = channels
     .filter((channel) => channel.total_cost > 0 || channel.message_count > 0)
@@ -164,7 +165,7 @@ export function ChannelComparisonChart({
           {chartData.map((_, index) => (
             <Cell
               key={`cell-${index}`}
-              fill={getBarColor(index, chartData.length)}
+              fill={getBarColor(index)}
             />
           ))}
         </Bar>

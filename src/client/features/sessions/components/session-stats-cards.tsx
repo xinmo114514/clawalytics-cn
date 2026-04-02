@@ -29,13 +29,13 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
   return (
     <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
       <Card className='relative overflow-hidden'>
-        <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
+        <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full' />
         <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
           <CardTitle className='text-sm font-medium'>
             {text('总会话数', 'Total Sessions')}
           </CardTitle>
-          <div className='rounded-full bg-red-500/10 p-2'>
-            <Activity className='h-4 w-4 text-red-500' />
+          <div className='rounded-full bg-primary/10 p-2'>
+            <Activity className='h-4 w-4 text-primary' />
           </div>
         </CardHeader>
         <CardContent>
@@ -46,7 +46,7 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
             </>
           ) : (
             <>
-              <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+              <div className='text-2xl font-bold text-primary'>
                 {formatNumber(stats?.totalSessions ?? 0)}
               </div>
               <p className='text-xs text-muted-foreground'>
@@ -58,13 +58,13 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
       </Card>
 
       <Card className='relative overflow-hidden'>
-        <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-rose-500/10 to-transparent rounded-bl-full' />
+        <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full' />
         <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
           <CardTitle className='text-sm font-medium'>
             {text('总成本', 'Total Cost')}
           </CardTitle>
-          <div className='rounded-full bg-rose-500/10 p-2'>
-            <DollarSign className='h-4 w-4 text-rose-500' />
+          <div className='rounded-full bg-primary/10 p-2'>
+            <DollarSign className='h-4 w-4 text-primary' />
           </div>
         </CardHeader>
         <CardContent>
@@ -75,7 +75,7 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
             </>
           ) : (
             <>
-              <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+              <div className='text-2xl font-bold text-primary'>
                 {formatCurrency(stats?.totalCost ?? 0)}
               </div>
               <p className='text-xs text-muted-foreground'>
@@ -87,13 +87,13 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
       </Card>
 
       <Card className='relative overflow-hidden'>
-        <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
+        <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full' />
         <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
           <CardTitle className='text-sm font-medium'>
             {text('平均每会话成本', 'Avg Cost / Session')}
           </CardTitle>
-          <div className='rounded-full bg-red-500/10 p-2'>
-            <TrendingUp className='h-4 w-4 text-red-500' />
+          <div className='rounded-full bg-primary/10 p-2'>
+            <TrendingUp className='h-4 w-4 text-primary' />
           </div>
         </CardHeader>
         <CardContent>
@@ -104,7 +104,7 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
             </>
           ) : (
             <>
-              <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+              <div className='text-2xl font-bold text-primary'>
                 {formatCurrency(stats?.avgCostPerSession ?? 0)}
               </div>
               <p className='text-xs text-muted-foreground'>
@@ -116,13 +116,13 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
       </Card>
 
       <Card className='relative overflow-hidden'>
-        <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-red-500/10 to-transparent rounded-bl-full' />
+        <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full' />
         <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
           <CardTitle className='text-sm font-medium'>
             {text('最活跃项目', 'Most Active Project')}
           </CardTitle>
-          <div className='rounded-full bg-red-500/10 p-2'>
-            <FolderOpen className='h-4 w-4 text-red-500' />
+          <div className='rounded-full bg-primary/10 p-2'>
+            <FolderOpen className='h-4 w-4 text-primary' />
           </div>
         </CardHeader>
         <CardContent>
@@ -133,7 +133,7 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
             </>
           ) : (
             <>
-              <div className='text-2xl font-bold text-red-600 dark:text-red-400 truncate'>
+              <div className='text-2xl font-bold text-primary truncate'>
                 {stats?.mostActiveProject
                   ? formatProjectName(
                       stats.mostActiveProject.project,

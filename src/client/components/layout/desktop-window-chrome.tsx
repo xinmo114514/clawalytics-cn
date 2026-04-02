@@ -22,7 +22,7 @@ export function DesktopWindowChrome() {
     >
       <div className='flex h-full w-full items-center justify-between gap-4 px-4 pe-[var(--desktop-controls-width)]'>
         <div className='flex min-w-0 items-center gap-3'>
-          <div className='flex size-8 items-center justify-center rounded-xl border border-white/12 bg-white/10 shadow-[0_12px_30px_-20px_rgba(15,23,42,0.85)]'>
+          <div className='flex size-8 items-center justify-center rounded-xl border border-white/12 bg-white/10 shadow-[0_12px_30px_-20px_hsl(var(--foreground)/0.85)]'>
             <img src='/images/logo.png' alt='Clawalytics' className='size-6 object-contain' />
           </div>
           <div className='min-w-0'>

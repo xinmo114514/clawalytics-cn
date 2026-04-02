@@ -8,6 +8,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
 import type { ModelDailyUsage } from '@/lib/api'
 
 interface ModelCostChartProps {
@@ -16,6 +17,7 @@ interface ModelCostChartProps {
 
 export function ModelCostChart({ data }: ModelCostChartProps) {
   const { locale, text } = useLocale()
+  const colors = useChartColors()
   const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
 
   const aggregatedByDate = data.reduce(
@@ -78,14 +80,16 @@ export function ModelCostChart({ data }: ModelCostChartProps) {
     )
   }
 
+  const chartColor = colors.chart1 || 'oklch(0.646 0.222 41.116)'
+
   return (
     <ResponsiveContainer width='100%' height={300}>
       <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id='modelCostGradient' x1='0' y1='0' x2='0' y2='1'>
-            <stop offset='5%' stopColor='#ef4444' stopOpacity={0.5} />
-            <stop offset='50%' stopColor='#f87171' stopOpacity={0.25} />
-            <stop offset='95%' stopColor='#fca5a5' stopOpacity={0.05} />
+            <stop offset='5%' stopColor={chartColor} stopOpacity={0.5} />
+            <stop offset='50%' stopColor={chartColor} stopOpacity={0.25} />
+            <stop offset='95%' stopColor={chartColor} stopOpacity={0.05} />
           </linearGradient>
         </defs>
         <CartesianGrid
@@ -122,7 +126,7 @@ export function ModelCostChart({ data }: ModelCostChartProps) {
                   <div className='space-y-1.5'>
                     <div className='flex items-center justify-between gap-6'>
                       <span className='flex items-center gap-2 text-xs text-muted-foreground'>
-                        <span className='h-2 w-2 rounded-full bg-red-500' />
+                        <span className='h-2 w-2 rounded-full bg-chart-1' />
                         {text('成本', 'Cost')}
                       </span>
                       <span className='font-mono text-sm font-medium'>
@@ -156,7 +160,7 @@ export function ModelCostChart({ data }: ModelCostChartProps) {
         <Area
           type='monotone'
           dataKey='cost'
-          stroke='#ef4444'
+          stroke={chartColor}
           strokeWidth={2.5}
           fillOpacity={1}
           fill='url(#modelCostGradient)'

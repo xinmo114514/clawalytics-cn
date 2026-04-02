@@ -8,6 +8,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
 import type { DailyCost } from '@/lib/api'
 
 interface DailyCostChartProps {
@@ -16,6 +17,7 @@ interface DailyCostChartProps {
 
 export function DailyCostChart({ data }: DailyCostChartProps) {
   const { locale, text } = useLocale()
+  const colors = useChartColors()
   const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
 
   const chartData = data.map((item) => ({
@@ -45,39 +47,31 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
     )
   }
 
+  const chartColor = colors.chart1 || 'oklch(0.646 0.222 41.116)'
+  const comparisonColor =
+    colors.chart2 || colors.success || 'oklch(0.6 0.118 184.704)'
+  const gridColor = colors.border || 'oklch(0.929 0.013 255.508)'
+  const axisColor = colors.mutedForeground || 'oklch(0.554 0.046 257.417)'
+
   return (
     <ResponsiveContainer width='100%' height={300}>
       <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id='colorCostGradient' x1='0' y1='0' x2='1' y2='0'>
-            <stop offset='0%' stopColor='#fca5a5' stopOpacity={1} />
-            <stop offset='40%' stopColor='#ef4444' stopOpacity={1} />
-            <stop offset='100%' stopColor='#b91c1c' stopOpacity={1} />
-          </linearGradient>
-          <linearGradient id='colorCostStroke' x1='0' y1='0' x2='1' y2='0'>
-            <stop offset='0%' stopColor='#f87171' />
-            <stop offset='50%' stopColor='#dc2626' />
-            <stop offset='100%' stopColor='#991b1b' />
+            <stop offset='0%' stopColor={chartColor} stopOpacity={0.3} />
+            <stop offset='40%' stopColor={chartColor} stopOpacity={0.6} />
+            <stop offset='100%' stopColor={chartColor} stopOpacity={1} />
           </linearGradient>
           <linearGradient id='colorSavingsGradient' x1='0' y1='0' x2='1' y2='0'>
-            <stop offset='0%' stopColor='#86efac' stopOpacity={1} />
-            <stop offset='40%' stopColor='#22c55e' stopOpacity={1} />
-            <stop offset='100%' stopColor='#15803d' stopOpacity={1} />
-          </linearGradient>
-          <linearGradient id='colorSavingsStroke' x1='0' y1='0' x2='1' y2='0'>
-            <stop offset='0%' stopColor='#4ade80' />
-            <stop offset='50%' stopColor='#16a34a' />
-            <stop offset='100%' stopColor='#166534' />
+            <stop offset='0%' stopColor={comparisonColor} stopOpacity={0.22} />
+            <stop offset='40%' stopColor={comparisonColor} stopOpacity={0.45} />
+            <stop offset='100%' stopColor={comparisonColor} stopOpacity={0.8} />
           </linearGradient>
         </defs>
-        <CartesianGrid
-          strokeDasharray='3 3'
-          vertical={false}
-          stroke='hsl(var(--border))'
-        />
+        <CartesianGrid strokeDasharray='3 3' vertical={false} stroke={gridColor} />
         <XAxis
           dataKey='date'
-          stroke='hsl(var(--muted-foreground))'
+          stroke={axisColor}
           fontSize={11}
           tickLine={false}
           axisLine={false}
@@ -85,7 +79,7 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
           interval='preserveStartEnd'
         />
         <YAxis
-          stroke='hsl(var(--muted-foreground))'
+          stroke={axisColor}
           fontSize={11}
           tickLine={false}
           axisLine={false}
@@ -106,7 +100,10 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
                   <div className='space-y-1.5'>
                     <div className='flex items-center justify-between gap-6'>
                       <span className='flex items-center gap-2 text-xs text-muted-foreground'>
-                        <span className='h-2 w-2 rounded-full bg-red-500' />
+                        <span
+                          className='h-2 w-2 rounded-full'
+                          style={{ backgroundColor: chartColor }}
+                        />
                         {text('成本', 'Cost')}
                       </span>
                       <span className='font-mono text-sm font-medium'>
@@ -131,11 +128,20 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
                     </div>
                     {tooltipData.cacheSavings > 0 && (
                       <div className='flex items-center justify-between gap-6 border-t pt-1.5'>
-                        <span className='flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400'>
-                          <span className='h-2 w-2 rounded-full bg-emerald-500' />
+                        <span
+                          className='flex items-center gap-2 text-xs'
+                          style={{ color: comparisonColor }}
+                        >
+                          <span
+                            className='h-2 w-2 rounded-full'
+                            style={{ backgroundColor: comparisonColor }}
+                          />
                           {text('缓存节省', 'Cache Savings')}
                         </span>
-                        <span className='font-mono text-sm font-medium text-emerald-600 dark:text-emerald-400'>
+                        <span
+                          className='font-mono text-sm font-medium'
+                          style={{ color: comparisonColor }}
+                        >
                           ${tooltipData.cacheSavings.toFixed(4)}
                         </span>
                       </div>
@@ -151,7 +157,7 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
         <Area
           type='step'
           dataKey='cost'
-          stroke='url(#colorCostStroke)'
+          stroke={chartColor}
           strokeWidth={3}
           fillOpacity={1}
           fill='url(#colorCostGradient)'
@@ -159,7 +165,7 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
         <Area
           type='step'
           dataKey='cacheSavings'
-          stroke='url(#colorSavingsStroke)'
+          stroke={comparisonColor}
           strokeWidth={2}
           fillOpacity={1}
           fill='url(#colorSavingsGradient)'

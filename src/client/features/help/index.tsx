@@ -92,10 +92,10 @@ export function HelpCenter() {
 
       <Main>
         <div className='space-y-10 px-2'>
-          <div className='rounded-xl bg-red-500 p-8 text-white'>
+          <div className='rounded-xl bg-primary p-8 text-primary-foreground'>
             <Badge
               variant='secondary'
-              className='mb-4 bg-white/20 text-white hover:bg-white/30'
+              className='mb-4 bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30'
             >
               {text('文档', 'Documentation')}
             </Badge>

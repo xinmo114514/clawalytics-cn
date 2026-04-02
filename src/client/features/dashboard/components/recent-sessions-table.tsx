@@ -65,11 +65,11 @@ function formatCurrency(value: number): string {
 }
 
 function getModelBadgeClass(model: string): string {
-  if (model.includes('opus')) return 'border-red-500/50 text-red-600 dark:text-red-400'
-  if (model.includes('sonnet')) return 'border-rose-500/50 text-rose-600 dark:text-rose-400'
-  if (model.includes('haiku')) return 'border-pink-500/50 text-pink-600 dark:text-pink-400'
-  if (model.includes('gpt')) return 'border-fuchsia-500/50 text-fuchsia-600 dark:text-fuchsia-400'
-  return 'border-gray-500/50'
+  if (model.includes('opus')) return 'border-primary/50 text-primary'
+  if (model.includes('sonnet')) return 'border-chart-1/50 text-chart-1'
+  if (model.includes('haiku')) return 'border-chart-5/50 text-chart-5'
+  if (model.includes('gpt')) return 'border-chart-4/50 text-chart-4'
+  return 'border-muted-foreground/50'
 }
 
 export function RecentSessionsTable({ sessions }: RecentSessionsTableProps) {
@@ -107,8 +107,8 @@ export function RecentSessionsTable({ sessions }: RecentSessionsTableProps) {
             <TableRow key={session.id}>
               <TableCell>
                 <div className='flex items-center gap-3'>
-                  <div className='hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-rose-500 sm:flex'>
-                    <span className='text-xs font-medium text-white'>
+                  <div className='hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-chart-1 sm:flex'>
+                    <span className='text-xs font-medium text-primary-foreground'>
                       {getProjectInitials(session.project_path)}
                     </span>
                   </div>

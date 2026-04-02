@@ -134,13 +134,13 @@ export function Dashboard() {
 
         <div className='mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('总成本', 'Total Cost')}
               </CardTitle>
-              <div className='rounded-full bg-red-500/10 p-2'>
-                <DollarSign className='h-4 w-4 text-red-500' />
+              <div className='rounded-full bg-primary/10 p-2'>
+                <DollarSign className='h-4 w-4 text-primary' />
               </div>
             </CardHeader>
             <CardContent>
@@ -151,7 +151,7 @@ export function Dashboard() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                  <div className='text-2xl font-bold text-primary'>
                     {formatCurrency(stats?.totalCost ?? 0)}
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -163,13 +163,13 @@ export function Dashboard() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-rose-500/10 to-transparent' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('总 Token 数', 'Total Tokens')}
               </CardTitle>
-              <div className='rounded-full bg-rose-500/10 p-2'>
-                <Coins className='h-4 w-4 text-rose-500' />
+              <div className='rounded-full bg-primary/10 p-2'>
+                <Coins className='h-4 w-4 text-primary' />
               </div>
             </CardHeader>
             <CardContent>
@@ -182,7 +182,7 @@ export function Dashboard() {
                 <>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div className='cursor-help text-2xl font-bold text-rose-600 dark:text-rose-400'>
+                      <div className='cursor-help text-2xl font-bold text-primary'>
                         {formatNumber(totalTokens)}
                       </div>
                     </TooltipTrigger>
@@ -235,13 +235,13 @@ export function Dashboard() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('缓存节省', 'Cache Savings')}
               </CardTitle>
-              <div className='rounded-full bg-red-500/10 p-2'>
-                <Database className='h-4 w-4 text-red-500' />
+              <div className='rounded-full bg-primary/10 p-2'>
+                <Database className='h-4 w-4 text-primary' />
               </div>
             </CardHeader>
             <CardContent>
@@ -252,7 +252,7 @@ export function Dashboard() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                  <div className='text-2xl font-bold text-primary'>
                     {formatCurrency(stats?.cacheSavings ?? 0)}
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -264,13 +264,13 @@ export function Dashboard() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-red-500/10 to-transparent' />
+            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('活跃会话', 'Active Sessions')}
               </CardTitle>
-              <div className='rounded-full bg-red-500/10 p-2'>
-                <Activity className='h-4 w-4 text-red-500' />
+              <div className='rounded-full bg-primary/10 p-2'>
+                <Activity className='h-4 w-4 text-primary' />
               </div>
             </CardHeader>
             <CardContent>
@@ -281,7 +281,7 @@ export function Dashboard() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-red-600 dark:text-red-400'>
+                  <div className='text-2xl font-bold text-primary'>
                     {stats?.activeSessionsThisMonth ?? 0}
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -385,17 +385,17 @@ function BudgetBar({
 
   const color =
     period.percent >= 90
-      ? 'bg-red-500'
+      ? 'bg-primary'
       : period.percent >= 70
-        ? 'bg-yellow-500'
-        : 'bg-green-500'
+        ? 'bg-warning'
+        : 'bg-success'
 
   const textColor =
     period.percent >= 90
-      ? 'text-red-600 dark:text-red-400'
+      ? 'text-primary'
       : period.percent >= 70
-        ? 'text-yellow-600 dark:text-yellow-400'
-        : 'text-green-600 dark:text-green-400'
+        ? 'text-warning'
+        : 'text-success'
 
   return (
     <Card className='p-4'>

@@ -22,33 +22,33 @@ export function IconThemeSystem({
         cx={6.7}
         cy={7.04}
         r={3.54}
-        fill='#fff'
+        fill='hsl(var(--primary-foreground))'
         opacity={0.8}
-        stroke='#fff'
+        stroke='hsl(var(--primary-foreground))'
         strokeLinecap='round'
         strokeMiterlimit={10}
       />
       <path
         d='M18.12 6.39h-5.87c-.6 0-1.09-.45-1.09-1s.49-1 1.09-1h5.87c.6 0 1.09.45 1.09 1s-.49 1-1.09 1zM16.55 9.77h-4.24c-.55 0-1-.45-1-1s.45-1 1-1h4.24c.55 0 1 .45 1 1s-.45 1-1 1z'
-        fill='#fff'
+        fill='hsl(var(--primary-foreground))'
         stroke='none'
         opacity={0.75}
       />
       <path
         d='M18.32 17.37H4.59c-.69 0-1.25-.47-1.25-1.05s.56-1.05 1.25-1.05h13.73c.69 0 1.25.47 1.25 1.05s-.56 1.05-1.25 1.05z'
-        fill='#fff'
+        fill='hsl(var(--primary-foreground))'
         stroke='none'
         opacity={0.72}
       />
       <path
         d='M15.34 21.26h-11c-.55 0-1-.41-1-.91s.45-.91 1-.91h11c.55 0 1 .41 1 .91s-.45.91-1 .91z'
-        fill='#fff'
+        fill='hsl(var(--primary-foreground))'
         stroke='none'
         opacity={0.55}
       />
       <path
         d='M16.46 25.57H4.43c-.6 0-1.09-.44-1.09-.98s.49-.98 1.09-.98h12.03c.6 0 1.09.44 1.09.98s-.49.98-1.09.98z'
-        fill='#fff'
+        fill='hsl(var(--primary-foreground))'
         stroke='none'
         opacity={0.67}
       />

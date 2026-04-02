@@ -11,11 +11,6 @@ const THEME_COOKIE_NAME = 'vite-ui-theme'
 const COLOR_THEME_COOKIE_NAME = 'vite-ui-color-theme'
 const THEME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 
-const DEFAULT_WINDOWS_COLOR = {
-  light: 'oklch(0.55 0.2 265)',
-  dark: 'oklch(0.55 0.2 265)',
-}
-
 export const colorThemes: { value: ColorTheme; zh: string; en: string }[] = [
   { value: 'windows', zh: '跟随 Windows', en: 'Windows' },
   { value: 'blue', zh: '蓝色', en: 'Blue' },
@@ -24,11 +19,6 @@ export const colorThemes: { value: ColorTheme; zh: string; en: string }[] = [
   { value: 'orange', zh: '橙色', en: 'Orange' },
   { value: 'pink', zh: '粉色', en: 'Pink' },
 ]
-
-const windowsColorCSSVars = {
-  light: '--windows-accent',
-  dark: '--windows-accent-dark',
-}
 
 type ThemeProviderProps = {
   children: React.ReactNode
@@ -81,6 +71,8 @@ export function ThemeProvider({
       : defaultColorTheme
   })
 
+  const [windowsAccentColor, setWindowsAccentColor] = useState<string | null>(null)
+
   const resolvedTheme = useMemo((): ResolvedTheme => {
     if (theme === 'system') {
       return window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -114,19 +106,40 @@ export function ThemeProvider({
   }, [theme, resolvedTheme])
 
   useEffect(() => {
+    if (!window.electronAPI) {
+      return
+    }
+
+    let isMounted = true
+
+    window.electronAPI.getWindowsAccentColor().then((color) => {
+      if (isMounted && color) {
+        setWindowsAccentColor(color)
+      }
+    })
+
+    const cleanup = window.electronAPI.onWindowsAccentColorChanged((color) => {
+      if (isMounted) {
+        setWindowsAccentColor(color)
+      }
+    })
+
+    return () => {
+      isMounted = false
+      cleanup()
+    }
+  }, [])
+
+  useEffect(() => {
     const root = window.document.documentElement
     colorThemes.forEach((c) => root.classList.remove(`color-${c.value}`))
     root.classList.add(`color-${colorTheme}`)
 
-    if (colorTheme === 'windows') {
-      const isDark = resolvedTheme === 'dark'
-      const cssVar = windowsColorCSSVars[isDark ? 'dark' : 'light']
-      const computedColor = getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim() || DEFAULT_WINDOWS_COLOR[isDark ? 'dark' : 'light']
-      root.style.setProperty('--primary', computedColor)
-      root.style.setProperty('--primary-foreground', isDark ? 'oklch(0.985 0.003 247.858)' : 'oklch(0.18 0.005 285)')
-      root.style.setProperty('--ring', computedColor)
+    if (colorTheme === 'windows' && windowsAccentColor) {
+      root.style.setProperty('--windows-accent', windowsAccentColor)
+      root.style.setProperty('--windows-accent-dark', windowsAccentColor)
     }
-  }, [colorTheme, resolvedTheme])
+  }, [colorTheme, resolvedTheme, windowsAccentColor])
 
   const setTheme = (theme: Theme) => {
     setCookie(storageKey, theme, THEME_COOKIE_MAX_AGE)

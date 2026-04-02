@@ -262,10 +262,20 @@ class AnalyticsService {
   }
 
   private parseSessionFile(filePath: string, sessionId: string, agentId: string, projectPath: string, channel?: string): void {
-    if (!fs.existsSync(filePath)) return;
+    if (!fs.existsSync(filePath)) {
+      console.warn(`Session file does not exist: ${filePath}`);
+      return;
+    }
 
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
+      let content;
+      try {
+        content = fs.readFileSync(filePath, 'utf-8');
+      } catch (readError) {
+        console.error(`Error reading session file ${filePath}:`, readError);
+        return;
+      }
+
       const lines = content.split('\n');
 
       const session: SessionData = {
@@ -283,39 +293,55 @@ class AnalyticsService {
         toolCalls: [],
       };
 
+      let parsingErrors = 0;
       for (const line of lines) {
         if (!line.trim()) continue;
 
-        const result = parseOpenClawLine(line, sessionId, agentId);
-        if (result) {
-          session.requests.push({
-            timestamp: result.timestamp,
-            provider: result.provider,
-            model: result.model,
-            inputTokens: result.inputTokens,
-            outputTokens: result.outputTokens,
-            cacheCreationTokens: result.cacheCreationTokens,
-            cacheReadTokens: result.cacheReadTokens,
-            cost: result.cost,
-            cacheSavings: result.cacheSavings,
-            messageType: result.messageType,
-          });
-          session.totalCost += result.cost;
-          session.totalInputTokens += result.inputTokens;
-          session.totalOutputTokens += result.outputTokens;
-          if (result.model && result.model !== 'unknown') {
-            session.modelsUsed.add(result.model);
+        try {
+          const result = parseOpenClawLine(line, sessionId, agentId);
+          if (result) {
+            session.requests.push({
+              timestamp: result.timestamp,
+              provider: result.provider,
+              model: result.model,
+              inputTokens: result.inputTokens,
+              outputTokens: result.outputTokens,
+              cacheCreationTokens: result.cacheCreationTokens,
+              cacheReadTokens: result.cacheReadTokens,
+              cost: result.cost,
+              cacheSavings: result.cacheSavings,
+              messageType: result.messageType,
+            });
+            session.totalCost += result.cost;
+            session.totalInputTokens += result.inputTokens;
+            session.totalOutputTokens += result.outputTokens;
+            if (result.model && result.model !== 'unknown') {
+              session.modelsUsed.add(result.model);
+            }
+            if (!session.startedAt || result.timestamp < session.startedAt) {
+              session.startedAt = result.timestamp;
+            }
+            if (!session.lastActivity || result.timestamp > session.lastActivity) {
+              session.lastActivity = result.timestamp;
+            }
           }
-          if (!session.startedAt || result.timestamp < session.startedAt) {
-            session.startedAt = result.timestamp;
-          }
-          if (!session.lastActivity || result.timestamp > session.lastActivity) {
-            session.lastActivity = result.timestamp;
-          }
+        } catch (lineError) {
+          parsingErrors++;
+          console.warn(`Error parsing line in ${filePath}:`, lineError);
+          // Continue parsing other lines
         }
 
         // Track tool calls from content blocks
-        this.processLineForTools(line, sessionId, agentId, session);
+        try {
+          this.processLineForTools(line, sessionId, agentId, session);
+        } catch (toolError) {
+          console.warn(`Error processing tool call in ${filePath}:`, toolError);
+          // Continue processing other lines
+        }
+      }
+
+      if (parsingErrors > 0) {
+        console.warn(`Found ${parsingErrors} parsing errors in ${filePath}, but continued processing`);
       }
 
       // Fallback timestamps
@@ -349,55 +375,65 @@ class AnalyticsService {
     const message = entry.message;
     if (message && Array.isArray(message.content)) {
       for (const block of message.content as Array<Record<string, unknown>>) {
-        if (block.type === 'tool_use' && typeof block.name === 'string' && typeof block.id === 'string') {
-          const pending: PendingToolCall = {
-            sessionId,
-            agentId,
-            toolName: block.name,
-            toolUseId: block.id,
-            timestamp: entry.timestamp || new Date().toISOString(),
-            startTime: Date.now(),
-          };
-          this.pendingToolCalls.set(block.id, pending);
+        try {
+          if (block.type === 'tool_use' && typeof block.name === 'string' && typeof block.id === 'string') {
+            const pending: PendingToolCall = {
+              sessionId,
+              agentId,
+              toolName: block.name,
+              toolUseId: block.id,
+              timestamp: entry.timestamp || new Date().toISOString(),
+              startTime: Date.now(),
+            };
+            this.pendingToolCalls.set(block.id, pending);
 
-          // Also record in session tool calls
-          session.toolCalls.push({
-            sessionId,
-            agentId,
-            toolName: block.name,
-            toolUseId: block.id,
-            timestamp: pending.timestamp,
-            durationMs: null,
-            status: null,
-            error: null,
-          });
-        }
-        if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
-          const pending = this.pendingToolCalls.get(block.tool_use_id);
-          if (pending) {
-            const durationMs = Date.now() - pending.startTime;
-            const isError = Boolean(block.is_error);
-
-            // Update the tool call in session
-            const tc = session.toolCalls.find(t => t.toolUseId === block.tool_use_id);
-            if (tc) {
-              tc.durationMs = durationMs;
-              tc.status = isError ? 'error' : 'success';
-              tc.error = isError ? 'Tool execution failed' : null;
-            }
-
-            // Log to DB (outbound_calls table persists)
-            logOutboundCall({
-              session_id: sessionId,
-              agent_id: agentId,
-              tool_name: pending.toolName,
-              duration_ms: durationMs,
-              status: isError ? 'error' : 'success',
-              error: isError ? 'Tool execution failed' : null,
+            // Also record in session tool calls
+            session.toolCalls.push({
+              sessionId,
+              agentId,
+              toolName: block.name,
+              toolUseId: block.id,
+              timestamp: pending.timestamp,
+              durationMs: null,
+              status: null,
+              error: null,
             });
-
-            this.pendingToolCalls.delete(block.tool_use_id);
           }
+          if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+            const pending = this.pendingToolCalls.get(block.tool_use_id);
+            if (pending) {
+              const durationMs = Date.now() - pending.startTime;
+              const isError = Boolean(block.is_error);
+
+              // Update the tool call in session
+              const tc = session.toolCalls.find(t => t.toolUseId === block.tool_use_id);
+              if (tc) {
+                tc.durationMs = durationMs;
+                tc.status = isError ? 'error' : 'success';
+                tc.error = isError ? 'Tool execution failed' : null;
+              }
+
+              // Log to DB (outbound_calls table persists)
+              try {
+                logOutboundCall({
+                  session_id: sessionId,
+                  agent_id: agentId,
+                  tool_name: pending.toolName,
+                  duration_ms: durationMs,
+                  status: isError ? 'error' : 'success',
+                  error: isError ? 'Tool execution failed' : null,
+                });
+              } catch (dbError) {
+                console.warn(`Error logging outbound call to database:`, dbError);
+                // Continue even if database logging fails
+              }
+
+              this.pendingToolCalls.delete(block.tool_use_id);
+            }
+          }
+        } catch (blockError) {
+          console.warn(`Error processing tool block in session ${sessionId}:`, blockError);
+          // Continue processing other blocks
         }
       }
     }

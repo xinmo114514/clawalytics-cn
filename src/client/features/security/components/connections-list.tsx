@@ -45,29 +45,29 @@ const eventTypeConfig: Record<
     en: 'Connection',
   },
   disconnection: {
-    iconBg: 'bg-gray-500',
-    textColor: 'text-gray-500',
+    iconBg: 'bg-muted-foreground',
+    textColor: 'text-muted-foreground',
     icon: Link2Off,
     zh: '断开',
     en: 'Disconnection',
   },
   auth_failure: {
-    iconBg: 'bg-red-500',
-    textColor: 'text-red-500',
+    iconBg: 'bg-destructive',
+    textColor: 'text-destructive',
     icon: ShieldX,
     zh: '认证失败',
     en: 'Auth Failure',
   },
   auth_success: {
-    iconBg: 'bg-blue-500',
-    textColor: 'text-blue-500',
+    iconBg: 'bg-info',
+    textColor: 'text-info',
     icon: ShieldCheck,
     zh: '认证成功',
     en: 'Auth Success',
   },
   heartbeat: {
-    iconBg: 'bg-violet-500',
-    textColor: 'text-violet-500',
+    iconBg: 'bg-chart-2',
+    textColor: 'text-chart-2',
     icon: Activity,
     zh: '心跳',
     en: 'Heartbeat',
@@ -75,8 +75,8 @@ const eventTypeConfig: Record<
 }
 
 const defaultEventConfig = {
-  iconBg: 'bg-gray-500',
-  textColor: 'text-gray-500',
+  iconBg: 'bg-muted-foreground',
+  textColor: 'text-muted-foreground',
   icon: Globe,
   zh: '未知',
   en: 'Unknown',

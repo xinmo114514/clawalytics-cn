@@ -133,7 +133,7 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
                 <Badge variant='outline' className='text-xs'>
                   {getModelShortName(m.model, unknownModelLabel)}
                 </Badge>
-                <span className='font-mono text-sm font-medium text-red-600 dark:text-red-400'>
+                <span className='font-mono text-sm font-medium text-primary'>
                   {formatCurrency(m.cost)}
                 </span>
               </div>

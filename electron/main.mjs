@@ -22,7 +22,6 @@ const isMac = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
 const APP_ID = 'com.clawalytics.desktop';
 const STARTUP_TIMEOUT_MS = 30000;
-const COSTS_NOTIFICATION_COOLDOWN_MS = 30000;
 const COSTS_WS_RECONNECT_MS = 5000;
 const FORCE_QUIT_TIMEOUT_MS = 5000;
 const TITLE_BAR_HEIGHT = 48;
@@ -32,6 +31,11 @@ const CLOSE_ACTION_TRAY = 'tray';
 const CLOSE_ACTION_QUIT = 'quit';
 const STARTUP_MODE_WINDOW = 'window';
 const STARTUP_MODE_TRAY = 'tray';
+const NOTIFICATION_TRIGGER_ACTIVITY = 'activity';
+const NOTIFICATION_TRIGGER_COST = 'cost';
+const NOTIFICATION_TRIGGER_TOKENS = 'tokens';
+const NOTIFICATION_TRIGGER_BOTH = 'both';
+const DEFAULT_NOTIFICATION_DELAY_SECONDS = 30;
 const STARTUP_HIDDEN_ARG = '--clawalytics-start-hidden';
 
 let backendModule = null;
@@ -45,7 +49,6 @@ let costsReconnectTimer = null;
 let pendingCostsNotificationTimer = null;
 let latestStatsSnapshot = null;
 let lastNotifiedStatsSnapshot = null;
-let lastCostsNotificationAt = 0;
 let isRefreshingCostStats = false;
 let hasQueuedCostRefresh = false;
 let isHandlingCloseChoice = false;
@@ -55,6 +58,9 @@ let desktopPreferences = {
   closeAction: CLOSE_ACTION_ASK,
   launchOnStartup: false,
   startupMode: STARTUP_MODE_WINDOW,
+  notificationsEnabled: true,
+  notificationTrigger: NOTIFICATION_TRIGGER_ACTIVITY,
+  notificationDelaySeconds: DEFAULT_NOTIFICATION_DELAY_SECONDS,
 };
 
 const integerFormatter = new Intl.NumberFormat('en-US');
@@ -210,6 +216,36 @@ function hasMeaningfulCostDelta(delta) {
   return delta.totalCost > 0.000001 || getTotalTokens(delta) > 0;
 }
 
+function hasCostDelta(delta) {
+  return delta.totalCost > 0.000001;
+}
+
+function hasTokenDelta(delta) {
+  return getTotalTokens(delta) > 0;
+}
+
+function shouldShowCostsNotification(delta) {
+  if (!getSavedNotificationsEnabled()) {
+    return false;
+  }
+
+  const notificationTrigger = getSavedNotificationTrigger();
+  const costChanged = hasCostDelta(delta);
+  const tokensChanged = hasTokenDelta(delta);
+
+  switch (notificationTrigger) {
+    case NOTIFICATION_TRIGGER_COST:
+      return costChanged;
+    case NOTIFICATION_TRIGGER_TOKENS:
+      return tokensChanged;
+    case NOTIFICATION_TRIGGER_BOTH:
+      return costChanged && tokensChanged;
+    case NOTIFICATION_TRIGGER_ACTIVITY:
+    default:
+      return costChanged || tokensChanged;
+  }
+}
+
 function normalizeLocale(value) {
   return value === 'zh' ? 'zh' : 'en';
 }
@@ -228,6 +264,46 @@ function normalizeLaunchOnStartup(value) {
 
 function normalizeStartupMode(value) {
   return value === STARTUP_MODE_TRAY ? STARTUP_MODE_TRAY : STARTUP_MODE_WINDOW;
+}
+
+function normalizeNotificationsEnabled(value) {
+  return value === false ? false : true;
+}
+
+function normalizeNotificationTrigger(value) {
+  return (
+    value === NOTIFICATION_TRIGGER_COST
+    || value === NOTIFICATION_TRIGGER_TOKENS
+    || value === NOTIFICATION_TRIGGER_BOTH
+  )
+    ? value
+    : NOTIFICATION_TRIGGER_ACTIVITY;
+}
+
+function normalizeNotificationDelaySeconds(value) {
+  const parsed = typeof value === 'number'
+    ? value
+    : Number.parseInt(String(value ?? ''), 10);
+
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_NOTIFICATION_DELAY_SECONDS;
+  }
+
+  return Math.min(3600, Math.max(5, Math.round(parsed)));
+}
+
+function normalizeDesktopPreferences(value) {
+  return {
+    locale: normalizeLocale(value?.locale),
+    closeAction: normalizeCloseAction(value?.closeAction),
+    launchOnStartup: normalizeLaunchOnStartup(value?.launchOnStartup),
+    startupMode: normalizeStartupMode(value?.startupMode),
+    notificationsEnabled: normalizeNotificationsEnabled(value?.notificationsEnabled),
+    notificationTrigger: normalizeNotificationTrigger(value?.notificationTrigger),
+    notificationDelaySeconds: normalizeNotificationDelaySeconds(
+      value?.notificationDelaySeconds
+    ),
+  };
 }
 
 function getSavedLocale() {
@@ -250,6 +326,21 @@ function getSavedStartupMode() {
   return normalizeStartupMode(desktopPreferences?.startupMode);
 }
 
+function getSavedNotificationsEnabled() {
+  loadDesktopPreferences();
+  return normalizeNotificationsEnabled(desktopPreferences?.notificationsEnabled);
+}
+
+function getSavedNotificationTrigger() {
+  loadDesktopPreferences();
+  return normalizeNotificationTrigger(desktopPreferences?.notificationTrigger);
+}
+
+function getSavedNotificationDelaySeconds() {
+  loadDesktopPreferences();
+  return normalizeNotificationDelaySeconds(desktopPreferences?.notificationDelaySeconds);
+}
+
 function translateDesktop(zh, en) {
   return getSavedLocale() === 'zh' ? zh : en;
 }
@@ -270,30 +361,15 @@ function loadDesktopPreferences() {
     const filePath = getDesktopPreferencesPath();
 
     if (!fs.existsSync(filePath)) {
-      desktopPreferences = {
-        locale: 'en',
-        closeAction: CLOSE_ACTION_ASK,
-        launchOnStartup: false,
-        startupMode: STARTUP_MODE_WINDOW,
-      };
+      desktopPreferences = normalizeDesktopPreferences({});
       return;
     }
 
     const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    desktopPreferences = {
-      locale: normalizeLocale(parsed?.locale),
-      closeAction: normalizeCloseAction(parsed?.closeAction),
-      launchOnStartup: normalizeLaunchOnStartup(parsed?.launchOnStartup),
-      startupMode: normalizeStartupMode(parsed?.startupMode),
-    };
+    desktopPreferences = normalizeDesktopPreferences(parsed);
   } catch (error) {
     console.error('Failed to load desktop preferences:', error);
-    desktopPreferences = {
-      locale: 'en',
-      closeAction: CLOSE_ACTION_ASK,
-      launchOnStartup: false,
-      startupMode: STARTUP_MODE_WINDOW,
-    };
+    desktopPreferences = normalizeDesktopPreferences({});
   }
 }
 
@@ -488,8 +564,28 @@ function requestAppQuit() {
   });
 }
 
-function syncDesktopPreferences() {
-  loadDesktopPreferences();
+function syncDesktopPreferences(nextPreferences) {
+  const previousPreferences = desktopPreferences;
+
+  if (nextPreferences) {
+    desktopPreferences = normalizeDesktopPreferences(nextPreferences);
+  } else {
+    loadDesktopPreferences();
+  }
+
+  const notificationPreferencesChanged = (
+    previousPreferences.notificationsEnabled !== desktopPreferences.notificationsEnabled
+    || previousPreferences.notificationTrigger !== desktopPreferences.notificationTrigger
+    || previousPreferences.notificationDelaySeconds !== desktopPreferences.notificationDelaySeconds
+  );
+
+  if (notificationPreferencesChanged) {
+    clearPendingCostsNotification();
+    if (latestStatsSnapshot) {
+      lastNotifiedStatsSnapshot = latestStatsSnapshot;
+    }
+  }
+
   syncLaunchOnStartupSettings();
   updateTrayMenu();
 }
@@ -557,7 +653,7 @@ function showCostsNotification(currentStats) {
 
   const delta = diffStats(lastNotifiedStatsSnapshot, currentStats);
 
-  if (!hasMeaningfulCostDelta(delta)) {
+  if (!hasMeaningfulCostDelta(delta) || !shouldShowCostsNotification(delta)) {
     return false;
   }
 
@@ -590,8 +686,36 @@ function showCostsNotification(currentStats) {
   });
 
   lastNotifiedStatsSnapshot = currentStats;
-  lastCostsNotificationAt = Date.now();
   return true;
+}
+
+function clearPendingCostsNotification() {
+  if (!pendingCostsNotificationTimer) {
+    return;
+  }
+
+  clearTimeout(pendingCostsNotificationTimer);
+  pendingCostsNotificationTimer = null;
+}
+
+function flushPendingCostsNotification() {
+  if (!latestStatsSnapshot || !lastNotifiedStatsSnapshot) {
+    return;
+  }
+
+  const delta = diffStats(lastNotifiedStatsSnapshot, latestStatsSnapshot);
+
+  if (!hasMeaningfulCostDelta(delta)) {
+    lastNotifiedStatsSnapshot = latestStatsSnapshot;
+    return;
+  }
+
+  if (!shouldShowCostsNotification(delta)) {
+    lastNotifiedStatsSnapshot = latestStatsSnapshot;
+    return;
+  }
+
+  showCostsNotification(latestStatsSnapshot);
 }
 
 function schedulePendingCostsNotification() {
@@ -599,19 +723,11 @@ function schedulePendingCostsNotification() {
     return;
   }
 
-  const delay = Math.max(
-    0,
-    lastCostsNotificationAt + COSTS_NOTIFICATION_COOLDOWN_MS - Date.now()
-  );
+  const delay = Math.max(0, getSavedNotificationDelaySeconds() * 1000);
 
   pendingCostsNotificationTimer = setTimeout(() => {
     pendingCostsNotificationTimer = null;
-
-    if (!latestStatsSnapshot || !lastNotifiedStatsSnapshot) {
-      return;
-    }
-
-    showCostsNotification(latestStatsSnapshot);
+    flushPendingCostsNotification();
   }, delay);
 }
 
@@ -645,8 +761,15 @@ async function refreshDesktopCostStats() {
         continue;
       }
 
-      if (Date.now() - lastCostsNotificationAt >= COSTS_NOTIFICATION_COOLDOWN_MS) {
-        showCostsNotification(stats);
+      if (!getSavedNotificationsEnabled()) {
+        clearPendingCostsNotification();
+        lastNotifiedStatsSnapshot = stats;
+        continue;
+      }
+
+      if (!shouldShowCostsNotification(delta)) {
+        clearPendingCostsNotification();
+        lastNotifiedStatsSnapshot = stats;
         continue;
       }
 
@@ -660,10 +783,7 @@ async function refreshDesktopCostStats() {
 }
 
 function closeCostsSocket() {
-  if (pendingCostsNotificationTimer) {
-    clearTimeout(pendingCostsNotificationTimer);
-    pendingCostsNotificationTimer = null;
-  }
+  clearPendingCostsNotification();
 
   if (costsReconnectTimer) {
     clearTimeout(costsReconnectTimer);
@@ -817,7 +937,7 @@ async function startBackend() {
   if (typeof backendModule.setDesktopBridge === 'function') {
     backendModule.setDesktopBridge({
       handleCloseChoice: (action) => handleDesktopCloseChoice(action),
-      syncPreferences: () => syncDesktopPreferences(),
+      syncPreferences: (preferences) => syncDesktopPreferences(preferences),
     });
   }
   await waitForHealth(port);
@@ -830,7 +950,6 @@ async function stopBackend() {
   closeCostsSocket();
   latestStatsSnapshot = null;
   lastNotifiedStatsSnapshot = null;
-  lastCostsNotificationAt = 0;
   trayHintShown = false;
   isHandlingCloseChoice = false;
 

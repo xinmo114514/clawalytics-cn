@@ -7,6 +7,7 @@ import {
   type DesktopCloseAction,
   type DesktopCloseChoiceAction,
   type DesktopLocale,
+  type DesktopNotificationTrigger,
   type DesktopStartupMode,
 } from '../services/desktop-service.js';
 
@@ -28,6 +29,9 @@ router.post('/preferences', (req: Request, res: Response): void => {
       closeAction: DesktopCloseAction;
       launchOnStartup: boolean;
       startupMode: DesktopStartupMode;
+      notificationsEnabled: boolean;
+      notificationTrigger: DesktopNotificationTrigger;
+      notificationDelaySeconds: number;
     }>;
 
     const preferences = saveDesktopPreferences({
@@ -35,6 +39,9 @@ router.post('/preferences', (req: Request, res: Response): void => {
       closeAction: updates.closeAction,
       launchOnStartup: updates.launchOnStartup,
       startupMode: updates.startupMode,
+      notificationsEnabled: updates.notificationsEnabled,
+      notificationTrigger: updates.notificationTrigger,
+      notificationDelaySeconds: updates.notificationDelaySeconds,
     });
 
     void notifyDesktopPreferencesChanged(preferences);

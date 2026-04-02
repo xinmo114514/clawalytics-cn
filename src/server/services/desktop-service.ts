@@ -6,12 +6,16 @@ export type DesktopLocale = 'zh' | 'en';
 export type DesktopCloseAction = 'ask' | 'tray' | 'quit';
 export type DesktopCloseChoiceAction = DesktopCloseAction | 'cancel';
 export type DesktopStartupMode = 'window' | 'tray';
+export type DesktopNotificationTrigger = 'activity' | 'cost' | 'tokens' | 'both';
 
 export interface DesktopPreferences {
   locale: DesktopLocale;
   closeAction: DesktopCloseAction;
   launchOnStartup: boolean;
   startupMode: DesktopStartupMode;
+  notificationsEnabled: boolean;
+  notificationTrigger: DesktopNotificationTrigger;
+  notificationDelaySeconds: number;
 }
 
 interface DesktopBridge {
@@ -25,6 +29,9 @@ const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = {
   closeAction: 'ask',
   launchOnStartup: false,
   startupMode: 'window',
+  notificationsEnabled: true,
+  notificationTrigger: 'activity',
+  notificationDelaySeconds: 30,
 };
 
 let desktopBridge: DesktopBridge = {};
@@ -45,6 +52,28 @@ function normalizeStartupMode(value: unknown): DesktopStartupMode {
   return value === 'tray' ? 'tray' : 'window';
 }
 
+function normalizeNotificationsEnabled(value: unknown): boolean {
+  return value === false ? false : true;
+}
+
+function normalizeNotificationTrigger(value: unknown): DesktopNotificationTrigger {
+  return value === 'cost' || value === 'tokens' || value === 'both'
+    ? value
+    : 'activity';
+}
+
+function normalizeNotificationDelaySeconds(value: unknown): number {
+  const parsed = typeof value === 'number'
+    ? value
+    : Number.parseInt(String(value ?? ''), 10);
+
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_DESKTOP_PREFERENCES.notificationDelaySeconds;
+  }
+
+  return Math.min(3600, Math.max(5, Math.round(parsed)));
+}
+
 export function loadDesktopPreferences(): DesktopPreferences {
   ensureConfigDir();
 
@@ -59,6 +88,11 @@ export function loadDesktopPreferences(): DesktopPreferences {
       closeAction: normalizeCloseAction(parsed.closeAction),
       launchOnStartup: normalizeLaunchOnStartup(parsed.launchOnStartup),
       startupMode: normalizeStartupMode(parsed.startupMode),
+      notificationsEnabled: normalizeNotificationsEnabled(parsed.notificationsEnabled),
+      notificationTrigger: normalizeNotificationTrigger(parsed.notificationTrigger),
+      notificationDelaySeconds: normalizeNotificationDelaySeconds(
+        parsed.notificationDelaySeconds
+      ),
     };
   } catch (error) {
     console.error('Failed to load desktop preferences:', error);
@@ -79,6 +113,15 @@ export function saveDesktopPreferences(
       updates.launchOnStartup ?? current.launchOnStartup
     ),
     startupMode: normalizeStartupMode(updates.startupMode ?? current.startupMode),
+    notificationsEnabled: normalizeNotificationsEnabled(
+      updates.notificationsEnabled ?? current.notificationsEnabled
+    ),
+    notificationTrigger: normalizeNotificationTrigger(
+      updates.notificationTrigger ?? current.notificationTrigger
+    ),
+    notificationDelaySeconds: normalizeNotificationDelaySeconds(
+      updates.notificationDelaySeconds ?? current.notificationDelaySeconds
+    ),
   };
 
   fs.writeFileSync(

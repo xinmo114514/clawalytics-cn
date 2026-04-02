@@ -110,10 +110,14 @@ export interface DesktopPreferences {
   closeAction: 'ask' | 'tray' | 'quit';
   launchOnStartup: boolean;
   startupMode: 'window' | 'tray';
+  notificationsEnabled: boolean;
+  notificationTrigger: 'activity' | 'cost' | 'tokens' | 'both';
+  notificationDelaySeconds: number;
 }
 
 export type DesktopCloseChoiceAction = 'tray' | 'quit' | 'cancel';
 export type DesktopStartupMode = DesktopPreferences['startupMode'];
+export type DesktopNotificationTrigger = DesktopPreferences['notificationTrigger'];
 
 // API functions
 export async function getStats(): Promise<Stats> {

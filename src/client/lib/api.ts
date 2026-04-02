@@ -86,9 +86,23 @@ export interface Config {
   };
   configPath?: string;
   openClawPath?: string;
+  defaultOpenClawPath?: string;
   gatewayLogsPath?: string;
   securityAlertsEnabled?: boolean;
   pricingEndpoint?: string | null;
+}
+
+export interface OpenClawReloadResult {
+  success: boolean;
+  sessionCount: number;
+  openClawPath: string;
+  message: string;
+  details?: {
+    directoryAccess?: string;
+    analyticsService?: string;
+    securityWatcher?: string;
+    sessionCount?: number;
+  };
 }
 
 export interface DesktopPreferences {
@@ -233,6 +247,43 @@ export async function getConfig(): Promise<Config> {
 export async function updateConfig(config: Partial<Config>): Promise<Config> {
   const { data } = await api.post<Config>('/config', config);
   return data;
+}
+
+export async function reloadOpenClawData(
+  config: Partial<Pick<Config, 'openClawPath' | 'gatewayLogsPath'>> = {}
+): Promise<OpenClawReloadResult> {
+  const { data } = await api.post<OpenClawReloadResult>('/config/openclaw/reload', config);
+  return data;
+}
+
+export function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as
+      | {
+          error?: string;
+          details?: string;
+          solution?: string;
+          path?: string;
+        }
+      | undefined;
+
+    const message = [
+      data?.error,
+      data?.details,
+      data?.solution,
+      data?.path ? `Path: ${data.path}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    return message || error.message || fallback;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
 }
 
 export async function getDesktopPreferences(): Promise<DesktopPreferences> {

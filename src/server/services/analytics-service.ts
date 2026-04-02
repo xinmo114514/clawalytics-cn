@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import chokidar, { FSWatcher } from 'chokidar';
+import { normalizeOpenClawPath } from '../config/loader.js';
 import { loadAgents, watchAgentConfig, type OpenClawAgent } from '../parser/openclaw/agent-loader.js';
 import { listSessionFiles, loadSessionIndex, watchSessionIndex, type SessionMetadata } from '../parser/openclaw/session-index.js';
 import { parseOpenClawLine, type OpenClawLogEntry } from '../parser/openclaw/session-parser.js';
@@ -116,7 +117,7 @@ class AnalyticsService {
 
   initialize(openClawPath?: string): void {
     console.log('=== AnalyticsService.initialize ===');
-    const agentConfigPath = openClawPath || path.join(os.homedir(), '.openclaw');
+    const agentConfigPath = normalizeOpenClawPath(openClawPath) || path.join(os.homedir(), '.openclaw');
     console.log('Using OpenClaw path:', agentConfigPath);
 
     if (this.initialized) {

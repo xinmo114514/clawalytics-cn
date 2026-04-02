@@ -1,7 +1,14 @@
 import { Router, type Request, type Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { loadConfig, saveConfig, getConfigPath, type Config } from '../config/loader.js';
+import {
+  getConfigPath,
+  getDefaultOpenClawPath,
+  loadConfig,
+  normalizeOpenClawPath,
+  saveConfig,
+  type Config,
+} from '../config/loader.js';
 import { shutdownAnalyticsService, initializeAnalyticsService, getAnalyticsService } from '../services/analytics-service.js';
 import { stopSecurityWatcher, startSecurityWatcher } from '../parser/security-watcher.js';
 
@@ -13,6 +20,7 @@ router.get('/', (_req: Request, res: Response): void => {
     res.json({
       ...config,
       configPath: getConfigPath(),
+      defaultOpenClawPath: getDefaultOpenClawPath(),
     });
   } catch (error) {
     console.error('Error fetching config:', error);
@@ -24,6 +32,9 @@ router.post('/', (req: Request, res: Response): void => {
   try {
     const currentConfig = loadConfig();
     const updates = req.body as Partial<Config>;
+    const nextOpenClawPath = updates.openClawPath !== undefined
+      ? normalizeOpenClawPath(updates.openClawPath)
+      : currentConfig.openClawPath;
 
     const newConfig: Config = {
       rates: updates.rates ?? currentConfig.rates,
@@ -32,7 +43,7 @@ router.post('/', (req: Request, res: Response): void => {
         ...updates.alertThresholds,
       },
       // OpenClaw settings
-      openClawPath: updates.openClawPath ?? currentConfig.openClawPath,
+      openClawPath: nextOpenClawPath ?? currentConfig.openClawPath,
       gatewayLogsPath: updates.gatewayLogsPath ?? currentConfig.gatewayLogsPath,
       securityAlertsEnabled: updates.securityAlertsEnabled ?? currentConfig.securityAlertsEnabled,
       // Pricing
@@ -40,7 +51,10 @@ router.post('/', (req: Request, res: Response): void => {
     };
 
     saveConfig(newConfig);
-    res.json(newConfig);
+    res.json({
+      ...newConfig,
+      defaultOpenClawPath: getDefaultOpenClawPath(),
+    });
   } catch (error) {
     console.error('Error saving config:', error);
     res.status(500).json({ error: 'Failed to save config' });
@@ -70,8 +84,21 @@ router.post('/rates/:provider/:model', (req: Request, res: Response): void => {
 router.post('/openclaw/reload', (req: Request, res: Response): void => {
   try {
     console.log('=== OpenClaw Reload Request ===');
+    const requestedUpdates = req.body as Partial<Config>;
     const config = loadConfig();
-    const openClawPath = config.openClawPath;
+    const requestedOpenClawPath = requestedUpdates.openClawPath !== undefined
+      ? normalizeOpenClawPath(requestedUpdates.openClawPath)
+      : undefined;
+    const effectiveOpenClawPath = requestedOpenClawPath ?? config.openClawPath;
+
+    if (requestedOpenClawPath && requestedOpenClawPath !== config.openClawPath) {
+      saveConfig({
+        ...config,
+        openClawPath: requestedOpenClawPath,
+      });
+    }
+
+    const openClawPath = effectiveOpenClawPath;
 
     console.log('Configured OpenClaw path:', openClawPath);
 
@@ -161,7 +188,7 @@ router.post('/openclaw/reload', (req: Request, res: Response): void => {
       console.log('Starting security watcher...');
       try {
         startSecurityWatcher({
-          openClawPath: config.openClawPath,
+          openClawPath,
           gatewayLogsPath: config.gatewayLogsPath,
           enabled: config.securityAlertsEnabled,
         });

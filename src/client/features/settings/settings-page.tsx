@@ -7,6 +7,7 @@ import { useLocale } from '@/context/locale-provider'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { AppearanceSettings } from './components/appearance-settings'
+import { DesktopSettings } from './components/desktop-settings'
 import { OpenClawSettings } from './components/openclaw-settings'
 
 export function SettingsPage() {
@@ -38,6 +39,7 @@ export function SettingsPage() {
         </div>
 
         <div className='space-y-6'>
+          <DesktopSettings />
           <OpenClawSettings />
           <AppearanceSettings />
         </div>

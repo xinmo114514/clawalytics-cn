@@ -327,11 +327,15 @@ function syncLaunchOnStartupSettings() {
     return;
   }
 
-  app.setLoginItemSettings({
-    openAtLogin: getSavedLaunchOnStartup(),
-    path: process.execPath,
-    args: getStartupLaunchArgs(),
-  });
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: getSavedLaunchOnStartup(),
+      path: process.execPath,
+      args: getStartupLaunchArgs(),
+    });
+  } catch (error) {
+    console.error('Failed to sync launch on startup settings:', error);
+  }
 }
 
 function shouldStartHidden() {

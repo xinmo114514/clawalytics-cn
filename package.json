@@ -1,6 +1,6 @@
 {
   "name": "clawalytics",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Cost-tracking analytics dashboard for OpenClaw - track AI spending across 100+ models, monitor agents, analyze channels, and manage security",
   "author": "David Novotny",
   "license": "MIT",

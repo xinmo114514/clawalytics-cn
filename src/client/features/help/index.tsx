@@ -225,9 +225,9 @@ gatewayLogsPath: /tmp/openclaw
 securityAlertsEnabled: true
 
 alertThresholds:
-  dailyBudget: 10
-  weeklyBudget: 50
-  monthlyBudget: 200`}</CodeBlock>
+  dailyBudget: 70
+  weeklyBudget: 350
+  monthlyBudget: 1400`}</CodeBlock>
           </Section>
 
           <Section title={text('常见问题', 'Frequently Asked Questions')}>

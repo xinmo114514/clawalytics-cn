@@ -9,6 +9,7 @@ import {
   type DesktopLocale,
   type DesktopNotificationTrigger,
   type DesktopStartupMode,
+  type DesktopCurrency,
 } from '../services/desktop-service.js';
 
 const router: Router = Router();
@@ -22,7 +23,7 @@ router.get('/preferences', (_req: Request, res: Response): void => {
   }
 });
 
-router.post('/preferences', (req: Request, res: Response): void => {
+router.post('/preferences', async (req: Request, res: Response): Promise<void> => {
   try {
     const updates = req.body as Partial<{
       locale: DesktopLocale;
@@ -32,8 +33,10 @@ router.post('/preferences', (req: Request, res: Response): void => {
       notificationsEnabled: boolean;
       notificationTrigger: DesktopNotificationTrigger;
       notificationDelaySeconds: number;
+      currency: DesktopCurrency;
     }>;
 
+    const previousPreferences = loadDesktopPreferences();
     const preferences = saveDesktopPreferences({
       locale: updates.locale,
       closeAction: updates.closeAction,
@@ -42,9 +45,16 @@ router.post('/preferences', (req: Request, res: Response): void => {
       notificationsEnabled: updates.notificationsEnabled,
       notificationTrigger: updates.notificationTrigger,
       notificationDelaySeconds: updates.notificationDelaySeconds,
+      currency: updates.currency,
     });
 
-    void notifyDesktopPreferencesChanged(preferences);
+    try {
+      await notifyDesktopPreferencesChanged(preferences);
+    } catch (error) {
+      saveDesktopPreferences(previousPreferences);
+      throw error;
+    }
+
     res.json(preferences);
   } catch (error) {
     console.error('Error saving desktop preferences:', error);

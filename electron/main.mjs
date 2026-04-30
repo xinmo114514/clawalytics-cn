@@ -10,8 +10,8 @@ import {
   systemPreferences,
   Tray,
 } from 'electron';
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
-import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,9 +21,9 @@ import WebSocket from 'ws';
 const isMac = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
 const APP_ID = 'com.clawalytics.desktop';
-const STARTUP_TIMEOUT_MS = 30000;
 const COSTS_WS_RECONNECT_MS = 5000;
 const FORCE_QUIT_TIMEOUT_MS = 5000;
+const STARTUP_SYNC_REPAIR_DELAY_MS = 2000;
 const TITLE_BAR_HEIGHT = 48;
 const DESKTOP_PREFERENCES_FILE = 'desktop-preferences.json';
 const CLOSE_ACTION_ASK = 'ask';
@@ -37,11 +37,20 @@ const NOTIFICATION_TRIGGER_TOKENS = 'tokens';
 const NOTIFICATION_TRIGGER_BOTH = 'both';
 const DEFAULT_NOTIFICATION_DELAY_SECONDS = 30;
 const STARTUP_HIDDEN_ARG = '--clawalytics-start-hidden';
+const STARTUP_REGISTRY_VALUE_NAME = 'Clawalytics';
+const WINDOWS_RUN_REGISTRY_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+const WINDOWS_STARTUP_APPROVED_RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run';
+const WINDOWS_STARTUP_APPROVED_ENABLED = '020000000000000000000000';
+const CURRENCY_CNY = 'CNY';
+const CURRENCY_USD = 'USD';
+const USD_TO_CNY_RATE = 7;
 
 let backendModule = null;
 let backendPort = null;
+let desktopIntegrationsPort = null;
 let isQuitting = false;
 let mainWindow = null;
+let mainWindowCreationPromise = null;
 let tray = null;
 let trayHintShown = false;
 let costsSocket = null;
@@ -61,15 +70,29 @@ let desktopPreferences = {
   notificationsEnabled: true,
   notificationTrigger: NOTIFICATION_TRIGGER_ACTIVITY,
   notificationDelaySeconds: DEFAULT_NOTIFICATION_DELAY_SECONDS,
+  currency: CURRENCY_CNY,
 };
 
 const integerFormatter = new Intl.NumberFormat('en-US');
-const usdFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 4,
-});
+
+function formatCurrency(value) {
+  const currency = desktopPreferences?.currency ?? CURRENCY_CNY;
+
+  if (currency === CURRENCY_USD) {
+    const usdValue = value / USD_TO_CNY_RATE;
+    if (usdValue >= 100) return `$${usdValue.toFixed(0)}`;
+    if (usdValue >= 10) return `$${usdValue.toFixed(1)}`;
+    if (usdValue >= 1) return `$${usdValue.toFixed(2)}`;
+    if (usdValue >= 0.01) return `$${usdValue.toFixed(2)}`;
+    return `$${usdValue.toFixed(4)}`;
+  }
+
+  if (value >= 100) return `¥${value.toFixed(0)}`;
+  if (value >= 10) return `¥${value.toFixed(1)}`;
+  if (value >= 1) return `¥${value.toFixed(2)}`;
+  if (value >= 0.01) return `¥${value.toFixed(2)}`;
+  return `¥${value.toFixed(4)}`;
+}
 
 function hexToOklch(hex) {
   if (!hex || typeof hex !== 'string') {
@@ -168,10 +191,6 @@ function getIcon() {
 
 function formatInteger(value) {
   return integerFormatter.format(Math.round(value));
-}
-
-function formatUsd(value) {
-  return usdFormatter.format(value);
 }
 
 function normalizeStats(stats) {
@@ -292,6 +311,10 @@ function normalizeNotificationDelaySeconds(value) {
   return Math.min(3600, Math.max(5, Math.round(parsed)));
 }
 
+function normalizeCurrency(value) {
+  return value === CURRENCY_USD ? CURRENCY_USD : CURRENCY_CNY;
+}
+
 function normalizeDesktopPreferences(value) {
   return {
     locale: normalizeLocale(value?.locale),
@@ -303,6 +326,7 @@ function normalizeDesktopPreferences(value) {
     notificationDelaySeconds: normalizeNotificationDelaySeconds(
       value?.notificationDelaySeconds
     ),
+    currency: normalizeCurrency(value?.currency),
   };
 }
 
@@ -398,19 +422,210 @@ function getStartupLaunchArgs() {
     : [];
 }
 
-function syncLaunchOnStartupSettings() {
-  if (!app.isPackaged) {
+function quoteWindowsCommandArgument(value) {
+  return `"${String(value).replace(/"/g, '\\"')}"`;
+}
+
+function runWindowsRegistryCommand(args) {
+  return new Promise((resolve, reject) => {
+    execFile('reg.exe', args, { windowsHide: true }, (error, stdout, stderr) => {
+      if (error) {
+        error.stdout = stdout;
+        error.stderr = stderr;
+        reject(error);
+        return;
+      }
+
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+function getWindowsStartupRegistryNames() {
+  return Array.from(new Set([
+    STARTUP_REGISTRY_VALUE_NAME,
+    app.getName(),
+    'clawalytics',
+  ].filter(Boolean)));
+}
+
+async function deleteWindowsRegistryValue(key, name) {
+  try {
+    await runWindowsRegistryCommand([
+      'DELETE',
+      key,
+      '/v',
+      name,
+      '/f',
+    ]);
+  } catch {
+    // Missing values are fine when disabling or replacing startup entries.
+  }
+}
+
+async function setWindowsStartupApproved(openAtLogin, registryNames) {
+  if (!isWindows || !app.isPackaged) {
     return;
   }
 
+  if (!openAtLogin) {
+    await Promise.all(
+      registryNames.map((name) => deleteWindowsRegistryValue(
+        WINDOWS_STARTUP_APPROVED_RUN_KEY,
+        name
+      ))
+    );
+    return;
+  }
+
+  await Promise.all(
+    registryNames
+      .filter((name) => name !== STARTUP_REGISTRY_VALUE_NAME)
+      .map((name) => deleteWindowsRegistryValue(
+        WINDOWS_STARTUP_APPROVED_RUN_KEY,
+        name
+      ))
+  );
+
+  await runWindowsRegistryCommand([
+    'ADD',
+    WINDOWS_STARTUP_APPROVED_RUN_KEY,
+    '/v',
+    STARTUP_REGISTRY_VALUE_NAME,
+    '/t',
+    'REG_BINARY',
+    '/d',
+    WINDOWS_STARTUP_APPROVED_ENABLED,
+    '/f',
+  ]);
+}
+
+async function readWindowsStartupRegistryValue(name) {
+  if (!isWindows || !app.isPackaged) {
+    return null;
+  }
+
   try {
+    const { stdout } = await runWindowsRegistryCommand([
+      'QUERY',
+      WINDOWS_RUN_REGISTRY_KEY,
+      '/v',
+      name,
+    ]);
+    return stdout;
+  } catch {
+    return null;
+  }
+}
+
+async function hasExpectedWindowsStartupRegistryValue(args) {
+  const stdout = await readWindowsStartupRegistryValue(STARTUP_REGISTRY_VALUE_NAME);
+
+  if (!stdout) {
+    return false;
+  }
+
+  const normalizedStdout = stdout.toLowerCase();
+  const normalizedExecPath = process.execPath.toLowerCase();
+  const normalizedHiddenArg = STARTUP_HIDDEN_ARG.toLowerCase();
+
+  return (
+    normalizedStdout.includes(normalizedExecPath)
+    && (args.length > 0 || !normalizedStdout.includes(normalizedHiddenArg))
+    && args.every((arg) => normalizedStdout.includes(String(arg).toLowerCase()))
+  );
+}
+
+async function writeWindowsStartupRegistry(openAtLogin, args) {
+  if (!isWindows || !app.isPackaged) {
+    return;
+  }
+
+  const registryNames = getWindowsStartupRegistryNames();
+
+  if (!openAtLogin) {
+    await Promise.all(
+      registryNames.map((name) => deleteWindowsRegistryValue(
+        WINDOWS_RUN_REGISTRY_KEY,
+        name
+      ))
+    );
+    await setWindowsStartupApproved(false, registryNames);
+    return;
+  }
+
+  await Promise.all(
+    registryNames
+      .filter((name) => name !== STARTUP_REGISTRY_VALUE_NAME)
+      .map((name) => deleteWindowsRegistryValue(
+        WINDOWS_RUN_REGISTRY_KEY,
+        name
+      ))
+  );
+
+  const command = [
+    quoteWindowsCommandArgument(process.execPath),
+    ...args,
+  ].join(' ');
+
+  await runWindowsRegistryCommand([
+    'ADD',
+    WINDOWS_RUN_REGISTRY_KEY,
+    '/v',
+    STARTUP_REGISTRY_VALUE_NAME,
+    '/t',
+    'REG_SZ',
+    '/d',
+    command,
+    '/f',
+  ]);
+  await setWindowsStartupApproved(true, registryNames);
+}
+
+async function syncLaunchOnStartupSettings(strict = false) {
+  if (!app.isPackaged) {
+    return false;
+  }
+
+  try {
+    const openAtLogin = getSavedLaunchOnStartup();
+    const args = getStartupLaunchArgs();
+
     app.setLoginItemSettings({
-      openAtLogin: getSavedLaunchOnStartup(),
+      name: STARTUP_REGISTRY_VALUE_NAME,
+      openAtLogin,
       path: process.execPath,
-      args: getStartupLaunchArgs(),
+      args,
     });
+
+    await writeWindowsStartupRegistry(openAtLogin, args);
+
+    const loginItemSettings = app.getLoginItemSettings({
+      name: STARTUP_REGISTRY_VALUE_NAME,
+      path: process.execPath,
+      args,
+    });
+    const hasStartupRegistryValue = await hasExpectedWindowsStartupRegistryValue(args);
+
+    if (!openAtLogin) {
+      if (hasStartupRegistryValue) {
+        throw new Error('Windows startup registry entry is still present after disabling launch at startup.');
+      }
+
+      return false;
+    }
+
+    if (openAtLogin && !loginItemSettings.openAtLogin && !hasStartupRegistryValue) {
+      throw new Error('Windows did not report the login item as enabled, and the registry entry was not found after saving it.');
+    }
+
+    return loginItemSettings.openAtLogin || hasStartupRegistryValue;
   } catch (error) {
     console.error('Failed to sync launch on startup settings:', error);
+    if (strict) {
+      throw error;
+    }
+    return false;
   }
 }
 
@@ -418,17 +633,34 @@ function shouldStartHidden() {
   return process.argv.includes(STARTUP_HIDDEN_ARG);
 }
 
-function showMainWindow() {
-  if (!mainWindow || mainWindow.isDestroyed()) {
+function focusMainWindow(window = mainWindow) {
+  if (!window || window.isDestroyed()) {
     return;
   }
 
-  if (mainWindow.isMinimized()) {
-    mainWindow.restore();
+  if (window.isMinimized()) {
+    window.restore();
   }
 
-  mainWindow.show();
-  mainWindow.focus();
+  window.show();
+  window.focus();
+}
+
+function reportMainWindowOpenError(error) {
+  console.error('Failed to open Clawalytics window:', error);
+  dialog.showErrorBox(
+    'Clawalytics failed to open',
+    error instanceof Error ? error.message : String(error)
+  );
+}
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    void ensureMainWindow({ forceShow: true }).catch(reportMainWindowOpenError);
+    return;
+  }
+
+  focusMainWindow(mainWindow);
 }
 
 function showNativeNotification(options) {
@@ -564,7 +796,7 @@ function requestAppQuit() {
   });
 }
 
-function syncDesktopPreferences(nextPreferences) {
+async function syncDesktopPreferences(nextPreferences) {
   const previousPreferences = desktopPreferences;
 
   if (nextPreferences) {
@@ -586,7 +818,14 @@ function syncDesktopPreferences(nextPreferences) {
     }
   }
 
-  syncLaunchOnStartupSettings();
+  try {
+    await syncLaunchOnStartupSettings(true);
+  } catch (error) {
+    desktopPreferences = previousPreferences;
+    updateTrayMenu();
+    throw error;
+  }
+
   updateTrayMenu();
 }
 
@@ -672,8 +911,8 @@ function showCostsNotification(currentStats) {
   if (delta.totalCost > 0) {
     messageParts.push(
       translateDesktop(
-        `成本 +${formatUsd(delta.totalCost)}`,
-        `Cost +${formatUsd(delta.totalCost)}`
+        `成本 +${formatCurrency(delta.totalCost)}`,
+        `Cost +${formatCurrency(delta.totalCost)}`
       )
     );
   }
@@ -682,7 +921,7 @@ function showCostsNotification(currentStats) {
     title: translateDesktop('OpenClaw 用量已更新', 'OpenClaw usage updated'),
     body: `${messageParts.join(
       translateDesktop('，', ', ')
-    )}\n${translateDesktop('累计成本', 'Total cost')} ${formatUsd(currentStats.totalCost)}`,
+    )}\n${translateDesktop('累计成本', 'Total cost')} ${formatCurrency(currentStats.totalCost)}`,
   });
 
   lastNotifiedStatsSnapshot = currentStats;
@@ -847,16 +1086,17 @@ function connectCostsSocket(port) {
   });
 }
 
-async function initializeDesktopIntegrations(port) {
+function initializeDesktopIntegrations(port) {
   createTray();
 
-  if (!lastNotifiedStatsSnapshot) {
-    const stats = await fetchEnhancedStats(port);
-    latestStatsSnapshot = stats;
-    lastNotifiedStatsSnapshot = stats;
+  if (desktopIntegrationsPort !== port || !costsSocket) {
+    connectCostsSocket(port);
+    desktopIntegrationsPort = port;
   }
 
-  connectCostsSocket(port);
+  if (!lastNotifiedStatsSnapshot) {
+    void refreshDesktopCostStats();
+  }
 }
 
 function findFreePort() {
@@ -885,35 +1125,6 @@ function findFreePort() {
   });
 }
 
-function checkHealth(port) {
-  return new Promise((resolve) => {
-    const request = http.get(`http://127.0.0.1:${port}/api/health`, (response) => {
-      response.resume();
-      resolve(response.statusCode === 200);
-    });
-
-    request.on('error', () => resolve(false));
-    request.setTimeout(2000, () => {
-      request.destroy();
-      resolve(false);
-    });
-  });
-}
-
-async function waitForHealth(port, timeoutMs = STARTUP_TIMEOUT_MS) {
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < timeoutMs) {
-    if (await checkHealth(port)) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-
-  throw new Error(`Clawalytics backend did not become healthy within ${timeoutMs}ms.`);
-}
-
 async function startBackend() {
   if (backendModule && backendPort) {
     return backendPort;
@@ -925,6 +1136,7 @@ async function startBackend() {
   ).href;
 
   process.env.NODE_ENV = 'production';
+  process.env.ELECTRON = 'true';
   process.env.PORT = String(port);
 
   backendModule = await import(serverEntry);
@@ -940,7 +1152,6 @@ async function startBackend() {
       syncPreferences: (preferences) => syncDesktopPreferences(preferences),
     });
   }
-  await waitForHealth(port);
 
   backendPort = port;
   return port;
@@ -965,6 +1176,7 @@ async function stopBackend() {
   if (!backendModule || typeof backendModule.stop !== 'function') {
     backendModule = null;
     backendPort = null;
+    desktopIntegrationsPort = null;
     return;
   }
 
@@ -973,12 +1185,14 @@ async function stopBackend() {
   } finally {
     backendModule = null;
     backendPort = null;
+    desktopIntegrationsPort = null;
   }
 }
 
-async function createMainWindow() {
+async function createMainWindow(options = {}) {
+  const { forceShow = false } = options;
   const port = await startBackend();
-  const startHidden = shouldStartHidden();
+  const startHidden = !forceShow && shouldStartHidden();
 
   const preloadPath = getAppAssetPath('electron', 'preload.mjs');
 
@@ -1022,6 +1236,9 @@ async function createMainWindow() {
   window.once('ready-to-show', () => {
     if (!startHidden) {
       window.show();
+      if (forceShow) {
+        window.focus();
+      }
     }
   });
 
@@ -1040,6 +1257,8 @@ async function createMainWindow() {
     }
   });
 
+  mainWindow = window;
+
   if (isWindows) {
     window.setBackgroundMaterial('mica');
     window.setTitleBarOverlay({
@@ -1049,9 +1268,53 @@ async function createMainWindow() {
   }
 
   await window.loadURL(`http://127.0.0.1:${port}`);
-  mainWindow = window;
-  await initializeDesktopIntegrations(port);
+  initializeDesktopIntegrations(port);
+
+  if (forceShow && !window.isDestroyed() && !window.isVisible()) {
+    focusMainWindow(window);
+  }
+
   return window;
+}
+
+function ensureMainWindow(options = {}) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (options.forceShow) {
+      focusMainWindow(mainWindow);
+    }
+    return Promise.resolve(mainWindow);
+  }
+
+  if (mainWindowCreationPromise) {
+    return mainWindowCreationPromise.then((window) => {
+      if (options.forceShow) {
+        focusMainWindow(window);
+      }
+      return window;
+    });
+  }
+
+  mainWindowCreationPromise = createMainWindow(options).finally(() => {
+    mainWindowCreationPromise = null;
+  });
+
+  return mainWindowCreationPromise;
+}
+
+function scheduleLaunchOnStartupRepair() {
+  if (!app.isPackaged) {
+    return;
+  }
+
+  const timer = setTimeout(() => {
+    void syncLaunchOnStartupSettings().catch((error) => {
+      console.error('Failed to repair launch on startup settings:', error);
+    });
+  }, STARTUP_SYNC_REPAIR_DELAY_MS);
+
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -1059,6 +1322,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
+      void ensureMainWindow({ forceShow: true }).catch(reportMainWindowOpenError);
       return;
     }
 
@@ -1068,9 +1332,9 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     app.setAppUserModelId(APP_ID);
     loadDesktopPreferences();
-    syncLaunchOnStartupSettings();
     Menu.setApplicationMenu(null);
     createTray();
+    scheduleLaunchOnStartupRepair();
 
     ipcMain.handle('get-windows-accent-color', () => {
       return getWindowsAccentColor();
@@ -1091,7 +1355,12 @@ if (!app.requestSingleInstanceLock()) {
 
     setupWindowsAccentColorListener();
 
-    await createMainWindow();
+    if (shouldStartHidden()) {
+      const port = await startBackend();
+      initializeDesktopIntegrations(port);
+    } else {
+      await ensureMainWindow();
+    }
 
     app.on('activate', () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1100,7 +1369,7 @@ if (!app.requestSingleInstanceLock()) {
       }
 
       if (BrowserWindow.getAllWindows().length === 0) {
-        void createMainWindow();
+        void ensureMainWindow({ forceShow: true }).catch(reportMainWindowOpenError);
       }
     });
   }).catch((error) => {

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import chokidar, { FSWatcher } from 'chokidar';
+import chokidar, { type FSWatcher } from 'chokidar';
 
 // ============================================
 // Interfaces

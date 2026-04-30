@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { useLocale } from '@/context/locale-provider'
 import { useTheme, colorThemes } from '@/context/theme-provider'
 import { useFont } from '@/context/font-provider'
+import { useCurrency } from '@/context/currency-provider'
 import { fonts } from '@/config/fonts'
 import { SettingsCard, SettingsItem } from '../settings-page'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,11 @@ const themeOptions = [
 const localeOptions = [
   { value: 'zh', label: '中文' },
   { value: 'en', label: 'English' },
+] as const
+
+const currencyOptions = [
+  { value: 'CNY' as const, label: '¥ CNY', zh: '人民币', en: 'Chinese Yuan' },
+  { value: 'USD' as const, label: '$ USD', zh: '美元', en: 'US Dollar' },
 ] as const
 
 const fontNames: Record<string, { zh: string; en: string }> = {
@@ -38,6 +44,7 @@ export function AppearanceSettings() {
   const { theme, setTheme, colorTheme, setColorTheme } = useTheme()
   const { locale, setLocale } = useLocale()
   const { font, setFont } = useFont()
+  const { currency, setCurrency } = useCurrency()
 
   return (
     <SettingsCard
@@ -115,6 +122,25 @@ export function AppearanceSettings() {
               size='sm'
               className='h-7 rounded-full px-4 text-xs'
               onClick={() => setLocale(option.value)}
+            >
+              {option.label}
+            </Button>
+          ))}
+        </div>
+      </SettingsItem>
+
+      <SettingsItem
+        label={text('货币', 'Currency')}
+        description={text('选择成本显示的货币单位', 'Choose the currency for cost display')}
+      >
+        <div className='flex items-center rounded-full border border-white/12 bg-white/45 p-1 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.72)] backdrop-blur-xl dark:bg-white/8'>
+          {currencyOptions.map((option) => (
+            <Button
+              key={option.value}
+              variant={currency === option.value ? 'secondary' : 'ghost'}
+              size='sm'
+              className='h-7 rounded-full px-4 text-xs'
+              onClick={() => setCurrency(option.value)}
             >
               {option.label}
             </Button>

@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { Badge } from '@/components/ui/badge'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import { useChartColors } from '@/hooks/use-chart-colors'
 import type { ProjectBreakdown } from '@/lib/api'
 
@@ -57,6 +58,7 @@ export function ProjectCostChart({
   onProjectClick,
 }: ProjectCostChartProps) {
   const { locale, text } = useLocale()
+  const { formatCurrency, formatCurrencyPrecise } = useCurrency()
   const colors = useChartColors()
   const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
   const unknownProjectLabel = text('未知项目', 'Unknown Project')
@@ -137,7 +139,7 @@ export function ProjectCostChart({
             fontSize={11}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(value: number) => `$${value.toFixed(2)}`}
+            tickFormatter={formatCurrency}
           />
           <YAxis
             type='category'
@@ -162,7 +164,7 @@ export function ProjectCostChart({
                           {text('成本', 'Cost')}
                         </span>
                         <span className='font-mono text-sm font-medium'>
-                          ${item.cost.toFixed(4)}
+                          {formatCurrencyPrecise(item.cost)}
                         </span>
                       </div>
                       <div className='flex items-center justify-between gap-4'>

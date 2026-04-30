@@ -1,6 +1,7 @@
 import { getAnalyticsService } from './analytics-service.js';
 import { createAlert } from '../db/queries-security.js';
 import { loadConfig } from '../config/loader.js';
+import { formatCny } from '../lib/currency.js';
 
 // Track which thresholds have already been alerted to avoid spam
 const alertedThresholds = new Set<string>();
@@ -28,7 +29,7 @@ export function checkBudgets(): void {
       createAlert({
         type: 'budget_daily_exceeded',
         severity: 'high',
-        message: `Daily budget exceeded: $${todayCost.toFixed(2)} / $${alertThresholds.dailyBudget.toFixed(2)}`,
+        message: `Daily budget exceeded: ${formatCny(todayCost)} / ${formatCny(alertThresholds.dailyBudget)}`,
         details: JSON.stringify({
           spent: todayCost,
           budget: alertThresholds.dailyBudget,
@@ -36,7 +37,7 @@ export function checkBudgets(): void {
           date: today,
         }),
       });
-      console.log(`[BUDGET] Daily budget exceeded: $${todayCost.toFixed(2)} / $${alertThresholds.dailyBudget.toFixed(2)}`);
+      console.log(`[BUDGET] Daily budget exceeded: ${formatCny(todayCost)} / ${formatCny(alertThresholds.dailyBudget)}`);
     }
   }
 
@@ -49,14 +50,14 @@ export function checkBudgets(): void {
       createAlert({
         type: 'budget_weekly_exceeded',
         severity: 'medium',
-        message: `Weekly budget exceeded: $${weekCost.toFixed(2)} / $${alertThresholds.weeklyBudget.toFixed(2)}`,
+        message: `Weekly budget exceeded: ${formatCny(weekCost)} / ${formatCny(alertThresholds.weeklyBudget)}`,
         details: JSON.stringify({
           spent: weekCost,
           budget: alertThresholds.weeklyBudget,
           period: 'weekly',
         }),
       });
-      console.log(`[BUDGET] Weekly budget exceeded: $${weekCost.toFixed(2)} / $${alertThresholds.weeklyBudget.toFixed(2)}`);
+      console.log(`[BUDGET] Weekly budget exceeded: ${formatCny(weekCost)} / ${formatCny(alertThresholds.weeklyBudget)}`);
     }
   }
 
@@ -68,14 +69,14 @@ export function checkBudgets(): void {
       createAlert({
         type: 'budget_monthly_exceeded',
         severity: 'high',
-        message: `Monthly budget exceeded: $${monthCost.toFixed(2)} / $${alertThresholds.monthlyBudget.toFixed(2)}`,
+        message: `Monthly budget exceeded: ${formatCny(monthCost)} / ${formatCny(alertThresholds.monthlyBudget)}`,
         details: JSON.stringify({
           spent: monthCost,
           budget: alertThresholds.monthlyBudget,
           period: 'monthly',
         }),
       });
-      console.log(`[BUDGET] Monthly budget exceeded: $${monthCost.toFixed(2)} / $${alertThresholds.monthlyBudget.toFixed(2)}`);
+      console.log(`[BUDGET] Monthly budget exceeded: ${formatCny(monthCost)} / ${formatCny(alertThresholds.monthlyBudget)}`);
     }
   }
 }

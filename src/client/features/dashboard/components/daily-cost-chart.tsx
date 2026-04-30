@@ -8,6 +8,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import { useChartColors } from '@/hooks/use-chart-colors'
 import type { DailyCost } from '@/lib/api'
 
@@ -17,6 +18,7 @@ interface DailyCostChartProps {
 
 export function DailyCostChart({ data }: DailyCostChartProps) {
   const { locale, text } = useLocale()
+  const { formatCurrency, formatCurrencyPrecise } = useCurrency()
   const colors = useChartColors()
   const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
 
@@ -84,8 +86,8 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
           tickLine={false}
           axisLine={false}
           tickMargin={8}
-          tickFormatter={(value: number) => `$${value.toFixed(2)}`}
-          width={55}
+          tickFormatter={formatCurrency}
+          width={70}
         />
         <Tooltip
           content={({ active, payload }) => {
@@ -107,7 +109,7 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
                         {text('成本', 'Cost')}
                       </span>
                       <span className='font-mono text-sm font-medium'>
-                        ${tooltipData.cost.toFixed(4)}
+                        {formatCurrencyPrecise(tooltipData.cost)}
                       </span>
                     </div>
                     <div className='flex items-center justify-between gap-6'>
@@ -142,7 +144,7 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
                           className='font-mono text-sm font-medium'
                           style={{ color: comparisonColor }}
                         >
-                          ${tooltipData.cacheSavings.toFixed(4)}
+                          {formatCurrencyPrecise(tooltipData.cacheSavings)}
                         </span>
                       </div>
                     )}

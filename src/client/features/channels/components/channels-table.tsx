@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import type { Channel } from '@/lib/api'
 
 interface ChannelsTableProps {
@@ -21,21 +22,12 @@ type SortDirection = 'asc' | 'desc'
 
 export function ChannelsTable({ channels }: ChannelsTableProps) {
   const { text } = useLocale()
+  const { formatCurrency } = useCurrency()
   const [sortField, setSortField] = useState<SortField>('total_cost')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
-  const formatCurrency = (value: number): string => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 4,
-    }).format(value)
-  }
-
-  const formatNumber = (value: number): string => {
-    return new Intl.NumberFormat('en-US').format(value)
-  }
+  const formatNumber = (value: number): string =>
+    new Intl.NumberFormat('en-US').format(value)
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {

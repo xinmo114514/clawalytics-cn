@@ -1,8 +1,6 @@
 import {
   createAlert,
   logAudit,
-  type SecurityAlert,
-  type AlertInput,
 } from '../db/queries-security.js';
 
 // ============================================

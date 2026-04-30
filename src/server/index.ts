@@ -4,6 +4,10 @@ import { realpathSync } from 'fs';
 import type { Server } from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import type { Express } from 'express';
+
+const isProduction = process.env.NODE_ENV === 'production';
+const isElectron = process.env.ELECTRON === 'true';
 import auditRoutes from './routes/audit.js';
 import agentsRoutes from './routes/agents.js';
 import channelsRoutes from './routes/channels.js';
@@ -34,8 +38,6 @@ import {
   initWebSocket,
 } from './ws/index.js';
 
-import type { Express } from 'express';
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DEFAULT_PORT = 9174;
@@ -48,7 +50,13 @@ let activePort: number | null = null;
 let signalHandlersRegistered = false;
 
 // Middleware
-app.use(cors());
+const allowedOrigins = isProduction && !isElectron
+  ? ['http://localhost:9174', 'http://localhost:4173']
+  : true;
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true,
+}));
 app.use(express.json());
 
 // Serve static files in production (before API routes)
@@ -214,7 +222,7 @@ export async function start(options: StartServerOptions = {}): Promise<StartedSe
 
     const config = loadConfig();
 
-    await initPricingService(config.pricingEndpoint);
+    await initPricingService(config.pricingEndpoint, config.rates);
 
     initializeAnalyticsService(config.openClawPath);
 

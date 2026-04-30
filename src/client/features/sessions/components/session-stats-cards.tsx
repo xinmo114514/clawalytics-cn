@@ -7,7 +7,8 @@ import {
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useLocale } from '@/context/locale-provider'
-import { formatCurrency, formatNumber } from '@/lib/format'
+import { useCurrency } from '@/context/currency-provider'
+import { formatNumber } from '@/lib/format'
 import type { SessionStats } from '@/lib/api'
 
 interface SessionStatsCardsProps {
@@ -25,6 +26,7 @@ function formatProjectName(path: string | undefined, fallback: string): string {
 
 export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) {
   const { text } = useLocale()
+  const { formatCurrency } = useCurrency()
 
   return (
     <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>

@@ -1,5 +1,6 @@
 import { getAnalyticsService } from './analytics-service.js';
 import { createAlert } from '../db/queries-security.js';
+import { formatCny } from '../lib/currency.js';
 
 interface AnomalyResult {
   type: string;
@@ -11,6 +12,8 @@ interface AnomalyResult {
 // Track known models to detect new ones
 const knownModels = new Set<string>();
 let lastCheckDate = '';
+const MIN_DAILY_SPIKE_COST = 7;
+const MIN_MODEL_SPIKE_COST = 3.5;
 
 /**
  * Run anomaly detection checks.
@@ -71,11 +74,11 @@ function detectCostSpike(): AnomalyResult | null {
   const ratio = today.total_cost / avgCost;
 
   // Alert if today's cost is more than 3x the average
-  if (ratio >= 3 && today.total_cost > 1) {
+  if (ratio >= 3 && today.total_cost > MIN_DAILY_SPIKE_COST) {
     return {
       type: 'cost_spike',
       severity: ratio >= 5 ? 'high' : 'medium',
-      message: `Daily cost spike: $${today.total_cost.toFixed(2)} is ${ratio.toFixed(1)}x your 7-day average ($${avgCost.toFixed(2)})`,
+      message: `Daily cost spike: ${formatCny(today.total_cost)} is ${ratio.toFixed(1)}x your 7-day average (${formatCny(avgCost)})`,
       details: {
         todayCost: today.total_cost,
         averageCost: avgCost,
@@ -114,11 +117,11 @@ function detectModelSpikes(): AnomalyResult[] {
 
     const ratio = model.cost / prevNormalized;
 
-    if (ratio >= 3 && model.cost > 0.5) {
+    if (ratio >= 3 && model.cost > MIN_MODEL_SPIKE_COST) {
       anomalies.push({
         type: 'model_spike',
         severity: 'medium',
-        message: `Model cost spike: ${key} cost $${model.cost.toFixed(2)} this week (${ratio.toFixed(1)}x previous week)`,
+        message: `Model cost spike: ${key} cost ${formatCny(model.cost)} this week (${ratio.toFixed(1)}x previous week)`,
         details: {
           model: key,
           recentCost: model.cost,

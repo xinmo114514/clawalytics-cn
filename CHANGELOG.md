@@ -1,3 +1,18 @@
+## v0.7.0 (2026-04-30)
+
+### Feat
+
+- support OpenClaw data sources running in WSL2, including distro/path settings and `\\wsl.localhost\...` preview
+- add two Windows startup modes: open the main window on login or start silently in the system tray
+- add incremental OpenClaw session parsing cache and stale-while-refresh startup flow
+- improve settings page data source layout for Windows and WSL2 users
+
+### Fix
+
+- harden Windows startup registry writes and StartupApproved state handling
+- avoid blocking app startup on full session reparse and model pricing refresh
+- make WSL2 filesystem watchers use polling where native watching is unreliable
+
 ## v2.2.1 (2025-11-06)
 
 ### Fix

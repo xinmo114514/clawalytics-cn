@@ -1,4 +1,22 @@
 import { calculateCost, identifyProvider } from '../costs.js';
+import { hasPricing } from '../../services/pricing-service.js';
+import { convertUsdToCny } from '../../lib/currency.js';
+
+const VERIFIED_PRICING_PROVIDERS = new Set([
+  'deepseek',
+  'minimax',
+  'minimax-portal',
+  'moonshot',
+  'kimi-coding',
+  'qwen',
+  'qwen-portal',
+  'dashscope',
+  'doubao',
+  'volcengine',
+  'ark',
+  'zhipu',
+  'bigmodel',
+]);
 
 /**
  * Actual OpenClaw session JSONL entry structure.
@@ -144,6 +162,13 @@ export function parseOpenClawLine(
   // Get model and provider info
   const model = entry.message.model || 'unknown';
   const provider = entry.message.provider || identifyProvider(model);
+  const rawProviderReportedCost = usage.cost?.total;
+  const providerReportedCost = typeof rawProviderReportedCost === 'number'
+    ? convertUsdToCny(rawProviderReportedCost)
+    : undefined;
+  const hasVerifiedPricing = hasPricing(provider, model);
+  const preferVerifiedPricing = hasVerifiedPricing
+    && VERIFIED_PRICING_PROVIDERS.has(provider.toLowerCase());
 
   // Calculate cost from our pricing data
   const costResult = calculateCost(provider, model, {
@@ -151,11 +176,18 @@ export function parseOpenClawLine(
     outputTokens,
     cacheCreationTokens,
     cacheReadTokens,
+  }, {
+    suppressMissingPricingWarning: Boolean(providerReportedCost && providerReportedCost > 0),
   });
 
   // Use provider-reported cost if available, otherwise our calculated cost
-  const providerCost = usage.cost?.total;
-  const cost = (providerCost && providerCost > 0) ? providerCost : costResult.totalCost;
+  const cost = (
+    !preferVerifiedPricing
+    && providerReportedCost
+    && providerReportedCost > 0
+  )
+    ? providerReportedCost
+    : costResult.totalCost;
   const cacheSavings = costResult.cacheSavings;
 
   const timestamp = entry.timestamp || new Date().toISOString();

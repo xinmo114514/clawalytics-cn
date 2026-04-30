@@ -3,9 +3,6 @@ import { toast } from 'sonner'
 import { translateStatic } from '@/context/locale-provider'
 
 export function handleServerError(error: unknown) {
-  // eslint-disable-next-line no-console
-  console.log(error)
-
   let errMsg = translateStatic('发生了一些问题。', 'Something went wrong!')
 
   if (

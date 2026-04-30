@@ -9,10 +9,15 @@ import {
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { handleServerError } from '@/lib/handle-server-error'
-import { translateStatic } from './context/locale-provider'
-import { DirectionProvider } from './context/direction-provider'
+import {
+  DirectionProvider
+} from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
-import { LocaleProvider } from './context/locale-provider'
+import {
+  LocaleProvider,
+  translateStatic,
+} from './context/locale-provider'
+import { CurrencyProvider } from './context/currency-provider'
 import { ThemeProvider } from './context/theme-provider'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
@@ -22,16 +27,13 @@ import './styles/index.css'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: (failureCount, error) => {
-        // eslint-disable-next-line no-console
-        if (import.meta.env.DEV) console.log({ failureCount, error })
-
+      retry: (failureCount, _error) => {
         if (failureCount >= 0 && import.meta.env.DEV) return false
         if (failureCount > 3 && import.meta.env.PROD) return false
 
         return !(
-          error instanceof AxiosError &&
-          [401, 403].includes(error.response?.status ?? 0)
+          _error instanceof AxiosError &&
+          [401, 403].includes(_error.response?.status ?? 0)
         )
       },
       refetchOnWindowFocus: import.meta.env.PROD,
@@ -91,9 +93,11 @@ if (!rootElement.innerHTML) {
         <ThemeProvider>
           <FontProvider>
             <LocaleProvider>
-              <DirectionProvider>
-                <RouterProvider router={router} />
-              </DirectionProvider>
+              <CurrencyProvider>
+                <DirectionProvider>
+                  <RouterProvider router={router} />
+                </DirectionProvider>
+              </CurrencyProvider>
             </LocaleProvider>
           </FontProvider>
         </ThemeProvider>

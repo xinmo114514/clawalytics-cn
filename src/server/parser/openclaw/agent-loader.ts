@@ -1,6 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import chokidar, { FSWatcher } from 'chokidar';
+import chokidar, { type FSWatcher } from 'chokidar';
+
+function shouldUsePollingWatcher(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+  return normalized.startsWith('//wsl.localhost/') || normalized.startsWith('//wsl$/');
+}
 
 export interface OpenClawAgent {
   id: string;
@@ -93,6 +98,8 @@ export function watchAgentConfig(
   const watcher = chokidar.watch(configPath, {
     persistent: true,
     ignoreInitial: true,
+    usePolling: shouldUsePollingWatcher(configPath),
+    interval: 1000,
   });
 
   watcher.on('change', () => {

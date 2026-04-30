@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import { getAgent, getAgentDailyCosts } from '@/lib/api'
 import { formatDate, formatRelativeTime } from '@/lib/i18n'
 import { AgentCostChart } from './components/agent-cost-chart'
@@ -27,6 +28,7 @@ interface AgentDetailProps {
 
 export function AgentDetail({ agentId }: AgentDetailProps) {
   const { locale, text } = useLocale()
+  const { formatCurrency } = useCurrency()
 
   const { data: agent, isLoading: agentLoading } = useQuery({
     queryKey: ['agent', agentId],
@@ -40,18 +42,8 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
     refetchInterval: 10000,
   })
 
-  const formatCurrency = (value: number): string => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 4,
-    }).format(value)
-  }
-
-  const formatNumber = (value: number): string => {
-    return new Intl.NumberFormat('en-US').format(value)
-  }
+  const formatNumber = (value: number): string =>
+    new Intl.NumberFormat('en-US').format(value)
 
   return (
     <>

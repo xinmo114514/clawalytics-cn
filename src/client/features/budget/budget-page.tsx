@@ -18,13 +18,13 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import {
   getBudgetStatus,
   getConfig,
   updateConfig,
   type BudgetPeriod,
 } from '@/lib/api'
-import { formatCurrency } from '@/lib/format'
 import { toast } from 'sonner'
 
 export function BudgetPage() {
@@ -248,7 +248,7 @@ function BudgetRow({
       <Label className='w-20 text-sm font-medium'>{label}</Label>
       <div className='relative max-w-[200px] flex-1'>
         <span className='absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground'>
-          $
+          ¥
         </span>
         <Input
           type='number'
@@ -277,6 +277,7 @@ function BudgetBar({
   period: BudgetPeriod
 }) {
   const { text } = useLocale()
+  const { formatCurrency } = useCurrency()
 
   const color =
     period.percent >= 90

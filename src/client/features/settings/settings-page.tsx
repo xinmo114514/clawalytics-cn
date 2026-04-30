@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { AppearanceSettings } from './components/appearance-settings'
 import { DesktopSettings } from './components/desktop-settings'
 import { OpenClawSettings } from './components/openclaw-settings'
+import { CustomPricingSettings } from './components/custom-pricing-settings'
 
 export function SettingsPage() {
   const { text } = useLocale()
@@ -40,6 +41,7 @@ export function SettingsPage() {
 
         <div className='space-y-6'>
           <DesktopSettings />
+          <CustomPricingSettings />
           <OpenClawSettings />
           <AppearanceSettings />
         </div>

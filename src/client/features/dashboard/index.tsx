@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/tooltip'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import {
   getBudgetStatus,
   getDailyCosts,
@@ -37,7 +38,7 @@ import {
   getTokenBreakdown,
   type BudgetPeriod,
 } from '@/lib/api'
-import { formatCurrency, formatNumber } from '@/lib/format'
+import { formatNumber } from '@/lib/format'
 import { DailyCostChart } from './components/daily-cost-chart'
 import { AgentsTab } from './tabs/agents-tab'
 import { ChannelsTab } from './tabs/channels-tab'
@@ -46,6 +47,7 @@ import { OverviewTab } from './tabs/overview-tab'
 
 export function Dashboard() {
   const { locale, text } = useLocale()
+  const { formatCurrency } = useCurrency()
   const [activeTab, setActiveTab] = useState('overview')
   const visitedTabs = useRef(new Set(['overview']))
   const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
@@ -61,30 +63,35 @@ export function Dashboard() {
     queryKey: ['enhancedStats'],
     queryFn: getEnhancedStats,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   })
 
   const { data: dailyCosts, isLoading: dailyCostsLoading } = useQuery({
     queryKey: ['dailyCosts'],
     queryFn: () => getDailyCosts(30),
-    refetchInterval: 10000,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
   })
 
   const { data: modelUsage, isLoading: modelUsageLoading } = useQuery({
     queryKey: ['modelUsage'],
     queryFn: () => getModelUsage(30),
-    refetchInterval: 10000,
+    refetchInterval: 20000,
+    refetchIntervalInBackground: false,
   })
 
   const { data: tokenBreakdown, isLoading: tokenBreakdownLoading } = useQuery({
     queryKey: ['tokenBreakdown'],
     queryFn: () => getTokenBreakdown(30),
-    refetchInterval: 10000,
+    refetchInterval: 25000,
+    refetchIntervalInBackground: false,
   })
 
   const { data: budgetStatus } = useQuery({
     queryKey: ['budgetStatus'],
     queryFn: getBudgetStatus,
-    refetchInterval: 10000,
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   })
 
   const totalTokens = stats
@@ -382,6 +389,7 @@ function BudgetBar({
   period: BudgetPeriod
 }) {
   const { text } = useLocale()
+  const { formatCurrency } = useCurrency()
 
   const color =
     period.percent >= 90

@@ -19,8 +19,9 @@ import {
   useLocale,
   type AppLocale,
 } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import type { EnhancedSession } from '@/lib/api'
-import { formatCurrency, formatNumber } from '@/lib/format'
+import { formatNumber } from '@/lib/format'
 import { formatDurationCompact, formatRelativeTime } from '@/lib/i18n'
 import { SessionDetailRow } from './session-detail-row'
 
@@ -233,6 +234,7 @@ function SessionTableRow({
   text: (zh: string, en: string) => string
   onToggle: () => void
 }) {
+  const { formatCurrency } = useCurrency()
   const cost = Number.isFinite(session.total_cost) ? session.total_cost : 0
   const costPercent = maxCost > 0 ? (cost / maxCost) * 100 : 0
   const ChevronIcon = isExpanded ? ChevronDown : ChevronRight

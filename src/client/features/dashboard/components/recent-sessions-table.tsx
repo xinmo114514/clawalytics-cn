@@ -9,6 +9,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import type { Session } from '@/lib/api'
 import { formatDurationCompact, formatRelativeTime } from '@/lib/i18n'
 
@@ -35,6 +36,11 @@ function getModelShortName(model: string): string {
   if (model.includes('gpt-4o-mini')) return '4o-mini'
   if (model.includes('gpt-4o')) return 'GPT-4o'
   if (model.includes('gpt-4')) return 'GPT-4'
+  if (model.toLowerCase().includes('minimax')) return 'MiniMax'
+  if (model.toLowerCase().includes('qwen')) return 'Qwen'
+  if (model.toLowerCase().includes('doubao')) return 'Doubao'
+  if (model.toLowerCase().includes('glm')) return 'GLM'
+  if (model.toLowerCase().includes('kimi') || model.toLowerCase().startsWith('k2')) return 'Kimi'
   return model.split('-')[0]
 }
 
@@ -58,22 +64,22 @@ function formatTokens(input: number, output: number): string {
   return total.toString()
 }
 
-function formatCurrency(value: number): string {
-  if (value >= 1) return `$${value.toFixed(2)}`
-  if (value >= 0.01) return `$${value.toFixed(2)}`
-  return `$${value.toFixed(4)}`
-}
-
 function getModelBadgeClass(model: string): string {
   if (model.includes('opus')) return 'border-primary/50 text-primary'
   if (model.includes('sonnet')) return 'border-chart-1/50 text-chart-1'
   if (model.includes('haiku')) return 'border-chart-5/50 text-chart-5'
   if (model.includes('gpt')) return 'border-chart-4/50 text-chart-4'
+  if (model.toLowerCase().includes('minimax')) return 'border-emerald-500/50 text-emerald-600'
+  if (model.toLowerCase().includes('qwen')) return 'border-orange-500/50 text-orange-600'
+  if (model.toLowerCase().includes('doubao')) return 'border-rose-500/50 text-rose-600'
+  if (model.toLowerCase().includes('glm')) return 'border-cyan-500/50 text-cyan-600'
+  if (model.toLowerCase().includes('kimi') || model.toLowerCase().startsWith('k2')) return 'border-chart-3/50 text-chart-3'
   return 'border-muted-foreground/50'
 }
 
 export function RecentSessionsTable({ sessions }: RecentSessionsTableProps) {
   const { locale, text } = useLocale()
+  const { formatCurrency } = useCurrency()
 
   if (sessions.length === 0) {
     return (

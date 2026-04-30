@@ -1,5 +1,6 @@
 import { ResponsiveContainer, Tooltip, Treemap } from 'recharts'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import { useChartColors } from '@/hooks/use-chart-colors'
 import type { ModelUsage } from '@/lib/api'
 
@@ -89,6 +90,7 @@ function CustomTreemapContent({
 
 export function ModelUsageChart({ data }: ModelUsageChartProps) {
   const { text } = useLocale()
+  const { formatCurrencyPrecise } = useCurrency()
   const colors = useChartColors()
   const totalCost = data.reduce((acc, item) => acc + item.cost, 0)
 
@@ -173,7 +175,7 @@ export function ModelUsageChart({ data }: ModelUsageChartProps) {
                         {text('成本', 'Cost')}
                       </span>
                       <span className='font-mono text-sm font-medium'>
-                        ${item.size.toFixed(4)}
+                        {formatCurrencyPrecise(item.size)}
                       </span>
                     </div>
                     <div className='flex items-center justify-between gap-4'>

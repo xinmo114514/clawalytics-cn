@@ -1,6 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import chokidar, { FSWatcher } from 'chokidar';
+import chokidar, { type FSWatcher } from 'chokidar';
+
+function shouldUsePollingWatcher(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+  return normalized.startsWith('//wsl.localhost/') || normalized.startsWith('//wsl$/');
+}
 
 export interface SessionMetadata {
   id: string;
@@ -85,9 +90,15 @@ export function watchSessionIndex(
   const watcher = chokidar.watch(indexPath, {
     persistent: true,
     ignoreInitial: true,
+    usePolling: shouldUsePollingWatcher(indexPath),
+    interval: 1000,
+    awaitWriteFinish: {
+      stabilityThreshold: 300,
+      pollInterval: 50,
+    },
   });
 
-  watcher.on('change', () => {
+  const syncNewSessions = () => {
     const sessions = loadSessionIndex(agentPath);
 
     for (const session of sessions) {
@@ -97,19 +108,10 @@ export function watchSessionIndex(
         onNewSession(session);
       }
     }
-  });
+  };
 
-  watcher.on('add', () => {
-    const sessions = loadSessionIndex(agentPath);
-
-    for (const session of sessions) {
-      if (!knownSessions.has(session.id)) {
-        knownSessions.add(session.id);
-        console.log(`New OpenClaw session detected: ${session.id}`);
-        onNewSession(session);
-      }
-    }
-  });
+  watcher.on('change', syncNewSessions);
+  watcher.on('add', syncNewSessions);
 
   watcher.on('error', (error) => {
     console.error(`Error watching session index at ${indexPath}:`, error);

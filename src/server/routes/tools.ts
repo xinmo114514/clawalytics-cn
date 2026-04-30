@@ -1,6 +1,5 @@
 import { Router, type Request, type Response } from 'express';
 import {
-  getOutboundCalls,
   getOutboundCallsWithCount,
   getOutboundCallsBySession,
   getOutboundCallsByTool,

@@ -7,6 +7,7 @@ export type DesktopCloseAction = 'ask' | 'tray' | 'quit';
 export type DesktopCloseChoiceAction = DesktopCloseAction | 'cancel';
 export type DesktopStartupMode = 'window' | 'tray';
 export type DesktopNotificationTrigger = 'activity' | 'cost' | 'tokens' | 'both';
+export type DesktopCurrency = 'CNY' | 'USD';
 
 export interface DesktopPreferences {
   locale: DesktopLocale;
@@ -16,6 +17,7 @@ export interface DesktopPreferences {
   notificationsEnabled: boolean;
   notificationTrigger: DesktopNotificationTrigger;
   notificationDelaySeconds: number;
+  currency: DesktopCurrency;
 }
 
 interface DesktopBridge {
@@ -32,6 +34,7 @@ const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = {
   notificationsEnabled: true,
   notificationTrigger: 'activity',
   notificationDelaySeconds: 30,
+  currency: 'CNY',
 };
 
 let desktopBridge: DesktopBridge = {};
@@ -74,6 +77,10 @@ function normalizeNotificationDelaySeconds(value: unknown): number {
   return Math.min(3600, Math.max(5, Math.round(parsed)));
 }
 
+function normalizeCurrency(value: unknown): DesktopCurrency {
+  return value === 'USD' ? 'USD' : 'CNY';
+}
+
 export function loadDesktopPreferences(): DesktopPreferences {
   ensureConfigDir();
 
@@ -93,6 +100,7 @@ export function loadDesktopPreferences(): DesktopPreferences {
       notificationDelaySeconds: normalizeNotificationDelaySeconds(
         parsed.notificationDelaySeconds
       ),
+      currency: normalizeCurrency(parsed.currency),
     };
   } catch (error) {
     console.error('Failed to load desktop preferences:', error);
@@ -122,6 +130,7 @@ export function saveDesktopPreferences(
     notificationDelaySeconds: normalizeNotificationDelaySeconds(
       updates.notificationDelaySeconds ?? current.notificationDelaySeconds
     ),
+    currency: normalizeCurrency(updates.currency ?? current.currency),
   };
 
   fs.writeFileSync(

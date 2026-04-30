@@ -88,6 +88,11 @@ export interface Config {
   openClawPath?: string;
   defaultOpenClawPath?: string;
   gatewayLogsPath?: string;
+  wsl?: {
+    enabled: boolean;
+    distro: string;
+    openClawPath: string;
+  };
   securityAlertsEnabled?: boolean;
   pricingEndpoint?: string | null;
 }
@@ -98,10 +103,19 @@ export interface OpenClawReloadResult {
   openClawPath: string;
   message: string;
   details?: {
+    dataSource?: 'local' | 'wsl';
+    source?: string;
+    distro?: string;
+    linuxPath?: string;
     directoryAccess?: string;
     analyticsService?: string;
     securityWatcher?: string;
     sessionCount?: number;
+    agentsFound?: number;
+    sessionFilesFound?: number;
+    parsedUsageEntries?: number;
+    formatStatus?: 'parsed' | 'no-session-files' | 'no-usage-records';
+    warnings?: string[];
   };
 }
 
@@ -113,11 +127,13 @@ export interface DesktopPreferences {
   notificationsEnabled: boolean;
   notificationTrigger: 'activity' | 'cost' | 'tokens' | 'both';
   notificationDelaySeconds: number;
+  currency: 'CNY' | 'USD';
 }
 
 export type DesktopCloseChoiceAction = 'tray' | 'quit' | 'cancel';
 export type DesktopStartupMode = DesktopPreferences['startupMode'];
 export type DesktopNotificationTrigger = DesktopPreferences['notificationTrigger'];
+export type DesktopCloseAction = DesktopPreferences['closeAction'];
 
 // API functions
 export async function getStats(): Promise<Stats> {
@@ -254,7 +270,7 @@ export async function updateConfig(config: Partial<Config>): Promise<Config> {
 }
 
 export async function reloadOpenClawData(
-  config: Partial<Pick<Config, 'openClawPath' | 'gatewayLogsPath'>> = {}
+  config: Partial<Pick<Config, 'openClawPath' | 'gatewayLogsPath' | 'wsl'>> = {}
 ): Promise<OpenClawReloadResult> {
   const { data } = await api.post<OpenClawReloadResult>('/config/openclaw/reload', config);
   return data;
@@ -756,6 +772,54 @@ export async function getModelPricing(): Promise<PricingData> {
 
 export async function refreshModelPricing(): Promise<{ success: boolean; pricing?: PricingData }> {
   const { data } = await api.post<{ success: boolean; pricing?: PricingData }>('/models/pricing/refresh');
+  return data;
+}
+
+// ============================================
+// Custom Model Pricing API
+// ============================================
+
+export interface CustomRateEntry {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
+export interface PriceChangeInfo {
+  provider: string;
+  model: string;
+  oldInput: number;
+  newInput: number;
+  oldOutput: number;
+  newOutput: number;
+  significant: boolean;
+}
+
+export interface CustomRateUpdateResult {
+  rate: CustomRateEntry;
+  priceChange: PriceChangeInfo | null;
+}
+
+export async function getCustomRates(): Promise<Record<string, Record<string, CustomRateEntry>>> {
+  const { data } = await api.get<Record<string, Record<string, CustomRateEntry>>>('/config/custom-rates');
+  return data;
+}
+
+export async function updateCustomRate(
+  provider: string,
+  model: string,
+  rate: { input: number; output: number; cacheRead?: number; cacheWrite?: number }
+): Promise<CustomRateUpdateResult> {
+  const { data } = await api.put<CustomRateUpdateResult>(`/config/custom-rates/${provider}/${model}`, rate);
+  return data;
+}
+
+export async function deleteCustomRate(
+  provider: string,
+  model: string
+): Promise<{ success: boolean; message: string }> {
+  const { data } = await api.delete<{ success: boolean; message: string }>(`/config/custom-rates/${provider}/${model}`);
   return data;
 }
 

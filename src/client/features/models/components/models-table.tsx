@@ -8,6 +8,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import type { ModelUsageItem } from '@/lib/api'
 
 interface ModelsTableProps {
@@ -16,14 +17,7 @@ interface ModelsTableProps {
 
 export function ModelsTable({ models }: ModelsTableProps) {
   const { text } = useLocale()
-
-  const formatCurrency = (value: number): string => {
-    if (value >= 100) return `$${value.toFixed(0)}`
-    if (value >= 10) return `$${value.toFixed(1)}`
-    if (value >= 1) return `$${value.toFixed(2)}`
-    if (value >= 0.01) return `$${value.toFixed(2)}`
-    return `$${value.toFixed(4)}`
-  }
+  const { formatCurrency } = useCurrency()
 
   const formatNumber = (value: number): string => {
     if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`
@@ -42,8 +36,28 @@ export function ModelsTable({ models }: ModelsTableProps) {
         'bg-info/10 text-info',
       moonshot:
         'bg-chart-3/10 text-chart-3',
+      minimax:
+        'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
+      'minimax-portal':
+        'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
+      qwen:
+        'bg-orange-500/10 text-orange-600 dark:text-orange-300',
+      'qwen-portal':
+        'bg-orange-500/10 text-orange-600 dark:text-orange-300',
+      dashscope:
+        'bg-orange-500/10 text-orange-600 dark:text-orange-300',
+      doubao:
+        'bg-rose-500/10 text-rose-600 dark:text-rose-300',
+      volcengine:
+        'bg-rose-500/10 text-rose-600 dark:text-rose-300',
+      ark:
+        'bg-rose-500/10 text-rose-600 dark:text-rose-300',
       deepseek:
         'bg-chart-4/10 text-chart-4',
+      zhipu:
+        'bg-cyan-500/10 text-cyan-600 dark:text-cyan-300',
+      bigmodel:
+        'bg-cyan-500/10 text-cyan-600 dark:text-cyan-300',
       openrouter:
         'bg-chart-5/10 text-chart-5',
       meta:

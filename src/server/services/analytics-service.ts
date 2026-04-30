@@ -1,13 +1,22 @@
 import fs from 'fs';
+import type { Stats as FsStats } from 'fs';
 import path from 'path';
 import os from 'os';
-import chokidar, { FSWatcher } from 'chokidar';
-import { normalizeOpenClawPath } from '../config/loader.js';
+import chokidar, { type FSWatcher } from 'chokidar';
+
+const isProduction = process.env.NODE_ENV === 'production';
+import { getConfigDir, normalizeOpenClawPath } from '../config/loader.js';
 import { loadAgents, watchAgentConfig, type OpenClawAgent } from '../parser/openclaw/agent-loader.js';
 import { listSessionFiles, loadSessionIndex, watchSessionIndex, type SessionMetadata } from '../parser/openclaw/session-index.js';
 import { parseOpenClawLine, type OpenClawLogEntry } from '../parser/openclaw/session-parser.js';
 import { logOutboundCall } from '../db/queries-security.js';
 import { broadcastCostsUpdated, broadcastNewSession } from '../ws/index.js';
+
+const SESSION_CACHE_VERSION = 1;
+const SESSION_CACHE_FILE = 'analytics-session-cache-v1.json';
+const BACKGROUND_SESSION_REFRESH_DELAY_MS = 500;
+const BACKGROUND_SESSION_REFRESH_YIELD_EVERY = 10;
+const CACHE_SAVE_DEBOUNCE_MS = 1000;
 
 // Re-export interfaces that routes import from queries.ts
 export type {
@@ -40,10 +49,6 @@ import type {
   Agent, AgentDailyCost, Channel, ChannelDailyCost,
   AgentStats as AgentStatsResult, ChannelStats as ChannelStatsResult,
 } from '../db/queries-agents.js';
-
-import type {
-  OutboundCall, OutboundCallFilters, OutboundCallsResult, OutboundCallStats,
-} from '../db/queries-security.js';
 
 // ============================================
 // Internal data structures
@@ -97,55 +102,119 @@ interface PendingToolCall {
   startTime: number;
 }
 
+interface SerializedSessionData {
+  id: string;
+  agentId: string;
+  projectPath: string;
+  startedAt: string;
+  lastActivity: string;
+  channel?: string;
+  requests: ParsedRequest[];
+  totalCost: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  modelsUsed: string[];
+  toolCalls: ToolCallData[];
+}
+
+interface CachedSessionEntry {
+  filePath: string;
+  sessionId: string;
+  agentId: string;
+  projectPath: string;
+  channel?: string;
+  size: number;
+  mtimeMs: number;
+  parsedAt: string;
+  session: SerializedSessionData;
+}
+
+interface SessionCacheFile {
+  version: number;
+  openClawPath: string;
+  savedAt: string;
+  entries: CachedSessionEntry[];
+}
+
+interface ParseSessionFileOptions {
+  fileStat?: FsStats;
+  updateCache?: boolean;
+}
+
 // ============================================
 // AnalyticsService
 // ============================================
 
+interface AggregatedStats {
+  todaySpend: number;
+  todayInput: number;
+  todayOutput: number;
+  weekSpend: number;
+  monthSpend: number;
+  totalCost: number;
+  totalInput: number;
+  totalOutput: number;
+  totalCacheRead: number;
+  totalCacheCreation: number;
+  totalCacheSavings: number;
+  activeThisMonth: number;
+}
+
 class AnalyticsService {
   private sessions = new Map<string, SessionData>();
   private agents = new Map<string, OpenClawAgent>();
+  private sessionCache = new Map<string, CachedSessionEntry>();
+  private sessionFileKeys = new Map<string, string>();
   private dirty = true;
   private watchers: FSWatcher[] = [];
   private budgetCheckTimeout: ReturnType<typeof setTimeout> | null = null;
+  private backgroundRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private backgroundRefreshPromise: Promise<void> | null = null;
+  private cacheSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingToolCalls = new Map<string, PendingToolCall>();
   private toolCleanupInterval: ReturnType<typeof setInterval> | null = null;
   private initialized = false;
+  private refreshGeneration = 0;
+  private activeOpenClawPath = '';
 
   // Cached aggregates
   private _dailyCosts: DailyCost[] | null = null;
   private _modelUsage: Map<string, { provider: string; model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number; cost: number; requestCount: number }> | null = null;
+  private _statsCache: AggregatedStats | null = null;
+  private _statsCacheDate: string = '';
 
   initialize(openClawPath?: string): void {
-    console.log('=== AnalyticsService.initialize ===');
     const agentConfigPath = normalizeOpenClawPath(openClawPath) || path.join(os.homedir(), '.openclaw');
-    console.log('Using OpenClaw path:', agentConfigPath);
 
     if (this.initialized) {
-      console.log('AnalyticsService already initialized, stopping previous instance...');
       this.shutdown();
     }
 
+    this.refreshGeneration++;
+    const generation = this.refreshGeneration;
+    this.activeOpenClawPath = agentConfigPath;
+
     if (!fs.existsSync(agentConfigPath)) {
-      console.log(`OpenClaw config path does not exist: ${agentConfigPath}`);
       this.initialized = true;
       return;
     }
 
+    this.loadSessionCache(agentConfigPath);
+
     // Load agents
     const agents = loadAgents(agentConfigPath);
-    console.log(`Found ${agents.length} agent(s)`);
     for (const agent of agents) {
-      console.log(`Loading agent: ${agent.name} (${agent.id})`);
       this.agents.set(agent.id, agent);
-      this.loadAgentSessions(agentConfigPath, agent);
+      this.loadCachedAgentSessions(agentConfigPath, agent);
     }
 
     // Watch agent config
     const configWatcher = watchAgentConfig(agentConfigPath, (updatedAgents) => {
       for (const agent of updatedAgents) {
         this.agents.set(agent.id, agent);
-        this.loadAgentSessions(agentConfigPath, agent);
+        this.loadCachedAgentSessions(agentConfigPath, agent);
       }
+      this.scheduleBackgroundSessionRefresh(agentConfigPath, updatedAgents, this.refreshGeneration);
     });
     if (configWatcher) this.watchers.push(configWatcher);
 
@@ -155,10 +224,12 @@ class AnalyticsService {
     }, 5 * 60 * 1000);
 
     this.initialized = true;
-    console.log(`AnalyticsService initialized: ${this.sessions.size} sessions parsed`);
+    this.scheduleBackgroundSessionRefresh(agentConfigPath, agents, generation);
   }
 
   shutdown(): void {
+    this.refreshGeneration++;
+
     for (const watcher of this.watchers) {
       watcher.close();
     }
@@ -167,105 +238,574 @@ class AnalyticsService {
       clearTimeout(this.budgetCheckTimeout);
       this.budgetCheckTimeout = null;
     }
+    if (this.backgroundRefreshTimer) {
+      clearTimeout(this.backgroundRefreshTimer);
+      this.backgroundRefreshTimer = null;
+    }
     if (this.toolCleanupInterval) {
       clearInterval(this.toolCleanupInterval);
       this.toolCleanupInterval = null;
     }
+    this.flushSessionCache();
     this.sessions.clear();
     this.agents.clear();
+    this.sessionCache.clear();
+    this.sessionFileKeys.clear();
     this.pendingToolCalls.clear();
+    this.activeOpenClawPath = '';
     this.dirty = true;
     this.initialized = false;
-    console.log('AnalyticsService stopped');
   }
 
-  private loadAgentSessions(openClawPath: string, agent: OpenClawAgent): void {
+  private loadCachedAgentSessions(openClawPath: string, agent: OpenClawAgent): void {
     const agentPath = path.join(openClawPath, 'agents', agent.id);
-    console.log(`Checking agent path: ${agentPath}`);
     if (!fs.existsSync(agentPath)) {
-      console.log(`Agent path does not exist: ${agentPath}`);
       return;
     }
 
     // Load session metadata from sessions.json for channel info
     const sessionMetas = loadSessionIndex(agentPath);
-    console.log(`Found ${sessionMetas.length} session metadata entries for agent ${agent.id}`);
     const metaBySessionId = new Map<string, SessionMetadata>();
     for (const meta of sessionMetas) {
       metaBySessionId.set(meta.id, meta);
     }
 
-    // Parse all JSONL files
-    const files = listSessionFiles(agentPath);
-    console.log(`Found ${files.length} session file(s) for agent ${agent.id}`);
-    let parsed = 0;
+    let restored = 0;
 
-    for (const filePath of files) {
-      const fileName = path.basename(filePath, '.jsonl');
-      if (fileName.includes('.deleted')) continue;
+    for (const [cacheKey, entry] of this.sessionCache) {
+      if (entry.agentId !== agent.id || this.sessions.has(entry.sessionId)) {
+        continue;
+      }
 
-      // Skip if already loaded
-      if (this.sessions.has(fileName)) continue;
+      const meta = metaBySessionId.get(entry.sessionId);
+      const session = this.deserializeSession(entry, {
+        sessionId: entry.sessionId,
+        agentId: agent.id,
+        projectPath: agent.workspace || agentPath,
+        channel: meta?.channel,
+      });
 
-      const meta = metaBySessionId.get(fileName);
-      this.parseSessionFile(filePath, fileName, agent.id, agent.workspace || agentPath, meta?.channel);
-      parsed++;
+      this.sessions.set(entry.sessionId, session);
+      this.sessionFileKeys.set(entry.sessionId, cacheKey);
+      restored++;
     }
 
-    if (parsed > 0) {
+    if (restored > 0) {
       this.markDirty();
     }
-
-    const activeFiles = files.filter(f => !path.basename(f).includes('.deleted'));
-    console.log(`Agent ${agent.name}: ${activeFiles.length} session files loaded`);
 
     // Watch for new sessions
     const sessionWatcher = watchSessionIndex(agentPath, (session: SessionMetadata) => {
       if (this.sessions.has(session.id)) return;
-      console.log(`New session detected for agent ${agent.name}: ${session.id}`);
 
       const logPath = path.join(agentPath, 'sessions', `${session.id}.jsonl`);
-      this.parseSessionFile(logPath, session.id, agent.id, agent.workspace || agentPath, session.channel);
-      this.markDirty();
-      broadcastNewSession(session.id);
-
-      // Watch the new file for changes
-      this.watchSessionFile(logPath, session.id, agent.id, agent.workspace || agentPath, session.channel);
+      if (this.parseSessionFile(logPath, session.id, agent.id, agent.workspace || agentPath, session.channel)) {
+        this.markDirty();
+        broadcastNewSession(session.id);
+        broadcastCostsUpdated();
+        this.debouncedBudgetCheck();
+      }
     });
     if (sessionWatcher) this.watchers.push(sessionWatcher);
 
-    // Watch existing session JSONL files for changes
-    for (const filePath of files) {
-      const fileName = path.basename(filePath, '.jsonl');
-      if (fileName.includes('.deleted')) continue;
-      const meta = metaBySessionId.get(fileName);
-      this.watchSessionFile(filePath, fileName, agent.id, agent.workspace || agentPath, meta?.channel);
-    }
+    this.watchSessionDirectory(agentPath, agent.id, agent.workspace || agentPath);
   }
 
-  private watchSessionFile(filePath: string, sessionId: string, agentId: string, projectPath: string, channel?: string): void {
-    if (!fs.existsSync(filePath)) return;
+  private watchSessionDirectory(agentPath: string, agentId: string, projectPath: string): void {
+    const sessionsDir = path.join(agentPath, 'sessions');
+    if (!fs.existsSync(sessionsDir)) return;
 
-    const watcher = chokidar.watch(filePath, {
+    const watcher = chokidar.watch(sessionsDir, {
       persistent: true,
       ignoreInitial: true,
-      awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
+      depth: 0,
+      usePolling: this.shouldUsePollingWatcher(sessionsDir),
+      interval: 1000,
+      awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 50 },
     });
 
-    watcher.on('change', () => {
-      // Re-parse the entire file (files are small ~10-50KB)
-      this.parseSessionFile(filePath, sessionId, agentId, projectPath, channel);
+    const handleSessionFile = (filePath: string, isNewSession: boolean) => {
+      const sessionId = path.basename(filePath, '.jsonl');
+      if (!filePath.endsWith('.jsonl') || sessionId.includes('.deleted')) {
+        return;
+      }
+
+      const meta = loadSessionIndex(agentPath).find((session) => session.id === sessionId);
+      if (this.parseSessionFile(filePath, sessionId, agentId, projectPath, meta?.channel)) {
+        this.markDirty();
+        if (isNewSession) {
+          broadcastNewSession(sessionId);
+        }
+        broadcastCostsUpdated();
+        this.debouncedBudgetCheck();
+      }
+    };
+
+    watcher.on('add', (filePath) => handleSessionFile(filePath, true));
+    watcher.on('change', (filePath) => handleSessionFile(filePath, false));
+    watcher.on('unlink', (filePath) => {
+      const sessionId = path.basename(filePath, '.jsonl');
+      if (!filePath.endsWith('.jsonl')) {
+        return;
+      }
+
+      const cacheKey = this.getFileCacheKey(filePath);
+      this.sessions.delete(sessionId);
+      this.sessionFileKeys.delete(sessionId);
+      this.sessionCache.delete(cacheKey);
       this.markDirty();
-      this.debouncedBudgetCheck();
+      this.scheduleSessionCacheSave();
+      broadcastCostsUpdated();
+    });
+    watcher.on('error', (error) => {
+      if (!isProduction) {
+        console.warn(`Error watching session directory ${sessionsDir}:`, error);
+      }
     });
 
     this.watchers.push(watcher);
   }
 
-  private parseSessionFile(filePath: string, sessionId: string, agentId: string, projectPath: string, channel?: string): void {
-    if (!fs.existsSync(filePath)) {
-      console.warn(`Session file does not exist: ${filePath}`);
+  private getSessionCachePath(): string {
+    return path.join(getConfigDir(), SESSION_CACHE_FILE);
+  }
+
+  private getFileCacheKey(filePath: string): string {
+    const normalized = path.resolve(filePath);
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  }
+
+  private safeStat(filePath: string): FsStats | null {
+    try {
+      return fs.statSync(filePath);
+    } catch {
+      return null;
+    }
+  }
+
+  private shouldUsePollingWatcher(filePath: string): boolean {
+    const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+    return normalized.startsWith('//wsl.localhost/') || normalized.startsWith('//wsl$/');
+  }
+
+  private isCacheEntryFresh(
+    entry: CachedSessionEntry,
+    sessionId: string,
+    agentId: string,
+    stat: FsStats
+  ): boolean {
+    return (
+      entry.sessionId === sessionId
+      && entry.agentId === agentId
+      && entry.size === stat.size
+      && Math.abs(entry.mtimeMs - stat.mtimeMs) < 1
+    );
+  }
+
+  private serializeSession(session: SessionData): SerializedSessionData {
+    return {
+      id: session.id,
+      agentId: session.agentId,
+      projectPath: session.projectPath,
+      startedAt: session.startedAt,
+      lastActivity: session.lastActivity,
+      channel: session.channel,
+      requests: session.requests,
+      totalCost: session.totalCost,
+      totalInputTokens: session.totalInputTokens,
+      totalOutputTokens: session.totalOutputTokens,
+      modelsUsed: [...session.modelsUsed],
+      toolCalls: session.toolCalls,
+    };
+  }
+
+  private deserializeSession(
+    entry: CachedSessionEntry,
+    overrides?: {
+      sessionId?: string;
+      agentId?: string;
+      projectPath?: string;
+      channel?: string;
+    }
+  ): SessionData {
+    const cached = entry.session;
+    const startedAt = cached.startedAt || new Date().toISOString();
+    const totalCost = Number(cached.totalCost);
+    const totalInputTokens = Number(cached.totalInputTokens);
+    const totalOutputTokens = Number(cached.totalOutputTokens);
+
+    return {
+      id: overrides?.sessionId ?? cached.id,
+      agentId: overrides?.agentId ?? cached.agentId,
+      projectPath: overrides?.projectPath ?? cached.projectPath,
+      startedAt,
+      lastActivity: cached.lastActivity || startedAt,
+      channel: overrides?.channel ?? cached.channel,
+      requests: Array.isArray(cached.requests) ? cached.requests : [],
+      totalCost: Number.isFinite(totalCost) ? totalCost : 0,
+      totalInputTokens: Number.isFinite(totalInputTokens) ? totalInputTokens : 0,
+      totalOutputTokens: Number.isFinite(totalOutputTokens) ? totalOutputTokens : 0,
+      modelsUsed: new Set(Array.isArray(cached.modelsUsed) ? cached.modelsUsed : []),
+      toolCalls: Array.isArray(cached.toolCalls) ? cached.toolCalls : [],
+    };
+  }
+
+  private normalizeCachedEntry(value: unknown): CachedSessionEntry | null {
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+
+    const entry = value as Partial<CachedSessionEntry>;
+    const session = entry.session as Partial<SerializedSessionData> | undefined;
+
+    if (
+      typeof entry.filePath !== 'string'
+      || typeof entry.sessionId !== 'string'
+      || typeof entry.agentId !== 'string'
+      || typeof entry.projectPath !== 'string'
+      || typeof entry.size !== 'number'
+      || typeof entry.mtimeMs !== 'number'
+      || !session
+      || typeof session.id !== 'string'
+      || typeof session.agentId !== 'string'
+      || typeof session.projectPath !== 'string'
+      || !Array.isArray(session.requests)
+      || !Array.isArray(session.modelsUsed)
+      || !Array.isArray(session.toolCalls)
+    ) {
+      return null;
+    }
+
+    return {
+      filePath: entry.filePath,
+      sessionId: entry.sessionId,
+      agentId: entry.agentId,
+      projectPath: entry.projectPath,
+      channel: typeof entry.channel === 'string' ? entry.channel : undefined,
+      size: entry.size,
+      mtimeMs: entry.mtimeMs,
+      parsedAt: typeof entry.parsedAt === 'string' ? entry.parsedAt : new Date().toISOString(),
+      session: {
+        id: session.id,
+        agentId: session.agentId,
+        projectPath: session.projectPath,
+        startedAt: typeof session.startedAt === 'string' ? session.startedAt : new Date().toISOString(),
+        lastActivity: typeof session.lastActivity === 'string'
+          ? session.lastActivity
+          : (typeof session.startedAt === 'string' ? session.startedAt : new Date().toISOString()),
+        channel: typeof session.channel === 'string' ? session.channel : undefined,
+        requests: session.requests as ParsedRequest[],
+        totalCost: typeof session.totalCost === 'number' ? session.totalCost : 0,
+        totalInputTokens: typeof session.totalInputTokens === 'number' ? session.totalInputTokens : 0,
+        totalOutputTokens: typeof session.totalOutputTokens === 'number' ? session.totalOutputTokens : 0,
+        modelsUsed: session.modelsUsed.filter((model): model is string => typeof model === 'string'),
+        toolCalls: session.toolCalls as ToolCallData[],
+      },
+    };
+  }
+
+  private loadSessionCache(openClawPath: string): void {
+    this.sessionCache.clear();
+
+    const cachePath = this.getSessionCachePath();
+    if (!fs.existsSync(cachePath)) {
       return;
+    }
+
+    try {
+      const cache = JSON.parse(fs.readFileSync(cachePath, 'utf-8')) as Partial<SessionCacheFile>;
+      if (
+        cache.version !== SESSION_CACHE_VERSION
+        || cache.openClawPath !== openClawPath
+        || !Array.isArray(cache.entries)
+      ) {
+        return;
+      }
+
+      for (const rawEntry of cache.entries) {
+        const entry = this.normalizeCachedEntry(rawEntry);
+        if (!entry) continue;
+
+        this.sessionCache.set(this.getFileCacheKey(entry.filePath), entry);
+      }
+    } catch (error) {
+      if (!isProduction) {
+        console.warn('Failed to load analytics session cache:', error);
+      }
+      this.sessionCache.clear();
+    }
+  }
+
+  private restoreCachedSession(
+    filePath: string,
+    sessionId: string,
+    agentId: string,
+    projectPath: string,
+    channel: string | undefined,
+    stat: FsStats
+  ): boolean {
+    const cacheKey = this.getFileCacheKey(filePath);
+    const entry = this.sessionCache.get(cacheKey);
+
+    if (!entry || !this.isCacheEntryFresh(entry, sessionId, agentId, stat)) {
+      return false;
+    }
+
+    const session = this.deserializeSession(entry, {
+      sessionId,
+      agentId,
+      projectPath,
+      channel,
+    });
+
+    this.sessions.set(sessionId, session);
+    this.sessionFileKeys.set(sessionId, cacheKey);
+    return true;
+  }
+
+  private updateSessionCache(
+    filePath: string,
+    sessionId: string,
+    agentId: string,
+    projectPath: string,
+    channel: string | undefined,
+    stat: FsStats,
+    session: SessionData
+  ): void {
+    const entry: CachedSessionEntry = {
+      filePath,
+      sessionId,
+      agentId,
+      projectPath,
+      channel,
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+      parsedAt: new Date().toISOString(),
+      session: this.serializeSession(session),
+    };
+
+    const cacheKey = this.getFileCacheKey(filePath);
+    this.sessionCache.set(cacheKey, entry);
+    this.sessionFileKeys.set(sessionId, cacheKey);
+    this.scheduleSessionCacheSave();
+  }
+
+  private scheduleSessionCacheSave(): void {
+    if (!this.activeOpenClawPath) {
+      return;
+    }
+
+    if (this.cacheSaveTimer) {
+      clearTimeout(this.cacheSaveTimer);
+    }
+
+    this.cacheSaveTimer = setTimeout(() => {
+      this.cacheSaveTimer = null;
+      this.saveSessionCacheNow();
+    }, CACHE_SAVE_DEBOUNCE_MS);
+
+    this.cacheSaveTimer.unref?.();
+  }
+
+  private flushSessionCache(): void {
+    if (!this.cacheSaveTimer) {
+      return;
+    }
+
+    clearTimeout(this.cacheSaveTimer);
+    this.cacheSaveTimer = null;
+    this.saveSessionCacheNow();
+  }
+
+  private saveSessionCacheNow(): void {
+    if (!this.activeOpenClawPath) {
+      return;
+    }
+
+    try {
+      const cachePath = this.getSessionCachePath();
+      fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+
+      const cache: SessionCacheFile = {
+        version: SESSION_CACHE_VERSION,
+        openClawPath: this.activeOpenClawPath,
+        savedAt: new Date().toISOString(),
+        entries: [...this.sessionCache.values()],
+      };
+      const tempPath = `${cachePath}.tmp`;
+
+      fs.writeFileSync(tempPath, JSON.stringify(cache), 'utf-8');
+      fs.renameSync(tempPath, cachePath);
+    } catch (error) {
+      if (!isProduction) {
+        console.warn('Failed to save analytics session cache:', error);
+      }
+    }
+  }
+
+  private scheduleBackgroundSessionRefresh(
+    openClawPath: string,
+    agents: OpenClawAgent[],
+    generation: number
+  ): void {
+    if (this.backgroundRefreshTimer) {
+      clearTimeout(this.backgroundRefreshTimer);
+    }
+
+    this.backgroundRefreshTimer = setTimeout(() => {
+      this.backgroundRefreshTimer = null;
+
+      if (this.backgroundRefreshPromise) {
+        return;
+      }
+
+      this.backgroundRefreshPromise = this.refreshSessionFilesInBackground(
+        openClawPath,
+        agents,
+        generation
+      ).finally(() => {
+        this.backgroundRefreshPromise = null;
+      });
+    }, BACKGROUND_SESSION_REFRESH_DELAY_MS);
+
+    this.backgroundRefreshTimer.unref?.();
+  }
+
+  private async yieldToEventLoop(): Promise<void> {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+
+  private removeMissingSessionFiles(activeFileKeys: Set<string>): boolean {
+    let changed = false;
+
+    for (const [sessionId, cacheKey] of [...this.sessionFileKeys]) {
+      if (!activeFileKeys.has(cacheKey)) {
+        this.sessions.delete(sessionId);
+        this.sessionFileKeys.delete(sessionId);
+        changed = true;
+      }
+    }
+
+    for (const cacheKey of [...this.sessionCache.keys()]) {
+      if (!activeFileKeys.has(cacheKey)) {
+        this.sessionCache.delete(cacheKey);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.markDirty();
+      this.scheduleSessionCacheSave();
+    }
+
+    return changed;
+  }
+
+  private async refreshSessionFilesInBackground(
+    openClawPath: string,
+    agents: OpenClawAgent[],
+    generation: number
+  ): Promise<void> {
+    if (generation !== this.refreshGeneration || !this.initialized) {
+      return;
+    }
+
+    const activeFileKeys = new Set<string>();
+    let checked = 0;
+    let parsed = 0;
+    let restored = 0;
+    let changed = false;
+
+    try {
+      for (const agent of agents) {
+        if (generation !== this.refreshGeneration || !this.initialized) {
+          return;
+        }
+
+        const agentPath = path.join(openClawPath, 'agents', agent.id);
+        if (!fs.existsSync(agentPath)) {
+          continue;
+        }
+
+        const sessionMetas = loadSessionIndex(agentPath);
+        const metaBySessionId = new Map<string, SessionMetadata>();
+        for (const meta of sessionMetas) {
+          metaBySessionId.set(meta.id, meta);
+        }
+
+        const files = listSessionFiles(agentPath);
+
+        for (const filePath of files) {
+          if (generation !== this.refreshGeneration || !this.initialized) {
+            return;
+          }
+
+          const sessionId = path.basename(filePath, '.jsonl');
+          if (sessionId.includes('.deleted')) continue;
+
+          const stat = this.safeStat(filePath);
+          if (!stat) continue;
+
+          const cacheKey = this.getFileCacheKey(filePath);
+          activeFileKeys.add(cacheKey);
+
+          const meta = metaBySessionId.get(sessionId);
+          const projectPath = agent.workspace || agentPath;
+          const channel = meta?.channel;
+          const entry = this.sessionCache.get(cacheKey);
+
+          if (entry && this.isCacheEntryFresh(entry, sessionId, agent.id, stat)) {
+            if (!this.sessions.has(sessionId)) {
+              if (this.restoreCachedSession(filePath, sessionId, agent.id, projectPath, channel, stat)) {
+                restored++;
+                changed = true;
+              }
+            }
+          } else if (this.parseSessionFile(filePath, sessionId, agent.id, projectPath, channel, { fileStat: stat })) {
+            parsed++;
+            changed = true;
+          }
+
+          checked++;
+          if (checked % BACKGROUND_SESSION_REFRESH_YIELD_EVERY === 0) {
+            await this.yieldToEventLoop();
+            if (generation !== this.refreshGeneration || !this.initialized) {
+              return;
+            }
+          }
+        }
+      }
+
+      if (generation !== this.refreshGeneration || !this.initialized) {
+        return;
+      }
+
+      const removed = this.removeMissingSessionFiles(activeFileKeys);
+      if (changed || removed) {
+        this.markDirty();
+        broadcastCostsUpdated();
+      }
+
+      if ((parsed > 0 || restored > 0 || removed) && !isProduction) {
+        console.log(
+          `Analytics session cache refreshed: ${parsed} parsed, ${restored} restored, ${removed ? 'stale entries removed' : 'no stale entries'}`
+        );
+      }
+    } catch (error) {
+      console.error('Failed to refresh analytics sessions in background:', error);
+    }
+  }
+
+  private parseSessionFile(
+    filePath: string,
+    sessionId: string,
+    agentId: string,
+    projectPath: string,
+    channel?: string,
+    options: ParseSessionFileOptions = {}
+  ): boolean {
+    if (!fs.existsSync(filePath)) {
+      return false;
     }
 
     try {
@@ -273,8 +813,10 @@ class AnalyticsService {
       try {
         content = fs.readFileSync(filePath, 'utf-8');
       } catch (readError) {
-        console.error(`Error reading session file ${filePath}:`, readError);
-        return;
+        if (!isProduction) {
+          console.error(`Error reading session file ${filePath}:`, readError);
+        }
+        return false;
       }
 
       const lines = content.split('\n');
@@ -326,23 +868,20 @@ class AnalyticsService {
               session.lastActivity = result.timestamp;
             }
           }
-        } catch (lineError) {
+        } catch {
           parsingErrors++;
-          console.warn(`Error parsing line in ${filePath}:`, lineError);
-          // Continue parsing other lines
         }
 
         // Track tool calls from content blocks
         try {
           this.processLineForTools(line, sessionId, agentId, session);
-        } catch (toolError) {
-          console.warn(`Error processing tool call in ${filePath}:`, toolError);
+        } catch {
           // Continue processing other lines
         }
       }
 
-      if (parsingErrors > 0) {
-        console.warn(`Found ${parsingErrors} parsing errors in ${filePath}, but continued processing`);
+      if (parsingErrors > 0 && !isProduction) {
+        console.warn(`Found ${parsingErrors} parsing errors in ${filePath}`);
       }
 
       // Fallback timestamps
@@ -359,8 +898,29 @@ class AnalyticsService {
       }
 
       this.sessions.set(sessionId, session);
+      this.sessionFileKeys.set(sessionId, this.getFileCacheKey(filePath));
+
+      if (options.updateCache !== false) {
+        const stat = options.fileStat ?? this.safeStat(filePath);
+        if (stat) {
+          this.updateSessionCache(
+            filePath,
+            sessionId,
+            agentId,
+            projectPath,
+            channel,
+            stat,
+            session
+          );
+        }
+      }
+
+      return true;
     } catch (error) {
-      console.error(`Error parsing session file ${filePath}:`, error);
+      if (!isProduction) {
+        console.error(`Error parsing session file ${filePath}:`, error);
+      }
+      return false;
     }
   }
 
@@ -424,16 +984,14 @@ class AnalyticsService {
                   status: isError ? 'error' : 'success',
                   error: isError ? 'Tool execution failed' : null,
                 });
-              } catch (dbError) {
-                console.warn(`Error logging outbound call to database:`, dbError);
+              } catch {
                 // Continue even if database logging fails
               }
 
               this.pendingToolCalls.delete(block.tool_use_id);
             }
           }
-        } catch (blockError) {
-          console.warn(`Error processing tool block in session ${sessionId}:`, blockError);
+        } catch {
           // Continue processing other blocks
         }
       }
@@ -461,6 +1019,7 @@ class AnalyticsService {
     this.dirty = true;
     this._dailyCosts = null;
     this._modelUsage = null;
+    this._statsCache = null;
   }
 
   private debouncedBudgetCheck(): void {
@@ -474,8 +1033,8 @@ class AnalyticsService {
         const { detectAnomalies } = await import('./anomaly-detector.js');
         checkBudgets();
         detectAnomalies();
-      } catch (error) {
-        console.error('Error checking budgets/anomalies:', error);
+      } catch {
+        // Budget check failures should not break the app
       }
       broadcastCostsUpdated();
     }, 5000);
@@ -627,43 +1186,81 @@ class AnalyticsService {
     return [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date));
   }
 
-  getTodayCost(): number {
+  private computeAggregatedStats(): AggregatedStats {
     const today = this.today();
-    let cost = 0;
+    const weekCutoff = this.daysAgo(7);
+    const monthCutoff = this.daysAgo(30);
+    const monthStart = this.startOfMonth();
+
+    const stats: AggregatedStats = {
+      todaySpend: 0,
+      todayInput: 0,
+      todayOutput: 0,
+      weekSpend: 0,
+      monthSpend: 0,
+      totalCost: 0,
+      totalInput: 0,
+      totalOutput: 0,
+      totalCacheRead: 0,
+      totalCacheCreation: 0,
+      totalCacheSavings: 0,
+      activeThisMonth: 0,
+    };
+
     for (const [, session] of this.sessions) {
+      if (session.lastActivity >= monthStart) {
+        stats.activeThisMonth++;
+      }
+
       for (const req of session.requests) {
-        if (this.dateStr(req.timestamp) === today) {
-          cost += req.cost;
+        const date = this.dateStr(req.timestamp);
+
+        stats.totalCost += req.cost;
+        stats.totalInput += req.inputTokens;
+        stats.totalOutput += req.outputTokens;
+        stats.totalCacheRead += req.cacheReadTokens;
+        stats.totalCacheCreation += req.cacheCreationTokens;
+        stats.totalCacheSavings += req.cacheSavings;
+
+        if (date === today) {
+          stats.todaySpend += req.cost;
+          stats.todayInput += req.inputTokens;
+          stats.todayOutput += req.outputTokens;
+        }
+        if (date >= weekCutoff) {
+          stats.weekSpend += req.cost;
+        }
+        if (date >= monthCutoff) {
+          stats.monthSpend += req.cost;
         }
       }
     }
-    return cost;
+
+    return stats;
+  }
+
+  private getStatsInternal(): AggregatedStats {
+    const today = this.today();
+    if (this._statsCache && this._statsCacheDate === today) {
+      return this._statsCache;
+    }
+
+    const stats = this.computeAggregatedStats();
+    this._statsCache = stats;
+    this._statsCacheDate = today;
+    return stats;
+  }
+
+  getTodayCost(): number {
+    return this.getStatsInternal().todaySpend;
   }
 
   getWeekCost(): number {
-    const cutoff = this.daysAgo(7);
-    let cost = 0;
-    for (const [, session] of this.sessions) {
-      for (const req of session.requests) {
-        if (this.dateStr(req.timestamp) >= cutoff) {
-          cost += req.cost;
-        }
-      }
-    }
-    return cost;
+    return this.getStatsInternal().weekSpend;
   }
 
   getMonthCost(): number {
-    const cutoff = this.daysAgo(30);
-    let cost = 0;
-    for (const [, session] of this.sessions) {
-      for (const req of session.requests) {
-        if (this.dateStr(req.timestamp) >= cutoff) {
-          cost += req.cost;
-        }
-      }
-    }
-    return cost;
+    return this.getStatsInternal().monthSpend;
   }
 
   // ============================================
@@ -723,60 +1320,40 @@ class AnalyticsService {
   // ============================================
 
   getStats(): Stats {
-    const today = this.today();
-    let todaySpend = 0, todayInput = 0, todayOutput = 0;
-    let weeklySpend = 0, monthlySpend = 0;
-    const weekCutoff = this.daysAgo(7);
-    const monthCutoff = this.daysAgo(30);
-
-    for (const [, session] of this.sessions) {
-      for (const req of session.requests) {
-        const date = this.dateStr(req.timestamp);
-        if (date === today) {
-          todaySpend += req.cost;
-          todayInput += req.inputTokens;
-          todayOutput += req.outputTokens;
-        }
-        if (date >= weekCutoff) weeklySpend += req.cost;
-        if (date >= monthCutoff) monthlySpend += req.cost;
-      }
-    }
-
+    const stats = this.getStatsInternal();
     return {
-      todaySpend,
-      weeklySpend,
-      monthlySpend,
+      todaySpend: stats.todaySpend,
+      weeklySpend: stats.weekSpend,
+      monthlySpend: stats.monthSpend,
       totalSessions: this.sessions.size,
-      todayTokens: { input: todayInput, output: todayOutput },
+      todayTokens: { input: stats.todayInput, output: stats.todayOutput },
     };
   }
 
   getEnhancedStats(): EnhancedStats {
-    const monthStart = this.startOfMonth();
-    let totalCost = 0, monthCost = 0;
-    let totalInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheCreation = 0, totalCacheSavings = 0;
-    let activeThisMonth = 0;
+    const stats = this.getStatsInternal();
+    let monthCost = 0;
 
+    const monthCutoff = this.daysAgo(30);
     for (const [, session] of this.sessions) {
-      if (session.lastActivity >= monthStart) activeThisMonth++;
-
       for (const req of session.requests) {
-        totalCost += req.cost;
-        totalInput += req.inputTokens;
-        totalOutput += req.outputTokens;
-        totalCacheRead += req.cacheReadTokens;
-        totalCacheCreation += req.cacheCreationTokens;
-        totalCacheSavings += req.cacheSavings;
-        if (this.dateStr(req.timestamp) >= monthStart) monthCost += req.cost;
+        if (this.dateStr(req.timestamp) >= monthCutoff) {
+          monthCost += req.cost;
+        }
       }
     }
 
     return {
-      totalCost,
+      totalCost: stats.totalCost,
       monthCost,
-      totalTokens: { input: totalInput, output: totalOutput, cacheRead: totalCacheRead, cacheCreation: totalCacheCreation },
-      cacheSavings: totalCacheSavings,
-      activeSessionsThisMonth: activeThisMonth,
+      totalTokens: {
+        input: stats.totalInput,
+        output: stats.totalOutput,
+        cacheRead: stats.totalCacheRead,
+        cacheCreation: stats.totalCacheCreation,
+      },
+      cacheSavings: stats.totalCacheSavings,
+      activeSessionsThisMonth: stats.activeThisMonth,
     };
   }
 
@@ -985,8 +1562,10 @@ class AnalyticsService {
     const lastWeekStart = this.daysAgo(13);
     const lastWeekEnd = this.daysAgo(7); // exclusive
 
-    let twCost = 0, twTokens = 0, twSessions = new Set<string>();
-    let lwCost = 0, lwTokens = 0, lwSessions = new Set<string>();
+    let twCost = 0, twTokens = 0;
+    const twSessions = new Set<string>();
+    let lwCost = 0, lwTokens = 0;
+    const lwSessions = new Set<string>();
 
     for (const [, session] of this.sessions) {
       for (const req of session.requests) {

@@ -6,6 +6,24 @@
  */
 
 import { calculateCost } from '../costs.js';
+import { hasPricing } from '../../services/pricing-service.js';
+import { convertUsdToCny } from '../../lib/currency.js';
+
+const VERIFIED_PRICING_PROVIDERS = new Set([
+  'deepseek',
+  'minimax',
+  'minimax-portal',
+  'moonshot',
+  'kimi-coding',
+  'qwen',
+  'qwen-portal',
+  'dashscope',
+  'doubao',
+  'volcengine',
+  'ark',
+  'zhipu',
+  'bigmodel',
+]);
 
 // ============================================
 // Interfaces
@@ -117,16 +135,32 @@ export function parseGatewayLogLine(line: string): ParsedGatewayLogResult | null
     return null;
   }
 
-  // Always calculate from our pricing data (needed for cache savings)
+  const providerReportedCost = typeof entry.cost === 'number'
+    ? convertUsdToCny(entry.cost)
+    : undefined;
+  const hasVerifiedPricing = hasPricing(provider, model);
+  const preferVerifiedPricing = hasVerifiedPricing
+    && VERIFIED_PRICING_PROVIDERS.has(provider.toLowerCase());
+
+  // Always calculate from our pricing data when we need cache savings or
+  // when a provider adapter is known to emit placeholder/non-final costs.
   const costResult = calculateCost(provider, model, {
     inputTokens,
     outputTokens,
     cacheCreationTokens,
     cacheReadTokens,
+  }, {
+    suppressMissingPricingWarning: Boolean(providerReportedCost && providerReportedCost > 0),
   });
 
   // Use provider cost if available, otherwise our calculated cost
-  const cost = (entry.cost && entry.cost > 0) ? entry.cost : costResult.totalCost;
+  const cost = (
+    !preferVerifiedPricing
+    && providerReportedCost
+    && providerReportedCost > 0
+  )
+    ? providerReportedCost
+    : costResult.totalCost;
   const cacheSavings = costResult.cacheSavings;
 
   return {
@@ -232,6 +266,19 @@ function inferProvider(model: string): string {
   if (modelLower.includes('deepseek')) {
     return 'deepseek';
   }
+  if (modelLower.includes('qwen')) {
+    return 'qwen';
+  }
+  if (modelLower.includes('doubao')) {
+    return 'doubao';
+  }
+  if (
+    modelLower.includes('glm')
+    || modelLower.includes('chatglm')
+    || modelLower.includes('bigmodel')
+  ) {
+    return 'zhipu';
+  }
   if (modelLower.includes('llama') || modelLower.includes('mistral')) {
     return 'meta';
   }
@@ -280,7 +327,8 @@ export interface GatewayLogEntry {
 
 import fs from 'fs';
 import path from 'path';
-import chokidar, { FSWatcher } from 'chokidar';
+import chokidar from 'chokidar';
+import type { FSWatcher } from 'chokidar';
 
 const securityFilePositions = new Map<string, number>();
 let securityGatewayWatcher: FSWatcher | null = null;

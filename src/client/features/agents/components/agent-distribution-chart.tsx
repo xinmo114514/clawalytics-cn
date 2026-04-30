@@ -7,6 +7,7 @@ import {
   Tooltip,
 } from 'recharts'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import type { Agent } from '@/lib/api'
 
 interface AgentDistributionChartProps {
@@ -26,6 +27,7 @@ export function AgentDistributionChart({
   agents,
 }: AgentDistributionChartProps) {
   const { text } = useLocale()
+  const { formatCurrencyPrecise } = useCurrency()
   const totalCost = agents.reduce((acc, agent) => acc + agent.total_cost, 0)
 
   const chartData = agents
@@ -88,7 +90,7 @@ export function AgentDistributionChart({
                         {text('成本', 'Cost')}
                       </span>
                       <span className='font-mono text-sm font-medium'>
-                        ${item.value.toFixed(4)}
+                        {formatCurrencyPrecise(item.value)}
                       </span>
                     </div>
                     <div className='flex items-center justify-between gap-4'>

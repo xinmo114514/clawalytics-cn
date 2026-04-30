@@ -176,6 +176,15 @@ function formatBytes(bytes) {
   return `${bytes} B`;
 }
 
+function formatCurrency(value, minimumFractionDigits = 2, maximumFractionDigits = 4) {
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY',
+    minimumFractionDigits,
+    maximumFractionDigits,
+  }).format(value);
+}
+
 function getDbSize() {
   try {
     const dbPath = path.join(CONFIG_DIR, 'clawalytics.db');
@@ -293,17 +302,17 @@ if (process.argv.length <= 2 || (process.argv.length === 3 && ['-h', '--help'].i
     if (stats) {
       console.log('');
       console.log('  Spending');
-      console.log(`    Today:     $${stats.todaySpend.toFixed(4)}`);
-      console.log(`    This week: $${stats.weeklySpend.toFixed(4)}`);
-      console.log(`    This month:$${stats.monthlySpend.toFixed(4)}`);
+      console.log(`    Today:     ${formatCurrency(stats.todaySpend, 4, 4)}`);
+      console.log(`    This week: ${formatCurrency(stats.weeklySpend, 4, 4)}`);
+      console.log(`    This month:${formatCurrency(stats.monthlySpend, 4, 4)}`);
     }
 
     if (enhanced) {
       console.log('');
       console.log('  Usage');
-      console.log(`    Total cost:    $${enhanced.totalCost.toFixed(4)}`);
+      console.log(`    Total cost:    ${formatCurrency(enhanced.totalCost, 4, 4)}`);
       console.log(`    Sessions:      ${enhanced.activeSessionsThisMonth} this month`);
-      console.log(`    Cache savings: $${enhanced.cacheSavings.toFixed(4)}`);
+      console.log(`    Cache savings: ${formatCurrency(enhanced.cacheSavings, 4, 4)}`);
       console.log(`    Tokens:        ${(enhanced.totalTokens.input / 1000).toFixed(0)}K in / ${(enhanced.totalTokens.output / 1000).toFixed(0)}K out`);
     }
 
@@ -312,15 +321,15 @@ if (process.argv.length <= 2 || (process.argv.length === 3 && ['-h', '--help'].i
       console.log('  Budget');
       if (budget.daily) {
         const bar = progressBar(budget.daily.percent);
-        console.log(`    Daily:   ${bar} $${budget.daily.spent.toFixed(2)} / $${budget.daily.budget.toFixed(2)}`);
+        console.log(`    Daily:   ${bar} ${formatCurrency(budget.daily.spent, 2, 2)} / ${formatCurrency(budget.daily.budget, 2, 2)}`);
       }
       if (budget.weekly) {
         const bar = progressBar(budget.weekly.percent);
-        console.log(`    Weekly:  ${bar} $${budget.weekly.spent.toFixed(2)} / $${budget.weekly.budget.toFixed(2)}`);
+        console.log(`    Weekly:  ${bar} ${formatCurrency(budget.weekly.spent, 2, 2)} / ${formatCurrency(budget.weekly.budget, 2, 2)}`);
       }
       if (budget.monthly) {
         const bar = progressBar(budget.monthly.percent);
-        console.log(`    Monthly: ${bar} $${budget.monthly.spent.toFixed(2)} / $${budget.monthly.budget.toFixed(2)}`);
+        console.log(`    Monthly: ${bar} ${formatCurrency(budget.monthly.spent, 2, 2)} / ${formatCurrency(budget.monthly.budget, 2, 2)}`);
       }
     }
 
@@ -447,9 +456,9 @@ program
       console.log('');
       console.log('  Spending');
       console.log('  ──────────────────────────────────────────────');
-      console.log(`  Today:       $${stats.todaySpend.toFixed(4)}`);
-      console.log(`  This week:   $${stats.weeklySpend.toFixed(4)}`);
-      console.log(`  This month:  $${stats.monthlySpend.toFixed(4)}`);
+      console.log(`  Today:       ${formatCurrency(stats.todaySpend, 4, 4)}`);
+      console.log(`  This week:   ${formatCurrency(stats.weeklySpend, 4, 4)}`);
+      console.log(`  This month:  ${formatCurrency(stats.monthlySpend, 4, 4)}`);
       console.log(`  Sessions:    ${stats.totalSessions}`);
     }
 
@@ -457,9 +466,9 @@ program
       console.log('');
       console.log('  Usage');
       console.log('  ──────────────────────────────────────────────');
-      console.log(`  Total cost:      $${enhanced.totalCost.toFixed(4)}`);
+      console.log(`  Total cost:      ${formatCurrency(enhanced.totalCost, 4, 4)}`);
       console.log(`  Month sessions:  ${enhanced.activeSessionsThisMonth}`);
-      console.log(`  Cache savings:   $${enhanced.cacheSavings.toFixed(4)}`);
+      console.log(`  Cache savings:   ${formatCurrency(enhanced.cacheSavings, 4, 4)}`);
       console.log(`  Input tokens:    ${(enhanced.totalTokens.input / 1000).toFixed(0)}K`);
       console.log(`  Output tokens:   ${(enhanced.totalTokens.output / 1000).toFixed(0)}K`);
       if (enhanced.totalTokens.cacheRead > 0) {
@@ -473,15 +482,15 @@ program
       console.log('  ──────────────────────────────────────────────');
       if (budget.daily) {
         const bar = progressBar(budget.daily.percent);
-        console.log(`  Daily:   ${bar}  $${budget.daily.spent.toFixed(2)} / $${budget.daily.budget.toFixed(2)}`);
+        console.log(`  Daily:   ${bar}  ${formatCurrency(budget.daily.spent, 2, 2)} / ${formatCurrency(budget.daily.budget, 2, 2)}`);
       }
       if (budget.weekly) {
         const bar = progressBar(budget.weekly.percent);
-        console.log(`  Weekly:  ${bar}  $${budget.weekly.spent.toFixed(2)} / $${budget.weekly.budget.toFixed(2)}`);
+        console.log(`  Weekly:  ${bar}  ${formatCurrency(budget.weekly.spent, 2, 2)} / ${formatCurrency(budget.weekly.budget, 2, 2)}`);
       }
       if (budget.monthly) {
         const bar = progressBar(budget.monthly.percent);
-        console.log(`  Monthly: ${bar}  $${budget.monthly.spent.toFixed(2)} / $${budget.monthly.budget.toFixed(2)}`);
+        console.log(`  Monthly: ${bar}  ${formatCurrency(budget.monthly.spent, 2, 2)} / ${formatCurrency(budget.monthly.budget, 2, 2)}`);
       }
     }
 
@@ -721,7 +730,7 @@ program
       }
     } catch {}
 
-    const thresholds = config.alertThresholds || { dailyBudget: 10, weeklyBudget: 50, monthlyBudget: 200 };
+    const thresholds = config.alertThresholds || { dailyBudget: 70, weeklyBudget: 350, monthlyBudget: 1400 };
     const hasFlags = options.daily !== undefined || options.weekly !== undefined || options.monthly !== undefined;
 
     if (hasFlags) {
@@ -738,9 +747,9 @@ program
 
       console.log('');
       console.log('  Budget updated!');
-      console.log(`    Daily:   $${thresholds.dailyBudget.toFixed(2)}`);
-      console.log(`    Weekly:  $${thresholds.weeklyBudget.toFixed(2)}`);
-      console.log(`    Monthly: $${thresholds.monthlyBudget.toFixed(2)}`);
+      console.log(`    Daily:   ${formatCurrency(thresholds.dailyBudget, 2, 2)}`);
+      console.log(`    Weekly:  ${formatCurrency(thresholds.weeklyBudget, 2, 2)}`);
+      console.log(`    Monthly: ${formatCurrency(thresholds.monthlyBudget, 2, 2)}`);
       console.log('');
     } else {
       // Interactive mode
@@ -754,9 +763,9 @@ program
       console.log('  Set budget limits. Enter 0 to disable. Press Enter to keep current value.');
       console.log('');
 
-      const dailyInput = await ask(`  Daily budget  [$${thresholds.dailyBudget.toFixed(2)}]: `);
-      const weeklyInput = await ask(`  Weekly budget [$${thresholds.weeklyBudget.toFixed(2)}]: `);
-      const monthlyInput = await ask(`  Monthly budget [$${thresholds.monthlyBudget.toFixed(2)}]: `);
+      const dailyInput = await ask(`  Daily budget  [${formatCurrency(thresholds.dailyBudget, 2, 2)}]: `);
+      const weeklyInput = await ask(`  Weekly budget [${formatCurrency(thresholds.weeklyBudget, 2, 2)}]: `);
+      const monthlyInput = await ask(`  Monthly budget [${formatCurrency(thresholds.monthlyBudget, 2, 2)}]: `);
 
       rl.close();
 
@@ -777,9 +786,9 @@ program
       console.log('');
       console.log('  Budget updated!');
       const tag = (old, cur) => old === cur ? '  (unchanged)' : '';
-      console.log(`    Daily:   $${thresholds.dailyBudget.toFixed(2)}${tag(oldDaily, thresholds.dailyBudget)}`);
-      console.log(`    Weekly:  $${thresholds.weeklyBudget.toFixed(2)}${tag(oldWeekly, thresholds.weeklyBudget)}`);
-      console.log(`    Monthly: $${thresholds.monthlyBudget.toFixed(2)}${tag(oldMonthly, thresholds.monthlyBudget)}`);
+      console.log(`    Daily:   ${formatCurrency(thresholds.dailyBudget, 2, 2)}${tag(oldDaily, thresholds.dailyBudget)}`);
+      console.log(`    Weekly:  ${formatCurrency(thresholds.weeklyBudget, 2, 2)}${tag(oldWeekly, thresholds.weeklyBudget)}`);
+      console.log(`    Monthly: ${formatCurrency(thresholds.monthlyBudget, 2, 2)}${tag(oldMonthly, thresholds.monthlyBudget)}`);
       console.log('');
     }
 

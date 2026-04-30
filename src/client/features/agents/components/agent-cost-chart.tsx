@@ -8,6 +8,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import { useChartColors } from '@/hooks/use-chart-colors'
 import type { AgentDailyCost } from '@/lib/api'
 
@@ -17,6 +18,7 @@ interface AgentCostChartProps {
 
 export function AgentCostChart({ data }: AgentCostChartProps) {
   const { locale, text } = useLocale()
+  const { formatCurrency, formatCurrencyPrecise } = useCurrency()
   const colors = useChartColors()
   const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
 
@@ -101,8 +103,8 @@ export function AgentCostChart({ data }: AgentCostChartProps) {
           tickLine={false}
           axisLine={false}
           tickMargin={8}
-          tickFormatter={(value: number) => `$${value.toFixed(2)}`}
-          width={55}
+          tickFormatter={formatCurrency}
+          width={70}
         />
         <Tooltip
           content={({ active, payload }) => {
@@ -119,7 +121,7 @@ export function AgentCostChart({ data }: AgentCostChartProps) {
                         {text('成本', 'Cost')}
                       </span>
                       <span className='font-mono text-sm font-medium'>
-                        ${item.cost.toFixed(4)}
+                        {formatCurrencyPrecise(item.cost)}
                       </span>
                     </div>
                     <div className='flex items-center justify-between gap-6'>

@@ -15,6 +15,7 @@ import { useLocale } from '@/context/locale-provider'
 import {
   getApiErrorMessage,
   getDesktopPreferences,
+  type DesktopCloseAction,
   type DesktopNotificationTrigger,
   updateDesktopPreferences,
   type DesktopPreferences,
@@ -23,6 +24,7 @@ import {
 import { SettingsCard, SettingsItem } from '../settings-page'
 
 const DEFAULT_STARTUP_MODE: DesktopStartupMode = 'window'
+const DEFAULT_CLOSE_ACTION: DesktopCloseAction = 'ask'
 const DEFAULT_NOTIFICATIONS_ENABLED = true
 const DEFAULT_NOTIFICATION_TRIGGER: DesktopNotificationTrigger = 'activity'
 const DEFAULT_NOTIFICATION_DELAY_SECONDS = 30
@@ -125,6 +127,7 @@ export function DesktopSettings() {
 
   const launchOnStartup = preferences?.launchOnStartup ?? false
   const startupMode = preferences?.startupMode ?? DEFAULT_STARTUP_MODE
+  const closeAction = preferences?.closeAction ?? DEFAULT_CLOSE_ACTION
   const notificationsEnabled = preferences?.notificationsEnabled ?? DEFAULT_NOTIFICATIONS_ENABLED
   const notificationTrigger = preferences?.notificationTrigger ?? DEFAULT_NOTIFICATION_TRIGGER
   const notificationDelaySeconds =
@@ -147,6 +150,50 @@ export function DesktopSettings() {
 
   return (
     <>
+      <SettingsCard
+        title={text('关闭窗口', 'Window Close Behavior')}
+        description={text(
+          '配置点击关闭按钮时的默认行为',
+          'Choose what happens when you click the close button'
+        )}
+      >
+        <SettingsItem
+          label={text('关闭按钮行为', 'Close button behavior')}
+          description={text(
+            '选择关闭窗口时是询问、最小化到托盘还是直接退出',
+            'Choose whether to ask, minimize to tray, or quit when closing'
+          )}
+        >
+          <div className='rounded-xl border border-border/70 bg-muted/15 p-4'>
+            <Select
+              value={closeAction}
+              disabled={controlsDisabled}
+              onValueChange={(value) => {
+                void savePreferences(
+                  { closeAction: value as DesktopCloseAction },
+                  text('已更新关闭行为', 'Close behavior updated')
+                )
+              }}
+            >
+              <SelectTrigger className='w-full bg-background'>
+                <SelectValue placeholder={text('选择关闭行为', 'Select close behavior')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='ask'>
+                  {text('每次询问', 'Ask every time')}
+                </SelectItem>
+                <SelectItem value='tray'>
+                  {text('最小化到托盘', 'Minimize to tray')}
+                </SelectItem>
+                <SelectItem value='quit'>
+                  {text('退出应用', 'Quit app')}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </SettingsItem>
+      </SettingsCard>
+
       <SettingsCard
         title={text('桌面启动', 'Desktop Startup')}
         description={text(

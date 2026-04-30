@@ -22,6 +22,10 @@ export interface CostResult {
   cacheReadTokens: number;
 }
 
+export interface CalculateCostOptions {
+  suppressMissingPricingWarning?: boolean;
+}
+
 // Cache pricing multipliers (relative to input rate)
 export const CACHE_WRITE_MULTIPLIER = 1.25;  // Cache creation costs 1.25x input price
 export const CACHE_READ_MULTIPLIER = 0.1;    // Cache read costs 0.1x input price (90% discount)
@@ -29,7 +33,8 @@ export const CACHE_READ_MULTIPLIER = 0.1;    // Cache read costs 0.1x input pric
 export function calculateCost(
   provider: string,
   model: string,
-  usage: TokenUsage
+  usage: TokenUsage,
+  options: CalculateCostOptions = {}
 ): CostResult {
   // Get pricing from pricing service
   const pricing = getModelPricing(provider, model);
@@ -38,7 +43,7 @@ export function calculateCost(
   let rates: ModelPricing;
   if (!pricing) {
     const key = `${provider}/${model}`;
-    if (!warnedModels.has(key)) {
+    if (!options.suppressMissingPricingWarning && !warnedModels.has(key)) {
       warnedModels.add(key);
       console.warn(`No pricing found for ${key}, using zero cost`);
     }
@@ -98,11 +103,27 @@ export function identifyProvider(model: string): string {
   if (modelLower.includes('moonshot') || modelLower.includes('kimi') || modelLower.startsWith('k2')) {
     return 'moonshot';
   }
+  if (modelLower.includes('minimax')) {
+    return 'minimax';
+  }
   if (modelLower.includes('gemini')) {
     return 'google';
   }
   if (modelLower.includes('deepseek')) {
     return 'deepseek';
+  }
+  if (modelLower.includes('qwen')) {
+    return 'qwen';
+  }
+  if (modelLower.includes('doubao')) {
+    return 'doubao';
+  }
+  if (
+    modelLower.includes('glm')
+    || modelLower.includes('chatglm')
+    || modelLower.includes('bigmodel')
+  ) {
+    return 'zhipu';
   }
   if (modelLower.includes('llama')) {
     return 'meta';

@@ -7,6 +7,7 @@ import {
   Tooltip,
 } from 'recharts'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import type { ProviderSummary } from '@/lib/api'
 
 interface ProviderDistributionChartProps {
@@ -26,6 +27,7 @@ export function ProviderDistributionChart({
   providers,
 }: ProviderDistributionChartProps) {
   const { text } = useLocale()
+  const { formatCurrencyPrecise } = useCurrency()
   const totalCost = providers.reduce((acc, provider) => acc + provider.totalCost, 0)
 
   const chartData = providers
@@ -90,7 +92,7 @@ export function ProviderDistributionChart({
                         {text('成本', 'Cost')}
                       </span>
                       <span className='font-mono text-sm font-medium'>
-                        ${item.value.toFixed(4)}
+                        {formatCurrencyPrecise(item.value)}
                       </span>
                     </div>
                     <div className='flex items-center justify-between gap-4'>

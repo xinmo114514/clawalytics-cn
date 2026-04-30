@@ -11,8 +11,9 @@ import {
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useLocale } from '@/context/locale-provider'
+import { useCurrency } from '@/context/currency-provider'
 import { getSessionRequests, type SessionRequest } from '@/lib/api'
-import { formatCurrency, formatNumber } from '@/lib/format'
+import { formatNumber } from '@/lib/format'
 
 interface SessionDetailRowProps {
   sessionId: string
@@ -77,6 +78,7 @@ function formatRequestTime(timestamp: string): string {
 
 export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
   const { text } = useLocale()
+  const { formatCurrency } = useCurrency()
   const { data: requests, isLoading } = useQuery({
     queryKey: ['sessionRequests', sessionId],
     queryFn: () => getSessionRequests(sessionId),

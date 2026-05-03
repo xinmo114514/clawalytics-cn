@@ -163,10 +163,11 @@
     "asarUnpack": [
       "node_modules/better-sqlite3/**/*"
     ],
+    "afterSign": "scripts/prepare-nsis-app-dir.cjs",
     "npmRebuild": true,
     "win": {
       "icon": "public/images/app-icon.ico",
-      "signAndEditExecutable": false,
+      "signAndEditExecutable": true,
       "target": [
         "portable",
         "nsis"

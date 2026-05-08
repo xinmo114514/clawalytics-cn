@@ -1,7 +1,13 @@
 import { createContext, useContext, useEffect, useState, useMemo } from 'react'
 import { getCookie, setCookie, removeCookie } from '@/lib/cookies'
 
-export type ColorTheme = 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'windows'
+export type ColorTheme =
+  | 'blue'
+  | 'purple'
+  | 'green'
+  | 'orange'
+  | 'pink'
+  | 'windows'
 type Theme = 'dark' | 'light' | 'system'
 type ResolvedTheme = Exclude<Theme, 'system'>
 
@@ -71,7 +77,9 @@ export function ThemeProvider({
       : defaultColorTheme
   })
 
-  const [windowsAccentColor, setWindowsAccentColor] = useState<string | null>(null)
+  const [windowsAccentColor, setWindowsAccentColor] = useState<string | null>(
+    null
+  )
 
   const resolvedTheme = useMemo((): ResolvedTheme => {
     if (theme === 'system') {

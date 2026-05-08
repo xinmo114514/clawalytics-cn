@@ -1,17 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Bell, Clock3, Power, Rocket } from 'lucide-react'
 import { toast } from 'sonner'
-import { isWindowsDesktopShell } from '@/components/layout/desktop-window-chrome'
-import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { useLocale } from '@/context/locale-provider'
 import {
   getApiErrorMessage,
   getDesktopPreferences,
@@ -21,6 +10,17 @@ import {
   type DesktopPreferences,
   type DesktopStartupMode,
 } from '@/lib/api'
+import { useLocale } from '@/context/locale-provider'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { isWindowsDesktopShell } from '@/components/layout/desktop-window-chrome'
 import { SettingsCard, SettingsItem } from '../settings-page'
 
 const DEFAULT_STARTUP_MODE: DesktopStartupMode = 'window'
@@ -31,10 +31,11 @@ const DEFAULT_NOTIFICATION_DELAY_SECONDS = 30
 const MIN_NOTIFICATION_DELAY_SECONDS = 5
 const MAX_NOTIFICATION_DELAY_SECONDS = 3600
 
-function normalizeNotificationDelaySeconds(value: string | number | null | undefined): number {
-  const parsed = typeof value === 'number'
-    ? value
-    : Number.parseInt(String(value ?? ''), 10)
+function normalizeNotificationDelaySeconds(
+  value: string | number | null | undefined
+): number {
+  const parsed =
+    typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
 
   if (!Number.isFinite(parsed)) {
     return DEFAULT_NOTIFICATION_DELAY_SECONDS
@@ -48,7 +49,9 @@ function normalizeNotificationDelaySeconds(value: string | number | null | undef
 
 export function DesktopSettings() {
   const { text } = useLocale()
-  const [preferences, setPreferences] = useState<DesktopPreferences | null>(null)
+  const [preferences, setPreferences] = useState<DesktopPreferences | null>(
+    null
+  )
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [notificationDelayInput, setNotificationDelayInput] = useState(
@@ -70,7 +73,6 @@ export function DesktopSettings() {
           setPreferences(nextPreferences)
         }
       } catch (error) {
-        console.error('Failed to load desktop preferences:', error)
         if (!cancelled) {
           toast.error(
             getApiErrorMessage(
@@ -113,7 +115,6 @@ export function DesktopSettings() {
       setPreferences(nextPreferences)
       toast.success(successMessage)
     } catch (error) {
-      console.error('Failed to save desktop preferences:', error)
       toast.error(
         getApiErrorMessage(
           error,
@@ -128,8 +129,10 @@ export function DesktopSettings() {
   const launchOnStartup = preferences?.launchOnStartup ?? false
   const startupMode = preferences?.startupMode ?? DEFAULT_STARTUP_MODE
   const closeAction = preferences?.closeAction ?? DEFAULT_CLOSE_ACTION
-  const notificationsEnabled = preferences?.notificationsEnabled ?? DEFAULT_NOTIFICATIONS_ENABLED
-  const notificationTrigger = preferences?.notificationTrigger ?? DEFAULT_NOTIFICATION_TRIGGER
+  const notificationsEnabled =
+    preferences?.notificationsEnabled ?? DEFAULT_NOTIFICATIONS_ENABLED
+  const notificationTrigger =
+    preferences?.notificationTrigger ?? DEFAULT_NOTIFICATION_TRIGGER
   const notificationDelaySeconds =
     preferences?.notificationDelaySeconds ?? DEFAULT_NOTIFICATION_DELAY_SECONDS
   const controlsDisabled = isLoading || isSaving || !preferences
@@ -176,7 +179,9 @@ export function DesktopSettings() {
               }}
             >
               <SelectTrigger className='w-full bg-background'>
-                <SelectValue placeholder={text('选择关闭行为', 'Select close behavior')} />
+                <SelectValue
+                  placeholder={text('选择关闭行为', 'Select close behavior')}
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value='ask'>
@@ -247,7 +252,9 @@ export function DesktopSettings() {
           <div className='rounded-xl border border-border/70 bg-muted/15 p-4'>
             <div className='mb-3 flex items-center gap-2 text-sm font-medium'>
               <Rocket className='size-4 text-muted-foreground' />
-              <span>{text('自启后的打开方式', 'How the app opens after startup')}</span>
+              <span>
+                {text('自启后的打开方式', 'How the app opens after startup')}
+              </span>
             </div>
             <Select
               value={startupMode}
@@ -260,7 +267,9 @@ export function DesktopSettings() {
               }}
             >
               <SelectTrigger className='w-full bg-background'>
-                <SelectValue placeholder={text('选择启动方式', 'Select startup mode')} />
+                <SelectValue
+                  placeholder={text('选择启动方式', 'Select startup mode')}
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value='window'>
@@ -302,7 +311,9 @@ export function DesktopSettings() {
             <div className='space-y-1'>
               <div className='flex items-center gap-2 text-sm font-medium'>
                 <Bell className='size-4 text-muted-foreground' />
-                <span>{text('启用桌面通知', 'Enable desktop notifications')}</span>
+                <span>
+                  {text('启用桌面通知', 'Enable desktop notifications')}
+                </span>
               </div>
               <p className='text-sm text-muted-foreground'>
                 {text(
@@ -351,7 +362,10 @@ export function DesktopSettings() {
             >
               <SelectTrigger className='w-full bg-background'>
                 <SelectValue
-                  placeholder={text('选择通知触发条件', 'Select a notification trigger')}
+                  placeholder={text(
+                    '选择通知触发条件',
+                    'Select a notification trigger'
+                  )}
                 />
               </SelectTrigger>
               <SelectContent>
@@ -415,7 +429,10 @@ export function DesktopSettings() {
                 event.preventDefault()
                 void saveNotificationDelay(notificationDelayInput)
               }}
-              aria-label={text('设置通知延迟秒数', 'Set notification delay in seconds')}
+              aria-label={text(
+                '设置通知延迟秒数',
+                'Set notification delay in seconds'
+              )}
             />
             <p className='mt-3 text-sm text-muted-foreground'>
               {text(

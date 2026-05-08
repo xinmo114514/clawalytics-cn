@@ -1,6 +1,6 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { Button } from '@/components/ui/button'
 import { useLocale } from '@/context/locale-provider'
+import { Button } from '@/components/ui/button'
 
 export function UnauthorisedError() {
   const navigate = useNavigate()
@@ -14,7 +14,10 @@ export function UnauthorisedError() {
           {text('未授权访问', 'Unauthorized Access')}
         </span>
         <p className='text-center text-muted-foreground'>
-          {text('请使用正确的身份信息登录，', 'Please log in with the appropriate credentials')}
+          {text(
+            '请使用正确的身份信息登录，',
+            'Please log in with the appropriate credentials'
+          )}
           <br />
           {text('然后再访问此资源。', 'to access this resource.')}
         </p>

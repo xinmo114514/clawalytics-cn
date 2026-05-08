@@ -7,10 +7,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
-import { useChartColors } from '@/hooks/use-chart-colors'
 import type { ModelDailyUsage } from '@/lib/api'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
 
 interface ModelCostChartProps {
   data: ModelDailyUsage[]
@@ -86,7 +86,10 @@ export function ModelCostChart({ data }: ModelCostChartProps) {
 
   return (
     <ResponsiveContainer width='100%' height={300}>
-      <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+      <AreaChart
+        data={chartData}
+        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+      >
         <defs>
           <linearGradient id='modelCostGradient' x1='0' y1='0' x2='0' y2='1'>
             <stop offset='5%' stopColor={chartColor} stopOpacity={0.5} />
@@ -124,7 +127,9 @@ export function ModelCostChart({ data }: ModelCostChartProps) {
 
               return (
                 <div className='rounded-lg border bg-background p-3 shadow-md'>
-                  <div className='mb-2 text-sm font-medium'>{item.fullDate}</div>
+                  <div className='mb-2 text-sm font-medium'>
+                    {item.fullDate}
+                  </div>
                   <div className='space-y-1.5'>
                     <div className='flex items-center justify-between gap-6'>
                       <span className='flex items-center gap-2 text-xs text-muted-foreground'>
@@ -145,10 +150,12 @@ export function ModelCostChart({ data }: ModelCostChartProps) {
                     </div>
                     <div className='flex items-center justify-between gap-6 border-t pt-1.5 text-xs text-muted-foreground'>
                       <span>
-                        {(item.inputTokens / 1000).toFixed(1)}K {text('输入', 'in')}
+                        {(item.inputTokens / 1000).toFixed(1)}K{' '}
+                        {text('输入', 'in')}
                       </span>
                       <span>
-                        {(item.outputTokens / 1000).toFixed(1)}K {text('输出', 'out')}
+                        {(item.outputTokens / 1000).toFixed(1)}K{' '}
+                        {text('输出', 'out')}
                       </span>
                     </div>
                   </div>

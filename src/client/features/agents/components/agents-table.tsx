@@ -1,6 +1,10 @@
+import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { ArrowUpDown, ExternalLink } from 'lucide-react'
-import { useState } from 'react'
+import type { Agent } from '@/lib/api'
+import { formatRelativeTime } from '@/lib/i18n'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,10 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
-import type { Agent } from '@/lib/api'
-import { formatRelativeTime } from '@/lib/i18n'
 
 interface AgentsTableProps {
   agents: Agent[]
@@ -167,7 +167,9 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                 >
                   <Button variant='ghost' size='icon' className='h-8 w-8'>
                     <ExternalLink className='h-4 w-4' />
-                    <span className='sr-only'>{text('查看详情', 'View details')}</span>
+                    <span className='sr-only'>
+                      {text('查看详情', 'View details')}
+                    </span>
                   </Button>
                 </Link>
               </TableCell>

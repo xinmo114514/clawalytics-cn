@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response } from 'express'
 import {
   handleDesktopCloseChoice,
   loadDesktopPreferences,
@@ -10,83 +10,92 @@ import {
   type DesktopNotificationTrigger,
   type DesktopStartupMode,
   type DesktopCurrency,
-} from '../services/desktop-service.js';
+} from '../services/desktop-service.js'
 
-const router: Router = Router();
+const router: Router = Router()
 
 router.get('/preferences', (_req: Request, res: Response): void => {
   try {
-    res.json(loadDesktopPreferences());
+    res.json(loadDesktopPreferences())
   } catch (error) {
-    console.error('Error fetching desktop preferences:', error);
-    res.status(500).json({ error: 'Failed to fetch desktop preferences' });
+    console.error('Error fetching desktop preferences:', error)
+    res.status(500).json({ error: 'Failed to fetch desktop preferences' })
   }
-});
+})
 
-router.post('/preferences', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const updates = req.body as Partial<{
-      locale: DesktopLocale;
-      closeAction: DesktopCloseAction;
-      launchOnStartup: boolean;
-      startupMode: DesktopStartupMode;
-      notificationsEnabled: boolean;
-      notificationTrigger: DesktopNotificationTrigger;
-      notificationDelaySeconds: number;
-      currency: DesktopCurrency;
-    }>;
-
-    const previousPreferences = loadDesktopPreferences();
-    const preferences = saveDesktopPreferences({
-      locale: updates.locale,
-      closeAction: updates.closeAction,
-      launchOnStartup: updates.launchOnStartup,
-      startupMode: updates.startupMode,
-      notificationsEnabled: updates.notificationsEnabled,
-      notificationTrigger: updates.notificationTrigger,
-      notificationDelaySeconds: updates.notificationDelaySeconds,
-      currency: updates.currency,
-    });
-
+router.post(
+  '/preferences',
+  async (req: Request, res: Response): Promise<void> => {
     try {
-      await notifyDesktopPreferencesChanged(preferences);
+      const updates = req.body as Partial<{
+        locale: DesktopLocale
+        closeAction: DesktopCloseAction
+        launchOnStartup: boolean
+        startupMode: DesktopStartupMode
+        notificationsEnabled: boolean
+        notificationTrigger: DesktopNotificationTrigger
+        notificationDelaySeconds: number
+        currency: DesktopCurrency
+      }>
+
+      const previousPreferences = loadDesktopPreferences()
+      const preferences = saveDesktopPreferences({
+        locale: updates.locale,
+        closeAction: updates.closeAction,
+        launchOnStartup: updates.launchOnStartup,
+        startupMode: updates.startupMode,
+        notificationsEnabled: updates.notificationsEnabled,
+        notificationTrigger: updates.notificationTrigger,
+        notificationDelaySeconds: updates.notificationDelaySeconds,
+        currency: updates.currency,
+      })
+
+      try {
+        await notifyDesktopPreferencesChanged(preferences)
+      } catch (error) {
+        saveDesktopPreferences(previousPreferences)
+        throw error
+      }
+
+      res.json(preferences)
     } catch (error) {
-      saveDesktopPreferences(previousPreferences);
-      throw error;
+      console.error('Error saving desktop preferences:', error)
+      res.status(500).json({
+        error: 'Failed to save desktop preferences',
+        details: error instanceof Error ? error.message : String(error),
+      })
     }
-
-    res.json(preferences);
-  } catch (error) {
-    console.error('Error saving desktop preferences:', error);
-    res.status(500).json({ error: 'Failed to save desktop preferences' });
   }
-});
+)
 
-router.post('/window/close-choice', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { action, remember } = req.body as {
-      action?: DesktopCloseChoiceAction;
-      remember?: boolean;
-    };
+router.post(
+  '/window/close-choice',
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { action, remember } = req.body as {
+        action?: DesktopCloseChoiceAction
+        remember?: boolean
+      }
 
-    if (!action || !['tray', 'quit', 'cancel'].includes(action)) {
-      res.status(400).json({ error: 'Invalid close action' });
-      return;
+      if (!action || !['tray', 'quit', 'cancel'].includes(action)) {
+        res.status(400).json({ error: 'Invalid close action' })
+        return
+      }
+
+      let preferences = loadDesktopPreferences()
+
+      if (remember === true && action !== 'cancel') {
+        preferences = saveDesktopPreferences({ closeAction: action })
+        void notifyDesktopPreferencesChanged(preferences)
+      }
+
+      await handleDesktopCloseChoice(action)
+      res.json(preferences)
+    } catch (error) {
+      console.error('Error handling desktop close choice:', error)
+      res.status(500).json({ error: 'Failed to handle desktop close choice' })
     }
-
-    let preferences = loadDesktopPreferences();
-
-    if (remember === true && action !== 'cancel') {
-      preferences = saveDesktopPreferences({ closeAction: action });
-      void notifyDesktopPreferencesChanged(preferences);
-    }
-
-    await handleDesktopCloseChoice(action);
-    res.json(preferences);
-  } catch (error) {
-    console.error('Error handling desktop close choice:', error);
-    res.status(500).json({ error: 'Failed to handle desktop close choice' });
   }
-});
+)
 
-export default router;
+export default router

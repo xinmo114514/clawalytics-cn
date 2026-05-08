@@ -1,17 +1,17 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import { getConfigDir } from '../config/loader.js';
+import path from 'path'
+import Database from 'better-sqlite3'
+import { getConfigDir } from '../config/loader.js'
 
-let db: Database.Database | null = null;
+let db: Database.Database | null = null
 
 export function getDatabase(): Database.Database {
   if (!db) {
-    const dbPath = path.join(getConfigDir(), 'clawalytics.db');
-    db = new Database(dbPath);
-    db.pragma('journal_mode = WAL');
-    initializeSchema(db);
+    const dbPath = path.join(getConfigDir(), 'clawalytics.db')
+    db = new Database(dbPath)
+    db.pragma('journal_mode = WAL')
+    initializeSchema(db)
   }
-  return db;
+  return db
 }
 
 function initializeSchema(database: Database.Database): void {
@@ -236,50 +236,88 @@ function initializeSchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_audit_log_entity_type ON audit_log(entity_type);
     CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
     CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(actor);
-  `);
+  `)
 
   // Run versioned migrations
-  runMigrations(database);
+  runMigrations(database)
 }
 
 // Each migration runs exactly once, tracked by version number in schema_version table.
 // To add a new migration: append an entry to this array with the next version number.
 // Migrations MUST be idempotent and non-destructive (never drop user data).
-const migrations: { version: number; description: string; up: (db: Database.Database) => void }[] = [
+const migrations: {
+  version: number
+  description: string
+  up: (db: Database.Database) => void
+}[] = [
   {
     version: 1,
     description: 'Add cache token columns to requests and daily_costs',
     up: (db) => {
-      const addColumnIfMissing = (table: string, column: string, type: string) => {
-        const info = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-        if (!info.some(c => c.name === column)) {
-          db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+      const addColumnIfMissing = (
+        table: string,
+        column: string,
+        type: string
+      ) => {
+        const info = db.prepare(`PRAGMA table_info(${table})`).all() as {
+          name: string
+        }[]
+        if (!info.some((c) => c.name === column)) {
+          db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
         }
-      };
-      addColumnIfMissing('requests', 'cache_creation_tokens', 'INTEGER DEFAULT 0');
-      addColumnIfMissing('requests', 'cache_read_tokens', 'INTEGER DEFAULT 0');
-      addColumnIfMissing('daily_costs', 'cache_creation_tokens', 'INTEGER DEFAULT 0');
-      addColumnIfMissing('daily_costs', 'cache_read_tokens', 'INTEGER DEFAULT 0');
-      addColumnIfMissing('daily_costs', 'cache_savings', 'REAL DEFAULT 0');
+      }
+      addColumnIfMissing(
+        'requests',
+        'cache_creation_tokens',
+        'INTEGER DEFAULT 0'
+      )
+      addColumnIfMissing('requests', 'cache_read_tokens', 'INTEGER DEFAULT 0')
+      addColumnIfMissing(
+        'daily_costs',
+        'cache_creation_tokens',
+        'INTEGER DEFAULT 0'
+      )
+      addColumnIfMissing(
+        'daily_costs',
+        'cache_read_tokens',
+        'INTEGER DEFAULT 0'
+      )
+      addColumnIfMissing('daily_costs', 'cache_savings', 'REAL DEFAULT 0')
     },
   },
   {
     version: 2,
     description: 'Add OpenClaw integration columns to sessions',
     up: (db) => {
-      const addColumnIfMissing = (table: string, column: string, type: string) => {
-        const info = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-        if (!info.some(c => c.name === column)) {
-          db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+      const addColumnIfMissing = (
+        table: string,
+        column: string,
+        type: string
+      ) => {
+        const info = db.prepare(`PRAGMA table_info(${table})`).all() as {
+          name: string
+        }[]
+        if (!info.some((c) => c.name === column)) {
+          db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
         }
-      };
-      addColumnIfMissing('sessions', 'agent_id', 'TEXT');
-      addColumnIfMissing('sessions', 'channel', 'TEXT');
-      addColumnIfMissing('sessions', 'origin_provider', 'TEXT');
-      addColumnIfMissing('sessions', 'source_type', "TEXT DEFAULT 'claude-code'");
-      db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_agent_id ON sessions(agent_id)');
-      db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_channel ON sessions(channel)');
-      db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_source_type ON sessions(source_type)');
+      }
+      addColumnIfMissing('sessions', 'agent_id', 'TEXT')
+      addColumnIfMissing('sessions', 'channel', 'TEXT')
+      addColumnIfMissing('sessions', 'origin_provider', 'TEXT')
+      addColumnIfMissing(
+        'sessions',
+        'source_type',
+        "TEXT DEFAULT 'claude-code'"
+      )
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_sessions_agent_id ON sessions(agent_id)'
+      )
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_sessions_channel ON sessions(channel)'
+      )
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_sessions_source_type ON sessions(source_type)'
+      )
     },
   },
   // To add a future migration:
@@ -290,7 +328,7 @@ const migrations: { version: number; description: string; up: (db: Database.Data
   //     db.exec('ALTER TABLE sessions ADD COLUMN xyz TEXT');
   //   },
   // },
-];
+]
 
 function runMigrations(database: Database.Database): void {
   // Create version tracking table
@@ -300,28 +338,32 @@ function runMigrations(database: Database.Database): void {
       description TEXT NOT NULL,
       applied_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
-  `);
+  `)
 
-  const currentVersion = (database.prepare(
-    'SELECT COALESCE(MAX(version), 0) as v FROM schema_version'
-  ).get() as { v: number }).v;
+  const currentVersion = (
+    database
+      .prepare('SELECT COALESCE(MAX(version), 0) as v FROM schema_version')
+      .get() as { v: number }
+  ).v
 
-  const pending = migrations.filter(m => m.version > currentVersion);
-  if (pending.length === 0) return;
+  const pending = migrations.filter((m) => m.version > currentVersion)
+  if (pending.length === 0) return
 
   for (const migration of pending) {
     database.transaction(() => {
-      migration.up(database);
-      database.prepare(
-        'INSERT INTO schema_version (version, description) VALUES (?, ?)'
-      ).run(migration.version, migration.description);
-    })();
+      migration.up(database)
+      database
+        .prepare(
+          'INSERT INTO schema_version (version, description) VALUES (?, ?)'
+        )
+        .run(migration.version, migration.description)
+    })()
   }
 }
 
 export function closeDatabase(): void {
   if (db) {
-    db.close();
-    db = null;
+    db.close()
+    db = null
   }
 }

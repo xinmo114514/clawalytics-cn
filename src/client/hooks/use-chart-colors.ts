@@ -24,7 +24,12 @@ export function useChartColors() {
 
       const getVar = (name: string) => {
         const value = computedStyle.getPropertyValue(name).trim()
-        if (value.startsWith('oklch') || value.startsWith('oklab') || value.startsWith('hsl') || value.startsWith('rgb')) {
+        if (
+          value.startsWith('oklch') ||
+          value.startsWith('oklab') ||
+          value.startsWith('hsl') ||
+          value.startsWith('rgb')
+        ) {
           return value
         }
         if (value.startsWith('var(')) {
@@ -57,7 +62,10 @@ export function useChartColors() {
 
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
-        if (mutation.attributeName === 'class' || mutation.attributeName === 'style') {
+        if (
+          mutation.attributeName === 'class' ||
+          mutation.attributeName === 'style'
+        ) {
           updateColors()
         }
       })
@@ -97,7 +105,10 @@ export function useColor(varName: string) {
 
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
-        if (mutation.attributeName === 'class' || mutation.attributeName === 'style') {
+        if (
+          mutation.attributeName === 'class' ||
+          mutation.attributeName === 'style'
+        ) {
           updateColor()
         }
       })

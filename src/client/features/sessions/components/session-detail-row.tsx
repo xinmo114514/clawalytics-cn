@@ -1,6 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
+import { useQuery } from '@tanstack/react-query'
+import { getSessionRequests, type SessionRequest } from '@/lib/api'
+import { formatNumber } from '@/lib/format'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -9,11 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Skeleton } from '@/components/ui/skeleton'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
-import { getSessionRequests, type SessionRequest } from '@/lib/api'
-import { formatNumber } from '@/lib/format'
 
 interface SessionDetailRowProps {
   sessionId: string
@@ -32,7 +32,10 @@ function toFiniteNumber(value: number | null | undefined): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
-function getModelShortName(model: string | undefined, fallback: string): string {
+function getModelShortName(
+  model: string | undefined,
+  fallback: string
+): string {
   if (!model?.trim()) return fallback
   if (model.includes('claude-opus-4')) return 'Opus 4'
   if (model.includes('claude-opus')) return 'Opus'
@@ -95,7 +98,7 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
 
   if (!requests || requests.length === 0) {
     return (
-      <div className='p-4 text-sm text-muted-foreground text-center'>
+      <div className='p-4 text-center text-sm text-muted-foreground'>
         {text(
           '当前会话暂无请求数据。',
           'No request data available for this session.'
@@ -113,24 +116,24 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
     (acc, r) => acc + toFiniteNumber(r.input_tokens),
     0
   )
-  const cacheHitPercent = totalInputTokens > 0
-    ? ((totalCacheRead / (totalInputTokens + totalCacheRead)) * 100).toFixed(1)
-    : '0'
+  const cacheHitPercent =
+    totalInputTokens > 0
+      ? ((totalCacheRead / (totalInputTokens + totalCacheRead)) * 100).toFixed(
+          1
+        )
+      : '0'
   const unknownModelLabel = text('未知模型', 'Unknown')
 
   return (
     <div className='space-y-4 p-4'>
       {/* Model breakdown */}
       <div>
-        <h4 className='text-sm font-medium mb-2'>
+        <h4 className='mb-2 text-sm font-medium'>
           {text('模型拆分', 'Model Breakdown')}
         </h4>
         <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-3'>
           {models.map((m) => (
-            <div
-              key={m.model}
-              className='rounded-lg border p-3 space-y-1'
-            >
+            <div key={m.model} className='space-y-1 rounded-lg border p-3'>
               <div className='flex items-center justify-between'>
                 <Badge variant='outline' className='text-xs'>
                   {getModelShortName(m.model, unknownModelLabel)}
@@ -140,10 +143,12 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
                 </span>
               </div>
               <div className='flex items-center justify-between text-xs text-muted-foreground'>
-                <span>{m.count} {text('次请求', 'requests')}</span>
                 <span>
-                  {text('输入', 'In')} {formatNumber(m.inputTokens)} / {text('输出', 'Out')}{' '}
-                  {formatNumber(m.outputTokens)}
+                  {m.count} {text('次请求', 'requests')}
+                </span>
+                <span>
+                  {text('输入', 'In')} {formatNumber(m.inputTokens)} /{' '}
+                  {text('输出', 'Out')} {formatNumber(m.outputTokens)}
                 </span>
               </div>
             </div>
@@ -158,11 +163,14 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
             <span className='text-sm font-medium text-emerald-700 dark:text-emerald-400'>
               {text('缓存效率', 'Cache Efficiency')}
             </span>
-            <span className='text-sm font-mono font-medium text-emerald-700 dark:text-emerald-400'>
-              {text(`命中率 ${cacheHitPercent}%`, `${cacheHitPercent}% hit rate`)}
+            <span className='font-mono text-sm font-medium text-emerald-700 dark:text-emerald-400'>
+              {text(
+                `命中率 ${cacheHitPercent}%`,
+                `${cacheHitPercent}% hit rate`
+              )}
             </span>
           </div>
-          <p className='text-xs text-muted-foreground mt-1'>
+          <p className='mt-1 text-xs text-muted-foreground'>
             {text(
               `从缓存中读取了 ${formatNumber(totalCacheRead)} 个 Token`,
               `${formatNumber(totalCacheRead)} tokens read from cache`
@@ -173,21 +181,34 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
 
       {/* Request timeline */}
       <div>
-        <h4 className='text-sm font-medium mb-2'>
-          {text(`请求时间线（${requests.length}）`, `Request Timeline (${requests.length})`)}
+        <h4 className='mb-2 text-sm font-medium'>
+          {text(
+            `请求时间线（${requests.length}）`,
+            `Request Timeline (${requests.length})`
+          )}
         </h4>
-        <div className='rounded-md border max-h-[300px] overflow-y-auto'>
+        <div className='max-h-[300px] overflow-y-auto rounded-md border'>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className='text-xs'>{text('时间', 'Time')}</TableHead>
-                <TableHead className='text-xs'>{text('模型', 'Model')}</TableHead>
-                <TableHead className='text-xs text-right'>{text('输入', 'Input')}</TableHead>
-                <TableHead className='text-xs text-right'>{text('输出', 'Output')}</TableHead>
-                <TableHead className='text-xs text-right hidden sm:table-cell'>
+                <TableHead className='text-xs'>
+                  {text('时间', 'Time')}
+                </TableHead>
+                <TableHead className='text-xs'>
+                  {text('模型', 'Model')}
+                </TableHead>
+                <TableHead className='text-right text-xs'>
+                  {text('输入', 'Input')}
+                </TableHead>
+                <TableHead className='text-right text-xs'>
+                  {text('输出', 'Output')}
+                </TableHead>
+                <TableHead className='hidden text-right text-xs sm:table-cell'>
                   {text('缓存', 'Cache')}
                 </TableHead>
-                <TableHead className='text-xs text-right'>{text('成本', 'Cost')}</TableHead>
+                <TableHead className='text-right text-xs'>
+                  {text('成本', 'Cost')}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -205,7 +226,7 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
                   <TableCell className='py-1.5 text-right font-mono'>
                     {formatNumber(toFiniteNumber(r.output_tokens))}
                   </TableCell>
-                  <TableCell className='py-1.5 text-right font-mono hidden sm:table-cell'>
+                  <TableCell className='hidden py-1.5 text-right font-mono sm:table-cell'>
                     {toFiniteNumber(r.cache_read_tokens) > 0
                       ? formatNumber(toFiniteNumber(r.cache_read_tokens))
                       : '-'}

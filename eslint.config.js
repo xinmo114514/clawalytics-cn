@@ -61,7 +61,11 @@ export default defineConfig(
     },
   },
   {
-    files: ['src/server/services/**/*.{ts,tsx}', 'src/server/routes/**/*.{ts,tsx}', 'src/server/parser/**/*.{ts,tsx}'],
+    files: [
+      'src/server/services/**/*.{ts,tsx}',
+      'src/server/routes/**/*.{ts,tsx}',
+      'src/server/parser/**/*.{ts,tsx}',
+    ],
     rules: {
       'no-console': 'off',
     },

@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { HelpIcon } from '@/components/icons/help-icon'
-import { Header } from '@/components/layout/header'
-import { LanguageSwitch } from '@/components/language-switch'
-import { Main } from '@/components/layout/main'
-import { ThemeSwitch } from '@/components/theme-switch'
+import { useLocale } from '@/context/locale-provider'
 import { Badge } from '@/components/ui/badge'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { useLocale } from '@/context/locale-provider'
+import { HelpIcon } from '@/components/icons/help-icon'
+import { LanguageSwitch } from '@/components/language-switch'
+import { Header } from '@/components/layout/header'
+import { Main } from '@/components/layout/main'
+import { ThemeSwitch } from '@/components/theme-switch'
 
 function FAQItem({
   question,
@@ -32,7 +32,7 @@ function FAQItem({
           }`}
         />
       </CollapsibleTrigger>
-      <CollapsibleContent className='px-4 pb-1 pt-3 text-muted-foreground'>
+      <CollapsibleContent className='px-4 pt-3 pb-1 text-muted-foreground'>
         {answer}
       </CollapsibleContent>
     </Collapsible>
@@ -56,7 +56,7 @@ function Section({
 
 function InlineCode({ children }: { children: React.ReactNode }) {
   return (
-    <code className='rounded bg-muted px-1.5 py-0.5 text-sm font-mono'>
+    <code className='rounded bg-muted px-1.5 py-0.5 font-mono text-sm'>
       {children}
     </code>
   )
@@ -113,26 +113,35 @@ export function HelpCenter() {
           <Section title={text('快速开始', 'Getting Started')}>
             <div className='grid gap-4 md:grid-cols-3'>
               <div className='rounded-lg border bg-card p-5'>
-                <h3 className='mb-2 font-semibold'>{text('1. 安装', '1. Install')}</h3>
+                <h3 className='mb-2 font-semibold'>
+                  {text('1. 安装', '1. Install')}
+                </h3>
                 <p className='mb-3 text-sm text-muted-foreground'>
-                  {text('使用 npm 或 pnpm 全局安装。', 'Install globally with npm or pnpm.')}
+                  {text(
+                    '使用 npm 或 pnpm 全局安装。',
+                    'Install globally with npm or pnpm.'
+                  )}
                 </p>
                 <CodeBlock>{`npm install -g clawalytics`}</CodeBlock>
               </div>
               <div className='rounded-lg border bg-card p-5'>
-                <h3 className='mb-2 font-semibold'>{text('2. 启动', '2. Start')}</h3>
+                <h3 className='mb-2 font-semibold'>
+                  {text('2. 启动', '2. Start')}
+                </h3>
                 <p className='mb-3 text-sm text-muted-foreground'>
-                  {text('启动服务并打开本地仪表盘。', 'Start the service and open the local dashboard.')}
+                  {text(
+                    '启动服务并打开本地仪表盘。',
+                    'Start the service and open the local dashboard.'
+                  )}
                 </p>
                 <CodeBlock>{`clawalytics start`}</CodeBlock>
               </div>
               <div className='rounded-lg border bg-card p-5'>
-                <h3 className='mb-2 font-semibold'>{text('3. 查看数据', '3. View Data')}</h3>
+                <h3 className='mb-2 font-semibold'>
+                  {text('3. 查看数据', '3. View Data')}
+                </h3>
                 <p className='text-sm text-muted-foreground'>
-                  {text(
-                    '默认地址是 ',
-                    'The dashboard is available at '
-                  )}
+                  {text('默认地址是 ', 'The dashboard is available at ')}
                   <InlineCode>http://localhost:9174</InlineCode>
                 </p>
               </div>
@@ -252,12 +261,12 @@ alertThresholds:
                       )}
                     </li>
                     <li>
-                      {text(
-                        '使用 ',
-                        'Use '
-                      )}
+                      {text('使用 ', 'Use ')}
                       <InlineCode>clawalytics config</InlineCode>
-                      {text(' 检查当前配置。', ' to inspect your current configuration.')}
+                      {text(
+                        ' 检查当前配置。',
+                        ' to inspect your current configuration.'
+                      )}
                     </li>
                   </ul>
                 }

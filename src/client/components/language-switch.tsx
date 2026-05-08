@@ -1,6 +1,6 @@
 import { Languages } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { useLocale } from '@/context/locale-provider'
+import { Button } from '@/components/ui/button'
 
 export function LanguageSwitch() {
   const { locale, setLocale } = useLocale()

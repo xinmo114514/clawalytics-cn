@@ -1,6 +1,6 @@
 import { SearchIcon } from 'lucide-react'
-import { useLocale } from '@/context/locale-provider'
 import { cn } from '@/lib/utils'
+import { useLocale } from '@/context/locale-provider'
 import { useSearch } from '@/context/search-provider'
 import { Button } from './ui/button'
 
@@ -10,10 +10,7 @@ type SearchProps = {
   placeholder?: string
 }
 
-export function Search({
-  className = '',
-  placeholder,
-}: SearchProps) {
+export function Search({ className = '', placeholder }: SearchProps) {
   const { setOpen } = useSearch()
   const { text } = useLocale()
   return (

@@ -1,4 +1,8 @@
 import { Globe, HelpCircle, Monitor, Smartphone } from 'lucide-react'
+import { type Device } from '@/lib/api'
+import { formatDate, formatRelativeTime } from '@/lib/i18n'
+import { useLocale } from '@/context/locale-provider'
+import { Badge } from '@/components/ui/badge'
 import {
   Card,
   CardContent,
@@ -6,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -16,9 +19,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useLocale } from '@/context/locale-provider'
-import { type Device } from '@/lib/api'
-import { formatDate, formatRelativeTime } from '@/lib/i18n'
 
 interface DevicesTableProps {
   devices: Device[]
@@ -79,8 +79,7 @@ const statusConfig: Record<
     en: 'Inactive',
   },
   suspended: {
-    className:
-      'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+    className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
     zh: '已停用',
     en: 'Suspended',
   },
@@ -157,7 +156,10 @@ export function DevicesTable({ devices, isLoading }: DevicesTableProps) {
         </CardTitle>
         <CardDescription>
           {devices.length > 0
-            ? text(`已配对 ${devices.length} 台设备`, `${devices.length} paired devices`)
+            ? text(
+                `已配对 ${devices.length} 台设备`,
+                `${devices.length} paired devices`
+              )
             : text('暂无已配对设备', 'No paired devices')}
         </CardDescription>
       </CardHeader>
@@ -169,7 +171,10 @@ export function DevicesTable({ devices, isLoading }: DevicesTableProps) {
               {text('未找到设备', 'No devices found')}
             </p>
             <p className='text-sm text-muted-foreground'>
-              {text('先完成设备配对后再查看。', 'Pair a device first to see it here.')}
+              {text(
+                '先完成设备配对后再查看。',
+                'Pair a device first to see it here.'
+              )}
             </p>
           </div>
         ) : (
@@ -201,7 +206,8 @@ export function DevicesTable({ devices, isLoading }: DevicesTableProps) {
                         <div className='flex items-center gap-2'>
                           <IconComponent className='h-4 w-4 text-muted-foreground' />
                           <span className='font-medium'>
-                            {device.name ?? text('未命名设备', 'Unnamed device')}
+                            {device.name ??
+                              text('未命名设备', 'Unnamed device')}
                           </span>
                         </div>
                         <span className='font-mono text-xs text-muted-foreground'>

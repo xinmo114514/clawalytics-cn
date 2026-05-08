@@ -1,3 +1,6 @@
+import type { TokenBreakdown } from '@/lib/api'
+import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
 import {
   Card,
   CardContent,
@@ -5,9 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { useLocale } from '@/context/locale-provider'
-import { useChartColors } from '@/hooks/use-chart-colors'
-import type { TokenBreakdown } from '@/lib/api'
 
 interface TokenBreakdownCardProps {
   data: TokenBreakdown | undefined
@@ -36,7 +36,9 @@ export function TokenBreakdownCard({ data }: TokenBreakdownCardProps) {
       <Card>
         <CardHeader>
           <CardTitle>{text('Token 构成', 'Token Breakdown')}</CardTitle>
-          <CardDescription>{text('最近 30 天', 'Last 30 days')}</CardDescription>
+          <CardDescription>
+            {text('最近 30 天', 'Last 30 days')}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className='flex h-[200px] items-center justify-center text-muted-foreground'>
@@ -54,7 +56,9 @@ export function TokenBreakdownCard({ data }: TokenBreakdownCardProps) {
       <Card>
         <CardHeader>
           <CardTitle>{text('Token 构成', 'Token Breakdown')}</CardTitle>
-          <CardDescription>{text('最近 30 天', 'Last 30 days')}</CardDescription>
+          <CardDescription>
+            {text('最近 30 天', 'Last 30 days')}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className='flex h-[200px] items-center justify-center px-4 text-center text-muted-foreground'>
@@ -127,7 +131,10 @@ export function TokenBreakdownCard({ data }: TokenBreakdownCardProps) {
               <div
                 key={idx}
                 className='transition-all duration-300 first:rounded-l-full last:rounded-r-full'
-                style={{ width: `${item.percentage}%`, backgroundColor: item.color }}
+                style={{
+                  width: `${item.percentage}%`,
+                  backgroundColor: item.color,
+                }}
                 title={`${item.label}: ${formatTokenCount(item.value)} (${item.percentage.toFixed(1)}%)`}
               />
             ))}
@@ -143,8 +150,10 @@ export function TokenBreakdownCard({ data }: TokenBreakdownCardProps) {
               />
               <div className='min-w-0 flex-1'>
                 <div className='flex items-baseline justify-between gap-2'>
-                  <span className='truncate text-sm font-medium'>{item.label}</span>
-                  <span className='shrink-0 tabular-nums text-sm text-muted-foreground'>
+                  <span className='truncate text-sm font-medium'>
+                    {item.label}
+                  </span>
+                  <span className='shrink-0 text-sm text-muted-foreground tabular-nums'>
                     {item.percentage.toFixed(1)}%
                   </span>
                 </div>
@@ -168,7 +177,10 @@ export function TokenBreakdownCard({ data }: TokenBreakdownCardProps) {
               <div className='h-2 w-full overflow-hidden rounded-full bg-muted'>
                 <div
                   className='h-full transition-all duration-500'
-                  style={{ width: `${item.percentage}%`, backgroundColor: item.color }}
+                  style={{
+                    width: `${item.percentage}%`,
+                    backgroundColor: item.color,
+                  }}
                 />
               </div>
             </div>

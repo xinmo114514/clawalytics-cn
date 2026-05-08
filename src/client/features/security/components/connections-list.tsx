@@ -6,6 +6,9 @@ import {
   ShieldCheck,
   ShieldX,
 } from 'lucide-react'
+import { type ConnectionEvent } from '@/lib/api'
+import { formatRelativeTime } from '@/lib/i18n'
+import { useLocale } from '@/context/locale-provider'
 import {
   Card,
   CardContent,
@@ -14,9 +17,6 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useLocale } from '@/context/locale-provider'
-import { type ConnectionEvent } from '@/lib/api'
-import { formatRelativeTime } from '@/lib/i18n'
 
 interface ConnectionsListProps {
   connections: ConnectionEvent[]
@@ -104,7 +104,10 @@ export function ConnectionsList({
         <CardContent>
           <div className='space-y-3'>
             {[...Array(5)].map((_, i) => (
-              <div key={i} className='flex items-center gap-4 rounded-lg border p-3'>
+              <div
+                key={i}
+                className='flex items-center gap-4 rounded-lg border p-3'
+              >
                 <Skeleton className='h-8 w-8 rounded-full' />
                 <div className='flex-1 space-y-2'>
                   <Skeleton className='h-4 w-24' />
@@ -152,16 +155,15 @@ export function ConnectionsList({
                   className='flex items-center gap-4 rounded-lg border p-3 transition-colors hover:bg-muted/50'
                 >
                   <div
-                    className={`
-                      flex h-8 w-8 items-center justify-center rounded-full
-                      ${config.iconBg}
-                    `}
+                    className={`flex h-8 w-8 items-center justify-center rounded-full ${config.iconBg} `}
                   >
                     <IconComponent className='h-4 w-4 text-white' />
                   </div>
                   <div className='min-w-0 flex-1'>
                     <div className='flex items-center gap-2'>
-                      <span className={`font-jersey text-xs tracking-wider ${config.textColor}`}>
+                      <span
+                        className={`font-jersey text-xs tracking-wider ${config.textColor}`}
+                      >
                         {locale === 'zh' ? config.zh : config.en}
                       </span>
                       {connection.device_id && (
@@ -183,7 +185,7 @@ export function ConnectionsList({
                       )}
                     </div>
                   </div>
-                  <span className='whitespace-nowrap text-xs text-muted-foreground'>
+                  <span className='text-xs whitespace-nowrap text-muted-foreground'>
                     {formatRelativeTime(connection.timestamp, locale)}
                   </span>
                 </div>

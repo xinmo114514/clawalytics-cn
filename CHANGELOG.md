@@ -1,3 +1,15 @@
+## v0.7.1 (2026-05-08)
+
+### Fix
+
+- harden Windows launch-at-startup sync with Startup folder shortcut fallback and clearer desktop preference errors
+- fix lint and Prettier release blockers, including the Tailwind stylesheet path used by Prettier
+- improve React 19 lint compatibility in dashboard, security, budget, locale, currency, and desktop settings flows
+
+### Build
+
+- produce signed Windows x64 setup and portable artifacts for GitHub Release distribution
+
 ## v0.7.0 (2026-04-30)
 
 ### Feat

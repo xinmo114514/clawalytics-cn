@@ -1,44 +1,44 @@
-import { getAnalyticsService } from './analytics-service.js';
-import { createAlert } from '../db/queries-security.js';
-import { formatCny } from '../lib/currency.js';
+import { createAlert } from '../db/queries-security.js'
+import { formatCny } from '../lib/currency.js'
+import { getAnalyticsService } from './analytics-service.js'
 
 interface AnomalyResult {
-  type: string;
-  severity: 'low' | 'medium' | 'high';
-  message: string;
-  details: Record<string, unknown>;
+  type: string
+  severity: 'low' | 'medium' | 'high'
+  message: string
+  details: Record<string, unknown>
 }
 
 // Track known models to detect new ones
-const knownModels = new Set<string>();
-let lastCheckDate = '';
-const MIN_DAILY_SPIKE_COST = 7;
-const MIN_MODEL_SPIKE_COST = 3.5;
+const knownModels = new Set<string>()
+let lastCheckDate = ''
+const MIN_DAILY_SPIKE_COST = 7
+const MIN_MODEL_SPIKE_COST = 3.5
 
 /**
  * Run anomaly detection checks.
  * Call this periodically (e.g., after processing log batches).
  */
 export function detectAnomalies(): AnomalyResult[] {
-  const anomalies: AnomalyResult[] = [];
+  const anomalies: AnomalyResult[] = []
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0]
 
   // Only run once per day to avoid spam
-  if (lastCheckDate === today) return anomalies;
-  lastCheckDate = today;
+  if (lastCheckDate === today) return anomalies
+  lastCheckDate = today
 
   // 1. Cost spike detection (7-day rolling average comparison)
-  const costSpike = detectCostSpike();
-  if (costSpike) anomalies.push(costSpike);
+  const costSpike = detectCostSpike()
+  if (costSpike) anomalies.push(costSpike)
 
   // 2. Model spike detection
-  const modelSpikes = detectModelSpikes();
-  anomalies.push(...modelSpikes);
+  const modelSpikes = detectModelSpikes()
+  anomalies.push(...modelSpikes)
 
   // 3. New model detection
-  const newModels = detectNewModels();
-  anomalies.push(...newModels);
+  const newModels = detectNewModels()
+  anomalies.push(...newModels)
 
   // Create alerts for any anomalies found
   for (const anomaly of anomalies) {
@@ -47,31 +47,32 @@ export function detectAnomalies(): AnomalyResult[] {
       severity: anomaly.severity,
       message: anomaly.message,
       details: JSON.stringify(anomaly.details),
-    });
+    })
   }
 
-  return anomalies;
+  return anomalies
 }
 
 /**
  * Detect if today's spending significantly exceeds the rolling 7-day average.
  */
 function detectCostSpike(): AnomalyResult | null {
-  const svc = getAnalyticsService();
-  const costs = svc.getDailyCosts(14);
-  if (costs.length < 8) return null; // Need enough data
+  const svc = getAnalyticsService()
+  const costs = svc.getDailyCosts(14)
+  if (costs.length < 8) return null // Need enough data
 
   // Separate today from the previous 7 days
-  const today = costs[costs.length - 1];
-  const previous7 = costs.slice(-8, -1);
+  const today = costs[costs.length - 1]
+  const previous7 = costs.slice(-8, -1)
 
-  if (previous7.length === 0) return null;
+  if (previous7.length === 0) return null
 
-  const avgCost = previous7.reduce((sum, d) => sum + d.total_cost, 0) / previous7.length;
+  const avgCost =
+    previous7.reduce((sum, d) => sum + d.total_cost, 0) / previous7.length
 
-  if (avgCost <= 0) return null;
+  if (avgCost <= 0) return null
 
-  const ratio = today.total_cost / avgCost;
+  const ratio = today.total_cost / avgCost
 
   // Alert if today's cost is more than 3x the average
   if (ratio >= 3 && today.total_cost > MIN_DAILY_SPIKE_COST) {
@@ -85,37 +86,37 @@ function detectCostSpike(): AnomalyResult | null {
         ratio,
         date: today.date,
       },
-    };
+    }
   }
 
-  return null;
+  return null
 }
 
 /**
  * Detect if any single model's cost spiked significantly.
  */
 function detectModelSpikes(): AnomalyResult[] {
-  const anomalies: AnomalyResult[] = [];
-  const svc = getAnalyticsService();
+  const anomalies: AnomalyResult[] = []
+  const svc = getAnalyticsService()
 
   // Compare last 7 days vs previous 7 days per model
-  const recent = svc.getModelUsage(7);
-  const previous = svc.getModelUsage(14);
+  const recent = svc.getModelUsage(7)
+  const previous = svc.getModelUsage(14)
 
   for (const model of recent) {
-    const key = `${model.provider}/${model.model}`;
+    const key = `${model.provider}/${model.model}`
     const prev = previous.find(
       (m) => m.provider === model.provider && m.model === model.model
-    );
+    )
 
-    if (!prev || prev.cost <= 0) continue;
+    if (!prev || prev.cost <= 0) continue
 
     // Compare cost (recent is 7-day total, previous is 14-day total)
     // Normalize previous to 7-day equivalent
-    const prevNormalized = prev.cost / 2;
-    if (prevNormalized <= 0) continue;
+    const prevNormalized = prev.cost / 2
+    if (prevNormalized <= 0) continue
 
-    const ratio = model.cost / prevNormalized;
+    const ratio = model.cost / prevNormalized
 
     if (ratio >= 3 && model.cost > MIN_MODEL_SPIKE_COST) {
       anomalies.push({
@@ -128,34 +129,34 @@ function detectModelSpikes(): AnomalyResult[] {
           previousCost: prevNormalized,
           ratio,
         },
-      });
+      })
     }
   }
 
-  return anomalies;
+  return anomalies
 }
 
 /**
  * Detect new models that haven't been seen before.
  */
 function detectNewModels(): AnomalyResult[] {
-  const anomalies: AnomalyResult[] = [];
-  const svc = getAnalyticsService();
-  const currentModels = svc.getModelUsage(1);
+  const anomalies: AnomalyResult[] = []
+  const svc = getAnalyticsService()
+  const currentModels = svc.getModelUsage(1)
 
   // Initialize known models from historical data on first run
   if (knownModels.size === 0) {
-    const allModels = svc.getModelUsage(90);
+    const allModels = svc.getModelUsage(90)
     for (const m of allModels) {
-      knownModels.add(`${m.provider}/${m.model}`);
+      knownModels.add(`${m.provider}/${m.model}`)
     }
-    return anomalies; // Don't alert on first run
+    return anomalies // Don't alert on first run
   }
 
   for (const model of currentModels) {
-    const key = `${model.provider}/${model.model}`;
+    const key = `${model.provider}/${model.model}`
     if (!knownModels.has(key)) {
-      knownModels.add(key);
+      knownModels.add(key)
       anomalies.push({
         type: 'new_model',
         severity: 'low',
@@ -166,17 +167,17 @@ function detectNewModels(): AnomalyResult[] {
           cost: model.cost,
           requestCount: model.request_count,
         },
-      });
+      })
     }
   }
 
-  return anomalies;
+  return anomalies
 }
 
 /**
  * Reset anomaly detection state (useful for testing).
  */
 export function resetAnomalyState(): void {
-  knownModels.clear();
-  lastCheckDate = '';
+  knownModels.clear()
+  lastCheckDate = ''
 }

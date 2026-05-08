@@ -1,5 +1,5 @@
-import { Button } from '@/components/ui/button'
 import { useLocale } from '@/context/locale-provider'
+import { Button } from '@/components/ui/button'
 
 export function MaintenanceError() {
   const { text } = useLocale()
@@ -11,7 +11,10 @@ export function MaintenanceError() {
           {text('站点正在维护中。', 'Website is under maintenance!')}
         </span>
         <p className='text-center text-muted-foreground'>
-          {text('当前暂时无法访问。', 'The site is not available at the moment.')}
+          {text(
+            '当前暂时无法访问。',
+            'The site is not available at the moment.'
+          )}
           <br />
           {text('我们会尽快恢复服务。', "We'll be back online shortly.")}
         </p>

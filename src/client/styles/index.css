@@ -44,7 +44,9 @@
   }
 
   /* Jersey 15 pixel font for headings - no bold since pixel font is already thick */
-  h1, h2, h3 {
+  h1,
+  h2,
+  h3 {
     font-family: var(--font-jersey);
     font-weight: 400 !important;
   }

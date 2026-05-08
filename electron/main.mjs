@@ -41,6 +41,7 @@ const STARTUP_REGISTRY_VALUE_NAME = 'Clawalytics';
 const WINDOWS_RUN_REGISTRY_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const WINDOWS_STARTUP_APPROVED_RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run';
 const WINDOWS_STARTUP_APPROVED_ENABLED = '020000000000000000000000';
+const WINDOWS_STARTUP_SHORTCUT_FILE = `${STARTUP_REGISTRY_VALUE_NAME}.lnk`;
 const CURRENCY_CNY = 'CNY';
 const CURRENCY_USD = 'USD';
 const USD_TO_CNY_RATE = 7;
@@ -422,8 +423,59 @@ function getStartupLaunchArgs() {
     : [];
 }
 
+function normalizeWindowsPathForCompare(value) {
+  return path.resolve(String(value || '')).toLowerCase();
+}
+
+function getWindowsStartupFolderPath() {
+  const appDataPath = process.env.APPDATA;
+
+  if (!appDataPath) {
+    return null;
+  }
+
+  return path.join(
+    appDataPath,
+    'Microsoft',
+    'Windows',
+    'Start Menu',
+    'Programs',
+    'Startup'
+  );
+}
+
+function getWindowsStartupShortcutPath() {
+  const startupFolderPath = getWindowsStartupFolderPath();
+
+  if (!startupFolderPath) {
+    return null;
+  }
+
+  return path.join(startupFolderPath, WINDOWS_STARTUP_SHORTCUT_FILE);
+}
+
 function quoteWindowsCommandArgument(value) {
   return `"${String(value).replace(/"/g, '\\"')}"`;
+}
+
+function getStartupSyncErrorMessage(error) {
+  if (!error) {
+    return 'unknown error';
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const stderr = typeof error.stderr === 'string' && error.stderr.trim()
+    ? ` stderr: ${error.stderr.trim()}`
+    : '';
+
+  return `${message}${stderr}`;
+}
+
+function formatStartupSyncErrors(errorsByMechanism) {
+  return Object.entries(errorsByMechanism)
+    .filter(([, error]) => error)
+    .map(([mechanism, error]) => `${mechanism}: ${getStartupSyncErrorMessage(error)}`)
+    .join('; ');
 }
 
 function runWindowsRegistryCommand(args) {
@@ -536,6 +588,80 @@ async function hasExpectedWindowsStartupRegistryValue(args) {
   );
 }
 
+function deleteWindowsStartupShortcut() {
+  const shortcutPath = getWindowsStartupShortcutPath();
+
+  if (!shortcutPath || !fs.existsSync(shortcutPath)) {
+    return;
+  }
+
+  fs.unlinkSync(shortcutPath);
+}
+
+function hasExpectedWindowsStartupShortcut(args) {
+  if (!isWindows || !app.isPackaged) {
+    return false;
+  }
+
+  const shortcutPath = getWindowsStartupShortcutPath();
+
+  if (!shortcutPath || !fs.existsSync(shortcutPath)) {
+    return false;
+  }
+
+  try {
+    const shortcut = shell.readShortcutLink(shortcutPath);
+    const normalizedTarget = normalizeWindowsPathForCompare(shortcut.target);
+    const normalizedExecPath = normalizeWindowsPathForCompare(process.execPath);
+    const normalizedShortcutArgs = String(shortcut.args || '').toLowerCase();
+    const normalizedHiddenArg = STARTUP_HIDDEN_ARG.toLowerCase();
+
+    return (
+      normalizedTarget === normalizedExecPath
+      && (args.length > 0 || !normalizedShortcutArgs.includes(normalizedHiddenArg))
+      && args.every((arg) => normalizedShortcutArgs.includes(String(arg).toLowerCase()))
+    );
+  } catch (error) {
+    console.warn('Failed to read Windows startup shortcut:', error);
+    return false;
+  }
+}
+
+async function writeWindowsStartupShortcut(openAtLogin, args) {
+  if (!isWindows || !app.isPackaged) {
+    return false;
+  }
+
+  const shortcutPath = getWindowsStartupShortcutPath();
+
+  if (!shortcutPath) {
+    throw new Error('APPDATA is not available; cannot resolve the Windows Startup folder.');
+  }
+
+  if (!openAtLogin) {
+    deleteWindowsStartupShortcut();
+    return false;
+  }
+
+  fs.mkdirSync(path.dirname(shortcutPath), { recursive: true });
+
+  const shortcutWritten = shell.writeShortcutLink(shortcutPath, 'replace', {
+    target: process.execPath,
+    args: args.join(' '),
+    cwd: path.dirname(process.execPath),
+    description: 'Start Clawalytics after Windows sign-in',
+    appUserModelId: APP_ID,
+    icon: process.execPath,
+    iconIndex: 0,
+  });
+
+  if (!shortcutWritten) {
+    throw new Error('Electron could not write the Windows Startup folder shortcut.');
+  }
+
+  return true;
+}
+
 async function writeWindowsStartupRegistry(openAtLogin, args) {
   if (!isWindows || !app.isPackaged) {
     return;
@@ -550,7 +676,11 @@ async function writeWindowsStartupRegistry(openAtLogin, args) {
         name
       ))
     );
-    await setWindowsStartupApproved(false, registryNames);
+    try {
+      await setWindowsStartupApproved(false, registryNames);
+    } catch (error) {
+      console.warn('Failed to update Windows StartupApproved state:', error);
+    }
     return;
   }
 
@@ -579,7 +709,11 @@ async function writeWindowsStartupRegistry(openAtLogin, args) {
     command,
     '/f',
   ]);
-  await setWindowsStartupApproved(true, registryNames);
+  try {
+    await setWindowsStartupApproved(true, registryNames);
+  } catch (error) {
+    console.warn('Failed to update Windows StartupApproved state:', error);
+  }
 }
 
 async function syncLaunchOnStartupSettings(strict = false) {
@@ -590,36 +724,73 @@ async function syncLaunchOnStartupSettings(strict = false) {
   try {
     const openAtLogin = getSavedLaunchOnStartup();
     const args = getStartupLaunchArgs();
+    const startupErrors = {
+      electronLoginItem: null,
+      runRegistry: null,
+      startupShortcut: null,
+    };
 
-    app.setLoginItemSettings({
-      name: STARTUP_REGISTRY_VALUE_NAME,
-      openAtLogin,
-      path: process.execPath,
-      args,
-    });
+    try {
+      app.setLoginItemSettings({
+        name: STARTUP_REGISTRY_VALUE_NAME,
+        openAtLogin,
+        path: process.execPath,
+        args,
+      });
+    } catch (error) {
+      startupErrors.electronLoginItem = error;
+      console.warn('Failed to update Electron login item settings:', error);
+    }
 
-    await writeWindowsStartupRegistry(openAtLogin, args);
+    try {
+      await writeWindowsStartupRegistry(openAtLogin, args);
+    } catch (error) {
+      startupErrors.runRegistry = error;
+      console.warn('Failed to update Windows Run startup registry:', error);
+    }
 
-    const loginItemSettings = app.getLoginItemSettings({
-      name: STARTUP_REGISTRY_VALUE_NAME,
-      path: process.execPath,
-      args,
-    });
+    try {
+      await writeWindowsStartupShortcut(openAtLogin, args);
+    } catch (error) {
+      startupErrors.startupShortcut = error;
+      console.warn('Failed to update Windows Startup folder shortcut:', error);
+    }
+
+    let loginItemSettings = { openAtLogin: false };
+    try {
+      loginItemSettings = app.getLoginItemSettings({
+        name: STARTUP_REGISTRY_VALUE_NAME,
+        path: process.execPath,
+        args,
+      });
+    } catch (error) {
+      startupErrors.electronLoginItem = startupErrors.electronLoginItem ?? error;
+      console.warn('Failed to read Electron login item settings:', error);
+    }
+
     const hasStartupRegistryValue = await hasExpectedWindowsStartupRegistryValue(args);
+    const hasStartupShortcut = hasExpectedWindowsStartupShortcut(args);
 
     if (!openAtLogin) {
-      if (hasStartupRegistryValue) {
-        throw new Error('Windows startup registry entry is still present after disabling launch at startup.');
+      if (loginItemSettings.openAtLogin || hasStartupRegistryValue || hasStartupShortcut) {
+        throw new Error(
+          'Windows startup entry is still present after disabling launch at startup.'
+        );
       }
 
       return false;
     }
 
-    if (openAtLogin && !loginItemSettings.openAtLogin && !hasStartupRegistryValue) {
-      throw new Error('Windows did not report the login item as enabled, and the registry entry was not found after saving it.');
+    if (!loginItemSettings.openAtLogin && !hasStartupRegistryValue && !hasStartupShortcut) {
+      const details = formatStartupSyncErrors(startupErrors);
+      throw new Error(
+        details
+          ? `Windows did not confirm any launch-at-startup mechanism after saving it. ${details}`
+          : 'Windows did not confirm any launch-at-startup mechanism after saving it.'
+      );
     }
 
-    return loginItemSettings.openAtLogin || hasStartupRegistryValue;
+    return loginItemSettings.openAtLogin || hasStartupRegistryValue || hasStartupShortcut;
   } catch (error) {
     console.error('Failed to sync launch on startup settings:', error);
     if (strict) {

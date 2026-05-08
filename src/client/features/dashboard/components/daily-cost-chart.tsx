@@ -7,10 +7,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
-import { useChartColors } from '@/hooks/use-chart-colors'
 import type { DailyCost } from '@/lib/api'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
 
 interface DailyCostChartProps {
   data: DailyCost[]
@@ -57,7 +57,10 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
 
   return (
     <ResponsiveContainer width='100%' height={300}>
-      <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+      <AreaChart
+        data={chartData}
+        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+      >
         <defs>
           <linearGradient id='colorCostGradient' x1='0' y1='0' x2='1' y2='0'>
             <stop offset='0%' stopColor={chartColor} stopOpacity={0.3} />
@@ -70,7 +73,11 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
             <stop offset='100%' stopColor={comparisonColor} stopOpacity={0.8} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray='3 3' vertical={false} stroke={gridColor} />
+        <CartesianGrid
+          strokeDasharray='3 3'
+          vertical={false}
+          stroke={gridColor}
+        />
         <XAxis
           dataKey='date'
           stroke={axisColor}

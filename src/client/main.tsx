@@ -9,15 +9,10 @@ import {
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { handleServerError } from '@/lib/handle-server-error'
-import {
-  DirectionProvider
-} from './context/direction-provider'
-import { FontProvider } from './context/font-provider'
-import {
-  LocaleProvider,
-  translateStatic,
-} from './context/locale-provider'
 import { CurrencyProvider } from './context/currency-provider'
+import { DirectionProvider } from './context/direction-provider'
+import { FontProvider } from './context/font-provider'
+import { LocaleProvider, translateStatic } from './context/locale-provider'
 import { ThemeProvider } from './context/theme-provider'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
@@ -45,7 +40,9 @@ const queryClient = new QueryClient({
 
         if (error instanceof AxiosError) {
           if (error.response?.status === 304) {
-            toast.error(translateStatic('内容未发生变化。', 'Content not modified!'))
+            toast.error(
+              translateStatic('内容未发生变化。', 'Content not modified!')
+            )
           }
         }
       },

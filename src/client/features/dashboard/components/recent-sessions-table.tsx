@@ -1,4 +1,8 @@
 import { differenceInHours, differenceInMinutes } from 'date-fns'
+import type { Session } from '@/lib/api'
+import { formatDurationCompact, formatRelativeTime } from '@/lib/i18n'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -8,10 +12,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
-import type { Session } from '@/lib/api'
-import { formatDurationCompact, formatRelativeTime } from '@/lib/i18n'
 
 interface RecentSessionsTableProps {
   sessions: Session[]
@@ -40,7 +40,11 @@ function getModelShortName(model: string): string {
   if (model.toLowerCase().includes('qwen')) return 'Qwen'
   if (model.toLowerCase().includes('doubao')) return 'Doubao'
   if (model.toLowerCase().includes('glm')) return 'GLM'
-  if (model.toLowerCase().includes('kimi') || model.toLowerCase().startsWith('k2')) return 'Kimi'
+  if (
+    model.toLowerCase().includes('kimi') ||
+    model.toLowerCase().startsWith('k2')
+  )
+    return 'Kimi'
   return model.split('-')[0]
 }
 
@@ -69,11 +73,19 @@ function getModelBadgeClass(model: string): string {
   if (model.includes('sonnet')) return 'border-chart-1/50 text-chart-1'
   if (model.includes('haiku')) return 'border-chart-5/50 text-chart-5'
   if (model.includes('gpt')) return 'border-chart-4/50 text-chart-4'
-  if (model.toLowerCase().includes('minimax')) return 'border-emerald-500/50 text-emerald-600'
-  if (model.toLowerCase().includes('qwen')) return 'border-orange-500/50 text-orange-600'
-  if (model.toLowerCase().includes('doubao')) return 'border-rose-500/50 text-rose-600'
-  if (model.toLowerCase().includes('glm')) return 'border-cyan-500/50 text-cyan-600'
-  if (model.toLowerCase().includes('kimi') || model.toLowerCase().startsWith('k2')) return 'border-chart-3/50 text-chart-3'
+  if (model.toLowerCase().includes('minimax'))
+    return 'border-emerald-500/50 text-emerald-600'
+  if (model.toLowerCase().includes('qwen'))
+    return 'border-orange-500/50 text-orange-600'
+  if (model.toLowerCase().includes('doubao'))
+    return 'border-rose-500/50 text-rose-600'
+  if (model.toLowerCase().includes('glm'))
+    return 'border-cyan-500/50 text-cyan-600'
+  if (
+    model.toLowerCase().includes('kimi') ||
+    model.toLowerCase().startsWith('k2')
+  )
+    return 'border-chart-3/50 text-chart-3'
   return 'border-muted-foreground/50'
 }
 
@@ -104,7 +116,9 @@ export function RecentSessionsTable({ sessions }: RecentSessionsTableProps) {
             <TableHead className='hidden md:table-cell'>
               {text('持续时间', 'Duration')}
             </TableHead>
-            <TableHead className='text-right'>{text('Tokens', 'Tokens')}</TableHead>
+            <TableHead className='text-right'>
+              {text('Tokens', 'Tokens')}
+            </TableHead>
             <TableHead className='text-right'>{text('成本', 'Cost')}</TableHead>
           </TableRow>
         </TableHeader>
@@ -133,7 +147,10 @@ export function RecentSessionsTable({ sessions }: RecentSessionsTableProps) {
                         </Badge>
                       ))}
                       {session.models_used.length > 2 && (
-                        <Badge variant='outline' className='px-1 py-0 text-[10px]'>
+                        <Badge
+                          variant='outline'
+                          className='px-1 py-0 text-[10px]'
+                        >
                           +{session.models_used.length - 2}
                         </Badge>
                       )}
@@ -145,7 +162,11 @@ export function RecentSessionsTable({ sessions }: RecentSessionsTableProps) {
                 {formatRelativeTime(session.started_at, locale)}
               </TableCell>
               <TableCell className='hidden text-muted-foreground md:table-cell'>
-                {formatDuration(session.started_at, session.last_activity, locale)}
+                {formatDuration(
+                  session.started_at,
+                  session.last_activity,
+                  locale
+                )}
               </TableCell>
               <TableCell className='text-right font-mono text-sm'>
                 {formatTokens(

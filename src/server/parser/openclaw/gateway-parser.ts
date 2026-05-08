@@ -4,10 +4,16 @@
  * Parses JSON Lines logs from /tmp/openclaw/openclaw-YYYY-MM-DD.log
  * Each line contains token usage, cost, and metadata for API calls.
  */
+import path from 'path'
+import chokidar, { type FSWatcher } from 'chokidar'
+// ============================================
+// Connection Event Watching (for security)
+// ============================================
 
-import { calculateCost } from '../costs.js';
-import { hasPricing } from '../../services/pricing-service.js';
-import { convertUsdToCny } from '../../lib/currency.js';
+import fs from 'fs'
+import { convertUsdToCny } from '../../lib/currency.js'
+import { hasPricing } from '../../services/pricing-service.js'
+import { calculateCost } from '../costs.js'
 
 const VERIFIED_PRICING_PROVIDERS = new Set([
   'deepseek',
@@ -23,7 +29,7 @@ const VERIFIED_PRICING_PROVIDERS = new Set([
   'ark',
   'zhipu',
   'bigmodel',
-]);
+])
 
 // ============================================
 // Interfaces
@@ -33,66 +39,66 @@ const VERIFIED_PRICING_PROVIDERS = new Set([
  * Raw log entry structure from OpenClaw gateway logs
  */
 export interface OpenClawLogEntry {
-  timestamp: string;
-  level: string;           // "INFO", "WARN", "ERROR", "DEBUG"
-  subsystem?: string;      // "api", "gateway", "auth", etc.
-  message?: string;
+  timestamp: string
+  level: string // "INFO", "WARN", "ERROR", "DEBUG"
+  subsystem?: string // "api", "gateway", "auth", etc.
+  message?: string
 
   // Model and token data (present for API calls)
-  model?: string;          // "anthropic/claude-opus-4-5", "openai/gpt-4o", etc.
+  model?: string // "anthropic/claude-opus-4-5", "openai/gpt-4o", etc.
   tokens?: {
-    input?: number;
-    output?: number;
-    cache_read?: number;
-    cache_write?: number;
-  };
-  cost?: number;           // USD cost (when available from provider)
-  duration_ms?: number;
-  context_tokens?: number;
+    input?: number
+    output?: number
+    cache_read?: number
+    cache_write?: number
+  }
+  cost?: number // USD cost (when available from provider)
+  duration_ms?: number
+  context_tokens?: number
 
   // Channel/session info
-  channel?: string;        // "whatsapp", "telegram", "slack", etc.
-  session_id?: string;
-  agent_id?: string;
+  channel?: string // "whatsapp", "telegram", "slack", etc.
+  session_id?: string
+  agent_id?: string
 
   // Connection events (for security monitoring)
-  event?: string;          // "connection", "disconnection", "auth_success", etc.
-  device_id?: string;
-  ip?: string;
-  error?: string;
+  event?: string // "connection", "disconnection", "auth_success", etc.
+  device_id?: string
+  ip?: string
+  error?: string
 }
 
 /**
  * Parsed result with normalized data for database storage
  */
 export interface ParsedGatewayLogResult {
-  timestamp: string;
-  provider: string;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheCreationTokens: number;
-  cacheReadTokens: number;
-  cost: number;
-  cacheSavings: number;
-  durationMs: number;
-  channel: string | null;
-  sessionId: string | null;
-  agentId: string | null;
-  rawEntry: OpenClawLogEntry;
+  timestamp: string
+  provider: string
+  model: string
+  inputTokens: number
+  outputTokens: number
+  cacheCreationTokens: number
+  cacheReadTokens: number
+  cost: number
+  cacheSavings: number
+  durationMs: number
+  channel: string | null
+  sessionId: string | null
+  agentId: string | null
+  rawEntry: OpenClawLogEntry
 }
 
 /**
  * Connection event for security monitoring
  */
 export interface ConnectionEvent {
-  timestamp: string;
-  event: string;
-  deviceId: string | null;
-  ip: string | null;
-  message: string | null;
-  error: string | null;
-  level: string;
+  timestamp: string
+  event: string
+  deviceId: string | null
+  ip: string | null
+  message: string | null
+  error: string | null
+  level: string
 }
 
 // ============================================
@@ -103,65 +109,77 @@ export interface ConnectionEvent {
  * Parse a single line from OpenClaw gateway logs
  * Returns token/cost data if present, null otherwise
  */
-export function parseGatewayLogLine(line: string): ParsedGatewayLogResult | null {
+export function parseGatewayLogLine(
+  line: string
+): ParsedGatewayLogResult | null {
   if (!line.trim()) {
-    return null;
+    return null
   }
 
-  let entry: OpenClawLogEntry;
+  let entry: OpenClawLogEntry
   try {
-    entry = JSON.parse(line) as OpenClawLogEntry;
+    entry = JSON.parse(line) as OpenClawLogEntry
   } catch {
     // Not JSON, skip
-    return null;
+    return null
   }
 
   // Only process entries with token data
   if (!entry.tokens && !entry.model) {
-    return null;
+    return null
   }
 
   // Extract provider and model from "provider/model" format
-  const { provider, model } = parseModelIdentifier(entry.model || 'unknown/unknown');
+  const { provider, model } = parseModelIdentifier(
+    entry.model || 'unknown/unknown'
+  )
 
   // Extract token counts
-  const inputTokens = entry.tokens?.input ?? 0;
-  const outputTokens = entry.tokens?.output ?? 0;
-  const cacheReadTokens = entry.tokens?.cache_read ?? 0;
-  const cacheCreationTokens = entry.tokens?.cache_write ?? 0;
+  const inputTokens = entry.tokens?.input ?? 0
+  const outputTokens = entry.tokens?.output ?? 0
+  const cacheReadTokens = entry.tokens?.cache_read ?? 0
+  const cacheCreationTokens = entry.tokens?.cache_write ?? 0
 
   // Skip entries with no tokens
-  if (inputTokens === 0 && outputTokens === 0 && cacheReadTokens === 0 && cacheCreationTokens === 0) {
-    return null;
+  if (
+    inputTokens === 0 &&
+    outputTokens === 0 &&
+    cacheReadTokens === 0 &&
+    cacheCreationTokens === 0
+  ) {
+    return null
   }
 
-  const providerReportedCost = typeof entry.cost === 'number'
-    ? convertUsdToCny(entry.cost)
-    : undefined;
-  const hasVerifiedPricing = hasPricing(provider, model);
-  const preferVerifiedPricing = hasVerifiedPricing
-    && VERIFIED_PRICING_PROVIDERS.has(provider.toLowerCase());
+  const providerReportedCost =
+    typeof entry.cost === 'number' ? convertUsdToCny(entry.cost) : undefined
+  const hasVerifiedPricing = hasPricing(provider, model)
+  const preferVerifiedPricing =
+    hasVerifiedPricing && VERIFIED_PRICING_PROVIDERS.has(provider.toLowerCase())
 
   // Always calculate from our pricing data when we need cache savings or
   // when a provider adapter is known to emit placeholder/non-final costs.
-  const costResult = calculateCost(provider, model, {
-    inputTokens,
-    outputTokens,
-    cacheCreationTokens,
-    cacheReadTokens,
-  }, {
-    suppressMissingPricingWarning: Boolean(providerReportedCost && providerReportedCost > 0),
-  });
+  const costResult = calculateCost(
+    provider,
+    model,
+    {
+      inputTokens,
+      outputTokens,
+      cacheCreationTokens,
+      cacheReadTokens,
+    },
+    {
+      suppressMissingPricingWarning: Boolean(
+        providerReportedCost && providerReportedCost > 0
+      ),
+    }
+  )
 
   // Use provider cost if available, otherwise our calculated cost
-  const cost = (
-    !preferVerifiedPricing
-    && providerReportedCost
-    && providerReportedCost > 0
-  )
-    ? providerReportedCost
-    : costResult.totalCost;
-  const cacheSavings = costResult.cacheSavings;
+  const cost =
+    !preferVerifiedPricing && providerReportedCost && providerReportedCost > 0
+      ? providerReportedCost
+      : costResult.totalCost
+  const cacheSavings = costResult.cacheSavings
 
   return {
     timestamp: entry.timestamp || new Date().toISOString(),
@@ -178,7 +196,7 @@ export function parseGatewayLogLine(line: string): ParsedGatewayLogResult | null
     sessionId: entry.session_id || null,
     agentId: entry.agent_id || null,
     rawEntry: entry,
-  };
+  }
 }
 
 /**
@@ -186,24 +204,31 @@ export function parseGatewayLogLine(line: string): ParsedGatewayLogResult | null
  */
 export function parseConnectionEvent(line: string): ConnectionEvent | null {
   if (!line.trim()) {
-    return null;
+    return null
   }
 
-  let entry: OpenClawLogEntry;
+  let entry: OpenClawLogEntry
   try {
-    entry = JSON.parse(line) as OpenClawLogEntry;
+    entry = JSON.parse(line) as OpenClawLogEntry
   } catch {
-    return null;
+    return null
   }
 
   // Only process connection-related events
   if (!entry.event) {
-    return null;
+    return null
   }
 
-  const connectionEvents = ['connection', 'disconnection', 'auth_success', 'auth_failure', 'device_paired', 'device_unpaired'];
+  const connectionEvents = [
+    'connection',
+    'disconnection',
+    'auth_success',
+    'auth_failure',
+    'device_paired',
+    'device_unpaired',
+  ]
   if (!connectionEvents.includes(entry.event)) {
-    return null;
+    return null
   }
 
   return {
@@ -214,7 +239,7 @@ export function parseConnectionEvent(line: string): ConnectionEvent | null {
     message: entry.message || null,
     error: entry.error || null,
     level: entry.level || 'INFO',
-  };
+  }
 }
 
 /**
@@ -224,83 +249,92 @@ export function parseConnectionEvent(line: string): ConnectionEvent | null {
  *   "openrouter/anthropic/claude-opus-4-5" -> { provider: "openrouter", model: "anthropic/claude-opus-4-5" }
  *   "gpt-4o" -> { provider: "unknown", model: "gpt-4o" }
  */
-export function parseModelIdentifier(modelId: string): { provider: string; model: string } {
+export function parseModelIdentifier(modelId: string): {
+  provider: string
+  model: string
+} {
   if (!modelId || modelId === 'unknown') {
-    return { provider: 'unknown', model: 'unknown' };
+    return { provider: 'unknown', model: 'unknown' }
   }
 
-  const slashIndex = modelId.indexOf('/');
+  const slashIndex = modelId.indexOf('/')
 
   if (slashIndex === -1) {
     // No provider prefix, try to infer
     return {
       provider: inferProvider(modelId),
       model: modelId,
-    };
+    }
   }
 
-  const provider = modelId.substring(0, slashIndex);
-  const model = modelId.substring(slashIndex + 1);
+  const provider = modelId.substring(0, slashIndex)
+  const model = modelId.substring(slashIndex + 1)
 
-  return { provider, model };
+  return { provider, model }
 }
 
 /**
  * Infer provider from model name when not explicitly provided
  */
 function inferProvider(model: string): string {
-  const modelLower = model.toLowerCase();
+  const modelLower = model.toLowerCase()
 
   if (modelLower.includes('claude') || modelLower.includes('anthropic')) {
-    return 'anthropic';
-  }
-  if (modelLower.includes('gpt') || modelLower.includes('o1') || modelLower.includes('davinci')) {
-    return 'openai';
-  }
-  if (modelLower.includes('gemini')) {
-    return 'google';
-  }
-  if (modelLower.includes('moonshot') || modelLower.includes('kimi')) {
-    return 'moonshot';
-  }
-  if (modelLower.includes('deepseek')) {
-    return 'deepseek';
-  }
-  if (modelLower.includes('qwen')) {
-    return 'qwen';
-  }
-  if (modelLower.includes('doubao')) {
-    return 'doubao';
+    return 'anthropic'
   }
   if (
-    modelLower.includes('glm')
-    || modelLower.includes('chatglm')
-    || modelLower.includes('bigmodel')
+    modelLower.includes('gpt') ||
+    modelLower.includes('o1') ||
+    modelLower.includes('davinci')
   ) {
-    return 'zhipu';
+    return 'openai'
+  }
+  if (modelLower.includes('gemini')) {
+    return 'google'
+  }
+  if (modelLower.includes('moonshot') || modelLower.includes('kimi')) {
+    return 'moonshot'
+  }
+  if (modelLower.includes('deepseek')) {
+    return 'deepseek'
+  }
+  if (modelLower.includes('qwen')) {
+    return 'qwen'
+  }
+  if (modelLower.includes('doubao')) {
+    return 'doubao'
+  }
+  if (
+    modelLower.includes('glm') ||
+    modelLower.includes('chatglm') ||
+    modelLower.includes('bigmodel')
+  ) {
+    return 'zhipu'
   }
   if (modelLower.includes('llama') || modelLower.includes('mistral')) {
-    return 'meta';
+    return 'meta'
   }
 
-  return 'unknown';
+  return 'unknown'
 }
 
 /**
  * Parse multiple log lines and return all valid results
  */
-export function parseGatewayLogLines(content: string): ParsedGatewayLogResult[] {
-  const lines = content.split('\n');
-  const results: ParsedGatewayLogResult[] = [];
+export function parseGatewayLogLines(
+  content: string
+): ParsedGatewayLogResult[] {
+  const lines = content.split('\n')
+  const results: ParsedGatewayLogResult[] = []
 
   for (const line of lines) {
-    const result = parseGatewayLogLine(line);
+    const result = parseGatewayLogLine(line)
     if (result) {
-      results.push(result);
+      results.push(result)
     }
   }
 
-  return results;
+  return results
 }
 
 // ============================================
@@ -312,26 +346,17 @@ export function parseGatewayLogLines(content: string): ParsedGatewayLogResult[] 
  * Used by security-watcher.ts for connection events
  */
 export interface GatewayLogEntry {
-  timestamp: string;
-  level: string;
-  event: string;
-  deviceId?: string;
-  ip?: string;
-  message?: string;
-  error?: string;
+  timestamp: string
+  level: string
+  event: string
+  deviceId?: string
+  ip?: string
+  message?: string
+  error?: string
 }
 
-// ============================================
-// Connection Event Watching (for security)
-// ============================================
-
-import fs from 'fs';
-import path from 'path';
-import chokidar from 'chokidar';
-import type { FSWatcher } from 'chokidar';
-
-const securityFilePositions = new Map<string, number>();
-let securityGatewayWatcher: FSWatcher | null = null;
+const securityFilePositions = new Map<string, number>()
+let securityGatewayWatcher: FSWatcher | null = null
 
 /**
  * Watch gateway log files for connection events (security monitoring)
@@ -341,11 +366,11 @@ export function watchGatewayLogs(
   onEvent: (event: GatewayLogEntry) => void
 ): FSWatcher | null {
   if (!fs.existsSync(logsPath)) {
-    console.log(`Gateway logs path does not exist: ${logsPath}`);
-    return null;
+    console.log(`Gateway logs path does not exist: ${logsPath}`)
+    return null
   }
 
-  const globPattern = path.join(logsPath, 'openclaw-*.log');
+  const globPattern = path.join(logsPath, 'openclaw-*.log')
 
   securityGatewayWatcher = chokidar.watch(globPattern, {
     persistent: true,
@@ -354,22 +379,22 @@ export function watchGatewayLogs(
       stabilityThreshold: 100,
       pollInterval: 50,
     },
-  });
+  })
 
   securityGatewayWatcher.on('add', (filePath) => {
-    processSecurityLogFile(filePath, onEvent);
-  });
+    processSecurityLogFile(filePath, onEvent)
+  })
 
   securityGatewayWatcher.on('change', (filePath) => {
-    processSecurityLogFileChanges(filePath, onEvent);
-  });
+    processSecurityLogFileChanges(filePath, onEvent)
+  })
 
   securityGatewayWatcher.on('error', (error) => {
-    console.error('Error watching gateway logs for security:', error);
-  });
+    console.error('Error watching gateway logs for security:', error)
+  })
 
-  console.log(`Watching gateway logs for security events in: ${logsPath}`);
-  return securityGatewayWatcher;
+  console.log(`Watching gateway logs for security events in: ${logsPath}`)
+  return securityGatewayWatcher
 }
 
 /**
@@ -377,10 +402,10 @@ export function watchGatewayLogs(
  */
 export function stopGatewayWatcher(): void {
   if (securityGatewayWatcher) {
-    securityGatewayWatcher.close();
-    securityGatewayWatcher = null;
-    securityFilePositions.clear();
-    console.log('Security gateway watcher stopped');
+    securityGatewayWatcher.close()
+    securityGatewayWatcher = null
+    securityFilePositions.clear()
+    console.log('Security gateway watcher stopped')
   }
 }
 
@@ -389,12 +414,12 @@ function processSecurityLogFile(
   onEvent: (event: GatewayLogEntry) => void
 ): void {
   try {
-    const stats = fs.statSync(filePath);
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const lines = content.split('\n');
+    const stats = fs.statSync(filePath)
+    const content = fs.readFileSync(filePath, 'utf-8')
+    const lines = content.split('\n')
 
     for (const line of lines) {
-      const event = parseConnectionEvent(line);
+      const event = parseConnectionEvent(line)
       if (event) {
         onEvent({
           timestamp: event.timestamp,
@@ -404,13 +429,13 @@ function processSecurityLogFile(
           ip: event.ip ?? undefined,
           message: event.message ?? undefined,
           error: event.error ?? undefined,
-        });
+        })
       }
     }
 
-    securityFilePositions.set(filePath, stats.size);
+    securityFilePositions.set(filePath, stats.size)
   } catch (error) {
-    console.error(`Error processing security log ${filePath}:`, error);
+    console.error(`Error processing security log ${filePath}:`, error)
   }
 }
 
@@ -419,28 +444,28 @@ function processSecurityLogFileChanges(
   onEvent: (event: GatewayLogEntry) => void
 ): void {
   try {
-    const stats = fs.statSync(filePath);
-    const previousPosition = securityFilePositions.get(filePath) || 0;
+    const stats = fs.statSync(filePath)
+    const previousPosition = securityFilePositions.get(filePath) || 0
 
     if (stats.size <= previousPosition) {
       if (stats.size < previousPosition) {
-        securityFilePositions.set(filePath, 0);
-        processSecurityLogFile(filePath, onEvent);
+        securityFilePositions.set(filePath, 0)
+        processSecurityLogFile(filePath, onEvent)
       }
-      return;
+      return
     }
 
-    const fd = fs.openSync(filePath, 'r');
-    const newBytes = stats.size - previousPosition;
-    const buffer = Buffer.alloc(newBytes);
-    fs.readSync(fd, buffer, 0, newBytes, previousPosition);
-    fs.closeSync(fd);
+    const fd = fs.openSync(filePath, 'r')
+    const newBytes = stats.size - previousPosition
+    const buffer = Buffer.alloc(newBytes)
+    fs.readSync(fd, buffer, 0, newBytes, previousPosition)
+    fs.closeSync(fd)
 
-    const newContent = buffer.toString('utf-8');
-    const lines = newContent.split('\n');
+    const newContent = buffer.toString('utf-8')
+    const lines = newContent.split('\n')
 
     for (const line of lines) {
-      const event = parseConnectionEvent(line);
+      const event = parseConnectionEvent(line)
       if (event) {
         onEvent({
           timestamp: event.timestamp,
@@ -450,12 +475,12 @@ function processSecurityLogFileChanges(
           ip: event.ip ?? undefined,
           message: event.message ?? undefined,
           error: event.error ?? undefined,
-        });
+        })
       }
     }
 
-    securityFilePositions.set(filePath, stats.size);
+    securityFilePositions.set(filePath, stats.size)
   } catch (error) {
-    console.error(`Error processing security log changes ${filePath}:`, error);
+    console.error(`Error processing security log changes ${filePath}:`, error)
   }
 }

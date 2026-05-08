@@ -1,274 +1,286 @@
-import cors from 'cors';
-import express from 'express';
-import { realpathSync } from 'fs';
-import type { Server } from 'http';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import type { Express } from 'express';
-
-const isProduction = process.env.NODE_ENV === 'production';
-const isElectron = process.env.ELECTRON === 'true';
-import auditRoutes from './routes/audit.js';
-import agentsRoutes from './routes/agents.js';
-import channelsRoutes from './routes/channels.js';
-import configRoutes from './routes/config.js';
-import costsRoutes from './routes/costs.js';
-import desktopRoutes from './routes/desktop.js';
-import devicesRoutes from './routes/devices.js';
-import exportRoutes from './routes/export.js';
-import modelsRoutes from './routes/models.js';
-import securityRoutes from './routes/security.js';
-import sessionsRoutes from './routes/sessions.js';
-import statsRoutes from './routes/stats.js';
-import tokensRoutes from './routes/tokens.js';
-import toolsRoutes from './routes/tools.js';
-import trendsRoutes from './routes/trends.js';
-import { ensureConfigDir, loadConfig } from './config/loader.js';
-import { closeDatabase, getDatabase } from './db/schema.js';
-import { startSecurityWatcher, stopSecurityWatcher } from './parser/security-watcher.js';
-import { clearDesktopBridge, setDesktopBridge } from './services/desktop-service.js';
+import path from 'path'
+import cors from 'cors'
+import express, { type Express } from 'express'
+import { realpathSync } from 'fs'
+import type { Server } from 'http'
+import { fileURLToPath } from 'url'
+import { ensureConfigDir, loadConfig } from './config/loader.js'
+import { closeDatabase, getDatabase } from './db/schema.js'
+import {
+  startSecurityWatcher,
+  stopSecurityWatcher,
+} from './parser/security-watcher.js'
+import agentsRoutes from './routes/agents.js'
+import auditRoutes from './routes/audit.js'
+import channelsRoutes from './routes/channels.js'
+import configRoutes from './routes/config.js'
+import costsRoutes from './routes/costs.js'
+import desktopRoutes from './routes/desktop.js'
+import devicesRoutes from './routes/devices.js'
+import exportRoutes from './routes/export.js'
+import modelsRoutes from './routes/models.js'
+import securityRoutes from './routes/security.js'
+import sessionsRoutes from './routes/sessions.js'
+import statsRoutes from './routes/stats.js'
+import tokensRoutes from './routes/tokens.js'
+import toolsRoutes from './routes/tools.js'
+import trendsRoutes from './routes/trends.js'
 import {
   initializeAnalyticsService,
   shutdownAnalyticsService,
-} from './services/analytics-service.js';
-import { initPricingService } from './services/pricing-service.js';
+} from './services/analytics-service.js'
+import {
+  clearDesktopBridge,
+  setDesktopBridge,
+} from './services/desktop-service.js'
+import { initPricingService } from './services/pricing-service.js'
 import {
   broadcastDesktopCloseRequested,
   closeWebSocket,
   initWebSocket,
-} from './ws/index.js';
+} from './ws/index.js'
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DEFAULT_PORT = 9174;
+const isProduction = process.env.NODE_ENV === 'production'
+const isElectron = process.env.ELECTRON === 'true'
 
-const app: Express = express();
-const clientPath = path.join(__dirname, '../client');
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const DEFAULT_PORT = 9174
 
-let httpServer: Server | null = null;
-let activePort: number | null = null;
-let signalHandlersRegistered = false;
+const app: Express = express()
+const clientPath = path.join(__dirname, '../client')
+
+let httpServer: Server | null = null
+let activePort: number | null = null
+let signalHandlersRegistered = false
 
 // Middleware
-const allowedOrigins = isProduction && !isElectron
-  ? ['http://localhost:9174', 'http://localhost:4173']
-  : true;
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true,
-}));
-app.use(express.json());
+const allowedOrigins =
+  isProduction && !isElectron
+    ? ['http://localhost:9174', 'http://localhost:4173']
+    : true
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+)
+app.use(express.json())
 
 // Serve static files in production (before API routes)
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(clientPath, { index: 'index.html' }));
+  app.use(express.static(clientPath, { index: 'index.html' }))
 }
 
 // API routes
-app.use('/api/stats', statsRoutes);
-app.use('/api/sessions', sessionsRoutes);
-app.use('/api/costs', costsRoutes);
-app.use('/api/config', configRoutes);
-app.use('/api/desktop', desktopRoutes);
-app.use('/api/tokens', tokensRoutes);
-app.use('/api/trends', trendsRoutes);
-app.use('/api/agents', agentsRoutes);
-app.use('/api/channels', channelsRoutes);
-app.use('/api/devices', devicesRoutes);
-app.use('/api/security', securityRoutes);
-app.use('/api/audit', auditRoutes);
-app.use('/api/tools', toolsRoutes);
-app.use('/api/models', modelsRoutes);
-app.use('/api/export', exportRoutes);
+app.use('/api/stats', statsRoutes)
+app.use('/api/sessions', sessionsRoutes)
+app.use('/api/costs', costsRoutes)
+app.use('/api/config', configRoutes)
+app.use('/api/desktop', desktopRoutes)
+app.use('/api/tokens', tokensRoutes)
+app.use('/api/trends', trendsRoutes)
+app.use('/api/agents', agentsRoutes)
+app.use('/api/channels', channelsRoutes)
+app.use('/api/devices', devicesRoutes)
+app.use('/api/security', securityRoutes)
+app.use('/api/audit', auditRoutes)
+app.use('/api/tools', toolsRoutes)
+app.use('/api/models', modelsRoutes)
+app.use('/api/export', exportRoutes)
 
 // Health check
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+})
 
 // SPA fallback - serve index.html for non-API routes (must be after API routes)
 app.use((req, res, next) => {
   if (req.path.startsWith('/api')) {
-    return next();
+    return next()
   }
 
   if (process.env.NODE_ENV === 'production') {
-    res.sendFile(path.join(clientPath, 'index.html'));
-    return;
+    res.sendFile(path.join(clientPath, 'index.html'))
+    return
   }
 
-  next();
-});
+  next()
+})
 
 export interface StartServerOptions {
-  port?: number;
+  port?: number
 }
 
 export interface StartedServer {
-  port: number;
-  server: Server;
+  port: number
+  server: Server
 }
 
 function resolvePort(port?: number): number {
   if (typeof port === 'number' && Number.isInteger(port) && port > 0) {
-    return port;
+    return port
   }
 
-  const envPort = Number.parseInt(process.env.PORT || '', 10);
-  return Number.isInteger(envPort) && envPort > 0 ? envPort : DEFAULT_PORT;
+  const envPort = Number.parseInt(process.env.PORT || '', 10)
+  return Number.isInteger(envPort) && envPort > 0 ? envPort : DEFAULT_PORT
 }
 
 function listen(port: number): Promise<Server> {
   return new Promise((resolve, reject) => {
-    const server = app.listen(port, () => resolve(server));
-    server.once('error', reject);
-  });
+    const server = app.listen(port, () => resolve(server))
+    server.once('error', reject)
+  })
 }
 
 async function cleanupServerState(): Promise<void> {
-  const server = httpServer;
+  const server = httpServer
 
-  httpServer = null;
-  activePort = null;
+  httpServer = null
+  activePort = null
 
-  shutdownAnalyticsService();
-  stopSecurityWatcher();
-  closeWebSocket();
-  clearDesktopBridge();
-  closeDatabase();
+  shutdownAnalyticsService()
+  stopSecurityWatcher()
+  closeWebSocket()
+  clearDesktopBridge()
+  closeDatabase()
 
   if (!server) {
-    return;
+    return
   }
 
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
       if (error) {
-        reject(error);
-        return;
+        reject(error)
+        return
       }
-      resolve();
-    });
-  });
+      resolve()
+    })
+  })
 }
 
-export async function stop(options: { exitProcess?: boolean } = {}): Promise<void> {
+export async function stop(
+  options: { exitProcess?: boolean } = {}
+): Promise<void> {
   if (!httpServer) {
     if (options.exitProcess) {
-      process.exit(0);
+      process.exit(0)
     }
-    return;
+    return
   }
 
-  console.log('\nShutting down...');
+  console.log('\nShutting down...')
 
   try {
-    await cleanupServerState();
-    console.log('Server stopped');
+    await cleanupServerState()
+    console.log('Server stopped')
 
     if (options.exitProcess) {
-      process.exit(0);
+      process.exit(0)
     }
   } catch (error) {
-    console.error('Failed to stop server cleanly:', error);
+    console.error('Failed to stop server cleanly:', error)
     if (options.exitProcess) {
-      process.exit(1);
+      process.exit(1)
     }
-    throw error;
+    throw error
   }
 }
 
 function registerSignalHandlers(): void {
   if (signalHandlersRegistered) {
-    return;
+    return
   }
 
   const handleSignal = () => {
-    void stop({ exitProcess: true });
-  };
+    void stop({ exitProcess: true })
+  }
 
-  process.on('SIGINT', handleSignal);
-  process.on('SIGTERM', handleSignal);
-  signalHandlersRegistered = true;
+  process.on('SIGINT', handleSignal)
+  process.on('SIGTERM', handleSignal)
+  signalHandlersRegistered = true
 }
 
 const isMainModule = (() => {
-  if (!process.argv[1]) return false;
+  if (!process.argv[1]) return false
 
   try {
-    const scriptPath = realpathSync(process.argv[1]);
-    const modulePath = realpathSync(fileURLToPath(import.meta.url));
-    return scriptPath === modulePath;
+    const scriptPath = realpathSync(process.argv[1])
+    const modulePath = realpathSync(fileURLToPath(import.meta.url))
+    return scriptPath === modulePath
   } catch {
-    return false;
+    return false
   }
-})();
+})()
 
-export async function start(options: StartServerOptions = {}): Promise<StartedServer> {
-  const port = resolvePort(options.port);
+export async function start(
+  options: StartServerOptions = {}
+): Promise<StartedServer> {
+  const port = resolvePort(options.port)
 
   if (httpServer) {
     return {
       port: activePort ?? port,
       server: httpServer,
-    };
+    }
   }
 
   try {
-    ensureConfigDir();
+    ensureConfigDir()
 
-    getDatabase();
-    console.log('Database initialized');
+    getDatabase()
+    console.log('Database initialized')
 
-    const config = loadConfig();
+    const config = loadConfig()
 
-    await initPricingService(config.pricingEndpoint, config.rates);
+    await initPricingService(config.pricingEndpoint, config.rates)
 
-    initializeAnalyticsService(config.openClawPath);
+    initializeAnalyticsService(config.openClawPath)
 
     if (config.securityAlertsEnabled) {
       startSecurityWatcher({
         openClawPath: config.openClawPath,
         gatewayLogsPath: config.gatewayLogsPath,
         enabled: config.securityAlertsEnabled,
-      });
-      console.log('Security watcher started');
+      })
+      console.log('Security watcher started')
     }
 
-    const server = await listen(port);
-    httpServer = server;
-    activePort = port;
+    const server = await listen(port)
+    httpServer = server
+    activePort = port
 
-    initWebSocket(server);
-    registerSignalHandlers();
+    initWebSocket(server)
+    registerSignalHandlers()
 
-    console.log(`\nClawalytics server running at http://localhost:${port}`);
-    console.log(`Dashboard: http://localhost:${port}`);
-    console.log(`API: http://localhost:${port}/api`);
-    console.log('\nPress Ctrl+C to stop\n');
+    console.log(`\nClawalytics server running at http://localhost:${port}`)
+    console.log(`Dashboard: http://localhost:${port}`)
+    console.log(`API: http://localhost:${port}/api`)
+    console.log('\nPress Ctrl+C to stop\n')
 
-    return { port, server };
+    return { port, server }
   } catch (error) {
     try {
-      await cleanupServerState();
+      await cleanupServerState()
     } catch (cleanupError) {
-      console.error('Failed to clean up after startup error:', cleanupError);
+      console.error('Failed to clean up after startup error:', cleanupError)
     }
 
-    console.error('Failed to start server:', error);
+    console.error('Failed to start server:', error)
 
     if (isMainModule) {
-      process.exit(1);
+      process.exit(1)
     }
 
-    throw error;
+    throw error
   }
 }
 
 if (isMainModule) {
-  void start();
+  void start()
 }
 
-export { app };
-export { setDesktopBridge };
-export { broadcastDesktopCloseRequested as requestDesktopCloseChoice };
+export { app }
+export { setDesktopBridge }
+export { broadcastDesktopCloseRequested as requestDesktopCloseChoice }

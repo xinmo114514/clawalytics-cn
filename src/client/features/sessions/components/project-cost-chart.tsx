@@ -9,11 +9,11 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Badge } from '@/components/ui/badge'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
-import { useChartColors } from '@/hooks/use-chart-colors'
 import type { ProjectBreakdown } from '@/lib/api'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
+import { Badge } from '@/components/ui/badge'
 
 interface ProjectCostChartProps {
   data: ProjectBreakdown[]
@@ -157,7 +157,9 @@ export function ProjectCostChart({
 
                 return (
                   <div className='min-w-[180px] rounded-lg border bg-background p-3 shadow-md'>
-                    <div className='mb-2 font-jersey text-base'>{item.name}</div>
+                    <div className='mb-2 font-jersey text-base'>
+                      {item.name}
+                    </div>
                     <div className='space-y-1.5'>
                       <div className='flex items-center justify-between gap-4'>
                         <span className='text-xs text-muted-foreground'>
@@ -177,10 +179,12 @@ export function ProjectCostChart({
                       </div>
                       <div className='flex items-center justify-between gap-4 border-t pt-1.5 text-xs text-muted-foreground'>
                         <span>
-                          {(item.inputTokens / 1000).toFixed(1)}K {text('输入', 'in')}
+                          {(item.inputTokens / 1000).toFixed(1)}K{' '}
+                          {text('输入', 'in')}
                         </span>
                         <span>
-                          {(item.outputTokens / 1000).toFixed(1)}K {text('输出', 'out')}
+                          {(item.outputTokens / 1000).toFixed(1)}K{' '}
+                          {text('输出', 'out')}
                         </span>
                       </div>
                     </div>
@@ -203,10 +207,7 @@ export function ProjectCostChart({
             }}
           >
             {chartData.map((_, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={getBarColor(index)}
-              />
+              <Cell key={`cell-${index}`} fill={getBarColor(index)} />
             ))}
           </Bar>
         </BarChart>

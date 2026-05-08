@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Activity, Bot, Coins, DollarSign, TrendingUp } from 'lucide-react'
+import { getAgentStats, getAllAgentsDailyCosts } from '@/lib/api'
+import { formatCurrency, formatNumber } from '@/lib/format'
+import { useLocale } from '@/context/locale-provider'
 import {
   Card,
   CardContent,
@@ -8,12 +11,9 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useLocale } from '@/context/locale-provider'
 import { AgentCostChart } from '@/features/agents/components/agent-cost-chart'
 import { AgentDistributionChart } from '@/features/agents/components/agent-distribution-chart'
 import { AgentsTable } from '@/features/agents/components/agents-table'
-import { getAgentStats, getAllAgentsDailyCosts } from '@/lib/api'
-import { formatCurrency, formatNumber } from '@/lib/format'
 
 interface AgentsTabProps {
   enabled: boolean
@@ -50,7 +50,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
     <div className='space-y-6'>
       <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('代理总成本', 'Total Agent Cost')}
@@ -79,7 +79,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('代理数量', 'Agents')}
@@ -108,7 +108,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('总 Token 数', 'Total Tokens')}
@@ -140,7 +140,7 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('总会话数', 'Total Sessions')}
@@ -177,7 +177,10 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
               {text('每日成本', 'Daily Cost')}
             </CardTitle>
             <CardDescription>
-              {text('最近 30 天的代理成本', 'Agent costs over the last 30 days')}
+              {text(
+                '最近 30 天的代理成本',
+                'Agent costs over the last 30 days'
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className='ps-2'>
@@ -210,7 +213,10 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
         <CardHeader>
           <CardTitle>{text('全部代理', 'All Agents')}</CardTitle>
           <CardDescription>
-            {text('所有已注册的 OpenClaw 代理', 'All registered OpenClaw agents')}
+            {text(
+              '所有已注册的 OpenClaw 代理',
+              'All registered OpenClaw agents'
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>

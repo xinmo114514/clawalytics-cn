@@ -1,31 +1,34 @@
-import { getAnalyticsService } from './analytics-service.js';
-import { createAlert } from '../db/queries-security.js';
-import { loadConfig } from '../config/loader.js';
-import { formatCny } from '../lib/currency.js';
+import { loadConfig } from '../config/loader.js'
+import { createAlert } from '../db/queries-security.js'
+import { formatCny } from '../lib/currency.js'
+import { getAnalyticsService } from './analytics-service.js'
 
 // Track which thresholds have already been alerted to avoid spam
-const alertedThresholds = new Set<string>();
+const alertedThresholds = new Set<string>()
 
 /**
  * Check current spending against configured budget thresholds.
  * Creates security alerts when budgets are exceeded.
  */
 export function checkBudgets(): void {
-  const config = loadConfig();
-  const { alertThresholds } = config;
+  const config = loadConfig()
+  const { alertThresholds } = config
 
-  const svc = getAnalyticsService();
-  const todayCost = svc.getTodayCost();
-  const weekCost = svc.getWeekCost();
-  const monthCost = svc.getMonthCost();
+  const svc = getAnalyticsService()
+  const todayCost = svc.getTodayCost()
+  const weekCost = svc.getWeekCost()
+  const monthCost = svc.getMonthCost()
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0]
 
   // Check daily budget
-  if (alertThresholds.dailyBudget > 0 && todayCost >= alertThresholds.dailyBudget) {
-    const key = `daily_${today}`;
+  if (
+    alertThresholds.dailyBudget > 0 &&
+    todayCost >= alertThresholds.dailyBudget
+  ) {
+    const key = `daily_${today}`
     if (!alertedThresholds.has(key)) {
-      alertedThresholds.add(key);
+      alertedThresholds.add(key)
       createAlert({
         type: 'budget_daily_exceeded',
         severity: 'high',
@@ -36,17 +39,22 @@ export function checkBudgets(): void {
           period: 'daily',
           date: today,
         }),
-      });
-      console.log(`[BUDGET] Daily budget exceeded: ${formatCny(todayCost)} / ${formatCny(alertThresholds.dailyBudget)}`);
+      })
+      console.log(
+        `[BUDGET] Daily budget exceeded: ${formatCny(todayCost)} / ${formatCny(alertThresholds.dailyBudget)}`
+      )
     }
   }
 
   // Check weekly budget
-  if (alertThresholds.weeklyBudget > 0 && weekCost >= alertThresholds.weeklyBudget) {
+  if (
+    alertThresholds.weeklyBudget > 0 &&
+    weekCost >= alertThresholds.weeklyBudget
+  ) {
     // Reset weekly alerts on Monday
-    const weekKey = `weekly_${getWeekIdentifier()}`;
+    const weekKey = `weekly_${getWeekIdentifier()}`
     if (!alertedThresholds.has(weekKey)) {
-      alertedThresholds.add(weekKey);
+      alertedThresholds.add(weekKey)
       createAlert({
         type: 'budget_weekly_exceeded',
         severity: 'medium',
@@ -56,16 +64,21 @@ export function checkBudgets(): void {
           budget: alertThresholds.weeklyBudget,
           period: 'weekly',
         }),
-      });
-      console.log(`[BUDGET] Weekly budget exceeded: ${formatCny(weekCost)} / ${formatCny(alertThresholds.weeklyBudget)}`);
+      })
+      console.log(
+        `[BUDGET] Weekly budget exceeded: ${formatCny(weekCost)} / ${formatCny(alertThresholds.weeklyBudget)}`
+      )
     }
   }
 
   // Check monthly budget
-  if (alertThresholds.monthlyBudget > 0 && monthCost >= alertThresholds.monthlyBudget) {
-    const monthKey = `monthly_${today.substring(0, 7)}`; // YYYY-MM
+  if (
+    alertThresholds.monthlyBudget > 0 &&
+    monthCost >= alertThresholds.monthlyBudget
+  ) {
+    const monthKey = `monthly_${today.substring(0, 7)}` // YYYY-MM
     if (!alertedThresholds.has(monthKey)) {
-      alertedThresholds.add(monthKey);
+      alertedThresholds.add(monthKey)
       createAlert({
         type: 'budget_monthly_exceeded',
         severity: 'high',
@@ -75,8 +88,10 @@ export function checkBudgets(): void {
           budget: alertThresholds.monthlyBudget,
           period: 'monthly',
         }),
-      });
-      console.log(`[BUDGET] Monthly budget exceeded: ${formatCny(monthCost)} / ${formatCny(alertThresholds.monthlyBudget)}`);
+      })
+      console.log(
+        `[BUDGET] Monthly budget exceeded: ${formatCny(monthCost)} / ${formatCny(alertThresholds.monthlyBudget)}`
+      )
     }
   }
 }
@@ -85,53 +100,70 @@ export function checkBudgets(): void {
  * Get budget status for the API endpoint
  */
 export function getBudgetStatus(): {
-  daily: { spent: number; budget: number; percent: number } | null;
-  weekly: { spent: number; budget: number; percent: number } | null;
-  monthly: { spent: number; budget: number; percent: number } | null;
+  daily: { spent: number; budget: number; percent: number } | null
+  weekly: { spent: number; budget: number; percent: number } | null
+  monthly: { spent: number; budget: number; percent: number } | null
 } {
-  const config = loadConfig();
-  const { alertThresholds } = config;
+  const config = loadConfig()
+  const { alertThresholds } = config
 
-  const svc = getAnalyticsService();
-  const todayCost = svc.getTodayCost();
-  const weekCost = svc.getWeekCost();
-  const monthCost = svc.getMonthCost();
+  const svc = getAnalyticsService()
+  const todayCost = svc.getTodayCost()
+  const weekCost = svc.getWeekCost()
+  const monthCost = svc.getMonthCost()
 
   return {
-    daily: alertThresholds.dailyBudget > 0
-      ? {
-          spent: todayCost,
-          budget: alertThresholds.dailyBudget,
-          percent: Math.min(100, (todayCost / alertThresholds.dailyBudget) * 100),
-        }
-      : null,
-    weekly: alertThresholds.weeklyBudget > 0
-      ? {
-          spent: weekCost,
-          budget: alertThresholds.weeklyBudget,
-          percent: Math.min(100, (weekCost / alertThresholds.weeklyBudget) * 100),
-        }
-      : null,
-    monthly: alertThresholds.monthlyBudget > 0
-      ? {
-          spent: monthCost,
-          budget: alertThresholds.monthlyBudget,
-          percent: Math.min(100, (monthCost / alertThresholds.monthlyBudget) * 100),
-        }
-      : null,
-  };
+    daily:
+      alertThresholds.dailyBudget > 0
+        ? {
+            spent: todayCost,
+            budget: alertThresholds.dailyBudget,
+            percent: Math.min(
+              100,
+              (todayCost / alertThresholds.dailyBudget) * 100
+            ),
+          }
+        : null,
+    weekly:
+      alertThresholds.weeklyBudget > 0
+        ? {
+            spent: weekCost,
+            budget: alertThresholds.weeklyBudget,
+            percent: Math.min(
+              100,
+              (weekCost / alertThresholds.weeklyBudget) * 100
+            ),
+          }
+        : null,
+    monthly:
+      alertThresholds.monthlyBudget > 0
+        ? {
+            spent: monthCost,
+            budget: alertThresholds.monthlyBudget,
+            percent: Math.min(
+              100,
+              (monthCost / alertThresholds.monthlyBudget) * 100
+            ),
+          }
+        : null,
+  }
 }
 
 /**
  * Reset alerted thresholds (useful for testing)
  */
 export function resetAlertedThresholds(): void {
-  alertedThresholds.clear();
+  alertedThresholds.clear()
 }
 
 function getWeekIdentifier(): string {
-  const now = new Date();
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-  const weekNumber = Math.ceil(((now.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
-  return `${now.getFullYear()}-W${weekNumber}`;
+  const now = new Date()
+  const startOfYear = new Date(now.getFullYear(), 0, 1)
+  const weekNumber = Math.ceil(
+    ((now.getTime() - startOfYear.getTime()) / 86400000 +
+      startOfYear.getDay() +
+      1) /
+      7
+  )
+  return `${now.getFullYear()}-W${weekNumber}`
 }

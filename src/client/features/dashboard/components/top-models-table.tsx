@@ -1,3 +1,6 @@
+import type { ModelUsage } from '@/lib/api'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -7,9 +10,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
-import type { ModelUsage } from '@/lib/api'
 
 interface TopModelsTableProps {
   models: ModelUsage[]
@@ -27,41 +27,24 @@ export function TopModelsTable({ models }: TopModelsTableProps) {
 
   const getProviderColor = (provider: string): string => {
     const colors: Record<string, string> = {
-      anthropic:
-        'bg-warning/10 text-warning',
-      openai:
-        'bg-success/10 text-success',
-      google:
-        'bg-info/10 text-info',
-      moonshot:
-        'bg-chart-3/10 text-chart-3',
-      minimax:
-        'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
+      anthropic: 'bg-warning/10 text-warning',
+      openai: 'bg-success/10 text-success',
+      google: 'bg-info/10 text-info',
+      moonshot: 'bg-chart-3/10 text-chart-3',
+      minimax: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
       'minimax-portal':
         'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
-      qwen:
-        'bg-orange-500/10 text-orange-600 dark:text-orange-300',
-      'qwen-portal':
-        'bg-orange-500/10 text-orange-600 dark:text-orange-300',
-      dashscope:
-        'bg-orange-500/10 text-orange-600 dark:text-orange-300',
-      doubao:
-        'bg-rose-500/10 text-rose-600 dark:text-rose-300',
-      volcengine:
-        'bg-rose-500/10 text-rose-600 dark:text-rose-300',
-      ark:
-        'bg-rose-500/10 text-rose-600 dark:text-rose-300',
-      deepseek:
-        'bg-chart-4/10 text-chart-4',
-      zhipu:
-        'bg-cyan-500/10 text-cyan-600 dark:text-cyan-300',
-      bigmodel:
-        'bg-cyan-500/10 text-cyan-600 dark:text-cyan-300',
+      qwen: 'bg-orange-500/10 text-orange-600 dark:text-orange-300',
+      'qwen-portal': 'bg-orange-500/10 text-orange-600 dark:text-orange-300',
+      dashscope: 'bg-orange-500/10 text-orange-600 dark:text-orange-300',
+      doubao: 'bg-rose-500/10 text-rose-600 dark:text-rose-300',
+      volcengine: 'bg-rose-500/10 text-rose-600 dark:text-rose-300',
+      ark: 'bg-rose-500/10 text-rose-600 dark:text-rose-300',
+      deepseek: 'bg-chart-4/10 text-chart-4',
+      zhipu: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-300',
+      bigmodel: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-300',
     }
-    return (
-      colors[provider.toLowerCase()] ||
-      'bg-muted/10 text-muted-foreground'
-    )
+    return colors[provider.toLowerCase()] || 'bg-muted/10 text-muted-foreground'
   }
 
   const topModels = [...models].sort((a, b) => b.cost - a.cost).slice(0, 5)
@@ -83,7 +66,9 @@ export function TopModelsTable({ models }: TopModelsTableProps) {
         <TableRow>
           <TableHead>{text('模型', 'Model')}</TableHead>
           <TableHead>{text('提供商', 'Provider')}</TableHead>
-          <TableHead className='text-right'>{text('Tokens', 'Tokens')}</TableHead>
+          <TableHead className='text-right'>
+            {text('Tokens', 'Tokens')}
+          </TableHead>
           <TableHead className='text-right'>{text('成本', 'Cost')}</TableHead>
         </TableRow>
       </TableHeader>
@@ -94,14 +79,17 @@ export function TopModelsTable({ models }: TopModelsTableProps) {
               {model.model}
             </TableCell>
             <TableCell>
-              <Badge variant='outline' className={getProviderColor(model.provider)}>
+              <Badge
+                variant='outline'
+                className={getProviderColor(model.provider)}
+              >
                 {model.provider}
               </Badge>
             </TableCell>
-            <TableCell className='text-right tabular-nums text-muted-foreground'>
+            <TableCell className='text-right text-muted-foreground tabular-nums'>
               {formatNumber(model.input_tokens + model.output_tokens)}
             </TableCell>
-            <TableCell className='text-right tabular-nums font-medium text-primary'>
+            <TableCell className='text-right font-medium text-primary tabular-nums'>
               {formatCurrency(model.cost)}
             </TableCell>
           </TableRow>

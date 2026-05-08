@@ -1,8 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import {
-  getDesktopPreferences,
-  updateDesktopPreferences,
-} from '@/lib/api'
+import { getDesktopPreferences, updateDesktopPreferences } from '@/lib/api'
 
 export type AppLocale = 'zh' | 'en'
 
@@ -64,7 +61,6 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
 
     if (stored) {
       persistLocale(stored)
-      setLocaleState(stored)
       void updateDesktopPreferences({ locale: stored }).catch(() => undefined)
       return
     }

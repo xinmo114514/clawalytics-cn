@@ -6,9 +6,9 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from 'recharts'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
 import type { Agent } from '@/lib/api'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
 
 interface AgentDistributionChartProps {
   agents: Agent[]
@@ -111,10 +111,12 @@ export function AgentDistributionChart({
                     </div>
                     <div className='flex items-center justify-between gap-4 border-t pt-1.5 text-xs text-muted-foreground'>
                       <span>
-                        {(item.inputTokens / 1000).toFixed(1)}K {text('输入', 'in')}
+                        {(item.inputTokens / 1000).toFixed(1)}K{' '}
+                        {text('输入', 'in')}
                       </span>
                       <span>
-                        {(item.outputTokens / 1000).toFixed(1)}K {text('输出', 'out')}
+                        {(item.outputTokens / 1000).toFixed(1)}K{' '}
+                        {text('输出', 'out')}
                       </span>
                     </div>
                   </div>

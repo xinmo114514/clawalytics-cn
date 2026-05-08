@@ -1,15 +1,10 @@
 import { Activity, DollarSign, TrendingUp, FolderOpen } from 'lucide-react'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
-import { formatNumber } from '@/lib/format'
 import type { SessionStats } from '@/lib/api'
+import { formatNumber } from '@/lib/format'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface SessionStatsCardsProps {
   stats: SessionStats | undefined
@@ -24,14 +19,17 @@ function formatProjectName(path: string | undefined, fallback: string): string {
   return parts[parts.length - 1] || value
 }
 
-export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) {
+export function SessionStatsCards({
+  stats,
+  isLoading,
+}: SessionStatsCardsProps) {
   const { text } = useLocale()
   const { formatCurrency } = useCurrency()
 
   return (
     <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
       <Card className='relative overflow-hidden'>
-        <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full' />
+        <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
         <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
           <CardTitle className='text-sm font-medium'>
             {text('总会话数', 'Total Sessions')}
@@ -43,7 +41,7 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
         <CardContent>
           {isLoading ? (
             <>
-              <Skeleton className='h-8 w-16 mb-1' />
+              <Skeleton className='mb-1 h-8 w-16' />
               <Skeleton className='h-4 w-24' />
             </>
           ) : (
@@ -52,7 +50,8 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
                 {formatNumber(stats?.totalSessions ?? 0)}
               </div>
               <p className='text-xs text-muted-foreground'>
-                {stats?.totalSessionsThisMonth ?? 0} {text('本月', 'This month')}
+                {stats?.totalSessionsThisMonth ?? 0}{' '}
+                {text('本月', 'This month')}
               </p>
             </>
           )}
@@ -60,7 +59,7 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
       </Card>
 
       <Card className='relative overflow-hidden'>
-        <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full' />
+        <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
         <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
           <CardTitle className='text-sm font-medium'>
             {text('总成本', 'Total Cost')}
@@ -72,7 +71,7 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
         <CardContent>
           {isLoading ? (
             <>
-              <Skeleton className='h-8 w-24 mb-1' />
+              <Skeleton className='mb-1 h-8 w-24' />
               <Skeleton className='h-4 w-32' />
             </>
           ) : (
@@ -89,7 +88,7 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
       </Card>
 
       <Card className='relative overflow-hidden'>
-        <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full' />
+        <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
         <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
           <CardTitle className='text-sm font-medium'>
             {text('平均每会话成本', 'Avg Cost / Session')}
@@ -101,7 +100,7 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
         <CardContent>
           {isLoading ? (
             <>
-              <Skeleton className='h-8 w-20 mb-1' />
+              <Skeleton className='mb-1 h-8 w-20' />
               <Skeleton className='h-4 w-28' />
             </>
           ) : (
@@ -118,7 +117,7 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
       </Card>
 
       <Card className='relative overflow-hidden'>
-        <div className='absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full' />
+        <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
         <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
           <CardTitle className='text-sm font-medium'>
             {text('最活跃项目', 'Most Active Project')}
@@ -130,12 +129,12 @@ export function SessionStatsCards({ stats, isLoading }: SessionStatsCardsProps) 
         <CardContent>
           {isLoading ? (
             <>
-              <Skeleton className='h-8 w-24 mb-1' />
+              <Skeleton className='mb-1 h-8 w-24' />
               <Skeleton className='h-4 w-20' />
             </>
           ) : (
             <>
-              <div className='text-2xl font-bold text-primary truncate'>
+              <div className='truncate text-2xl font-bold text-primary'>
                 {stats?.mostActiveProject
                   ? formatProjectName(
                       stats.mostActiveProject.project,

@@ -34,11 +34,16 @@ export function CommandMenu() {
   return (
     <CommandDialog modal open={open} onOpenChange={setOpen}>
       <CommandInput
-        placeholder={text('输入命令或搜索内容...', 'Type a command or search...')}
+        placeholder={text(
+          '输入命令或搜索内容...',
+          'Type a command or search...'
+        )}
       />
       <CommandList>
         <ScrollArea type='hover' className='h-72 pe-1'>
-          <CommandEmpty>{text('没有找到结果。', 'No results found.')}</CommandEmpty>
+          <CommandEmpty>
+            {text('没有找到结果。', 'No results found.')}
+          </CommandEmpty>
           {sidebarData.navGroups.map((group) => (
             <CommandGroup key={group.title} heading={group.title}>
               {group.items.map((navItem, i) => {

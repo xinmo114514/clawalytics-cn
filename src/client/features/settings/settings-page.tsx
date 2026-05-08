@@ -1,15 +1,21 @@
 import { Settings as SettingsIcon } from 'lucide-react'
+import { useLocale } from '@/context/locale-provider'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { LanguageSwitch } from '@/components/language-switch'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ThemeSwitch } from '@/components/theme-switch'
-import { LanguageSwitch } from '@/components/language-switch'
-import { useLocale } from '@/context/locale-provider'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
 import { AppearanceSettings } from './components/appearance-settings'
+import { CustomPricingSettings } from './components/custom-pricing-settings'
 import { DesktopSettings } from './components/desktop-settings'
 import { OpenClawSettings } from './components/openclaw-settings'
-import { CustomPricingSettings } from './components/custom-pricing-settings'
 
 export function SettingsPage() {
   const { text } = useLocale()

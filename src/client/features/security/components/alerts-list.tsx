@@ -6,6 +6,14 @@ import {
   Info,
   ShieldAlert,
 } from 'lucide-react'
+import { toast } from 'sonner'
+import {
+  acknowledgeAlert,
+  acknowledgeAllAlerts,
+  type SecurityAlert,
+} from '@/lib/api'
+import { formatRelativeTime } from '@/lib/i18n'
+import { useLocale } from '@/context/locale-provider'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -15,14 +23,6 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useLocale } from '@/context/locale-provider'
-import {
-  acknowledgeAlert,
-  acknowledgeAllAlerts,
-  type SecurityAlert,
-} from '@/lib/api'
-import { formatRelativeTime } from '@/lib/i18n'
-import { toast } from 'sonner'
 
 interface AlertsListProps {
   alerts: SecurityAlert[]
@@ -107,7 +107,10 @@ export function AlertsList({
         <CardContent>
           <div className='space-y-4'>
             {[...Array(3)].map((_, i) => (
-              <div key={i} className='flex items-start gap-4 rounded-lg border p-4'>
+              <div
+                key={i}
+                className='flex items-start gap-4 rounded-lg border p-4'
+              >
                 <Skeleton className='h-10 w-10 rounded-full' />
                 <div className='flex-1 space-y-2'>
                   <Skeleton className='h-4 w-32' />
@@ -174,23 +177,18 @@ export function AlertsList({
               return (
                 <div
                   key={alert.id}
-                  className={`
-                    flex items-start gap-4 rounded-lg border p-4
-                    ${alert.acknowledged ? 'opacity-60' : ''}
-                    transition-opacity
-                  `}
+                  className={`flex items-start gap-4 rounded-lg border p-4 ${alert.acknowledged ? 'opacity-60' : ''} transition-opacity`}
                 >
                   <div
-                    className={`
-                      flex h-10 w-10 items-center justify-center rounded-full
-                      ${config.iconBg}
-                    `}
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${config.iconBg} `}
                   >
                     <IconComponent className='h-5 w-5 text-white' />
                   </div>
                   <div className='min-w-0 flex-1'>
                     <div className='mb-1 flex items-center gap-2'>
-                      <span className={`font-jersey text-xs tracking-wider ${config.textColor}`}>
+                      <span
+                        className={`font-jersey text-xs tracking-wider ${config.textColor}`}
+                      >
                         {locale === 'zh' ? config.zh : config.en}
                       </span>
                       <span className='text-sm font-medium'>{alert.type}</span>

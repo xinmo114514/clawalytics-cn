@@ -1,8 +1,14 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
+import { useQuery } from '@tanstack/react-query'
 import { Download, Search } from 'lucide-react'
-import { SessionsIcon } from '@/components/icons/sessions-icon'
+import {
+  getSessions,
+  getSessionStats,
+  getProjectBreakdown,
+  getSessionFilters,
+} from '@/lib/api'
+import { useLocale } from '@/context/locale-provider'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -20,19 +26,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { SessionsIcon } from '@/components/icons/sessions-icon'
+import { LanguageSwitch } from '@/components/language-switch'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
-import { LanguageSwitch } from '@/components/language-switch'
 import { ThemeSwitch } from '@/components/theme-switch'
-import { useLocale } from '@/context/locale-provider'
-import {
-  getSessions,
-  getSessionStats,
-  getProjectBreakdown,
-  getSessionFilters,
-} from '@/lib/api'
-import { SessionStatsCards } from './components/session-stats-cards'
 import { ProjectCostChart } from './components/project-cost-chart'
+import { SessionStatsCards } from './components/session-stats-cards'
 import { SessionsTable } from './components/sessions-table'
 
 const PAGE_SIZE = 50
@@ -50,7 +50,9 @@ export function Sessions() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [projectFilter, setProjectFilter] = useState<string | undefined>()
   const [modelFilter, setModelFilter] = useState<string | undefined>()
-  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(
+    null
+  )
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['sessionStats'],
@@ -71,7 +73,16 @@ export function Sessions() {
   })
 
   const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
-    queryKey: ['sessions', page, PAGE_SIZE, sortBy, sortDir, projectFilter, modelFilter, searchQuery],
+    queryKey: [
+      'sessions',
+      page,
+      PAGE_SIZE,
+      sortBy,
+      sortDir,
+      projectFilter,
+      modelFilter,
+      searchQuery,
+    ],
     queryFn: () =>
       getSessions({
         limit: PAGE_SIZE,
@@ -85,7 +96,9 @@ export function Sessions() {
     refetchInterval: 10000,
   })
 
-  const totalPages = sessionsData?.total ? Math.ceil(sessionsData.total / PAGE_SIZE) : 0
+  const totalPages = sessionsData?.total
+    ? Math.ceil(sessionsData.total / PAGE_SIZE)
+    : 0
   const startItem = page * PAGE_SIZE + 1
   const endItem = Math.min((page + 1) * PAGE_SIZE, sessionsData?.total ?? 0)
   const projectOptions = (filters?.projects ?? []).filter(isNonEmptyString)
@@ -151,7 +164,9 @@ export function Sessions() {
       <Header>
         <div className='flex items-center gap-2'>
           <SessionsIcon active className='h-6 w-6' />
-          <span className='font-jersey text-xl'>{text('会话', 'Sessions')}</span>
+          <span className='font-jersey text-xl'>
+            {text('会话', 'Sessions')}
+          </span>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
           <LanguageSwitch />
@@ -188,7 +203,10 @@ export function Sessions() {
           <CardHeader>
             <CardTitle>{text('按项目查看成本', 'Cost by Project')}</CardTitle>
             <CardDescription>
-              {text('点击柱状条可筛选下方表格', 'Click a bar to filter the table below')}
+              {text(
+                '点击柱状条可筛选下方表格',
+                'Click a bar to filter the table below'
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className='ps-2'>
@@ -206,10 +224,13 @@ export function Sessions() {
 
         {/* Filter bar */}
         <div className='mb-4 flex flex-wrap items-center gap-3'>
-          <div className='relative flex-1 min-w-[200px]'>
-            <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
+          <div className='relative min-w-[200px] flex-1'>
+            <Search className='absolute top-2.5 left-2 h-4 w-4 text-muted-foreground' />
             <Input
-              placeholder={text('按项目或模型搜索...', 'Search by project or model...')}
+              placeholder={text(
+                '按项目或模型搜索...',
+                'Search by project or model...'
+              )}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => {
@@ -229,7 +250,9 @@ export function Sessions() {
               <SelectValue placeholder={text('全部项目', 'All Projects')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value='all'>{text('全部项目', 'All Projects')}</SelectItem>
+              <SelectItem value='all'>
+                {text('全部项目', 'All Projects')}
+              </SelectItem>
               {projectOptions.map((p) => {
                 const parts = p.split('-')
                 const name = parts[parts.length - 1] || p
@@ -252,7 +275,9 @@ export function Sessions() {
               <SelectValue placeholder={text('全部模型', 'All Models')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value='all'>{text('全部模型', 'All Models')}</SelectItem>
+              <SelectItem value='all'>
+                {text('全部模型', 'All Models')}
+              </SelectItem>
               {modelOptions.map((m) => (
                 <SelectItem key={m} value={m}>
                   {m}

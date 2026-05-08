@@ -1,6 +1,6 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { Button } from '@/components/ui/button'
 import { useLocale } from '@/context/locale-provider'
+import { Button } from '@/components/ui/button'
 
 export function NotFoundError() {
   const navigate = useNavigate()
@@ -14,9 +14,15 @@ export function NotFoundError() {
           {text('页面不存在。', 'Oops! Page Not Found!')}
         </span>
         <p className='text-center text-muted-foreground'>
-          {text('你访问的页面可能不存在，', "It seems like the page you're looking for")}
+          {text(
+            '你访问的页面可能不存在，',
+            "It seems like the page you're looking for"
+          )}
           <br />
-          {text('或者已经被移除。', 'does not exist or might have been removed.')}
+          {text(
+            '或者已经被移除。',
+            'does not exist or might have been removed.'
+          )}
         </p>
         <div className='mt-6 flex gap-4'>
           <Button variant='outline' onClick={() => history.go(-1)}>

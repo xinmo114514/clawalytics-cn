@@ -1,6 +1,6 @@
 import { Loader } from 'lucide-react'
-import { useLocale } from '@/context/locale-provider'
 import { cn } from '@/lib/utils'
+import { useLocale } from '@/context/locale-provider'
 import { FormControl } from '@/components/ui/form'
 import {
   Select,

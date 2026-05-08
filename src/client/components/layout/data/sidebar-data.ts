@@ -1,7 +1,7 @@
 import { DollarSign, HelpCircle, Settings, Wallet } from 'lucide-react'
 import { HomeIcon } from '@/components/icons/home-icon'
-import { SessionsIcon } from '@/components/icons/sessions-icon'
 import { SecurityIcon } from '@/components/icons/security-icon'
+import { SessionsIcon } from '@/components/icons/sessions-icon'
 import { ToolsIcon } from '@/components/icons/tools-icon'
 import { type SidebarData } from '../types'
 

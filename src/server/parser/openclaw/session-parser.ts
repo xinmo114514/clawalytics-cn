@@ -1,6 +1,6 @@
-import { calculateCost, identifyProvider } from '../costs.js';
-import { hasPricing } from '../../services/pricing-service.js';
-import { convertUsdToCny } from '../../lib/currency.js';
+import { convertUsdToCny } from '../../lib/currency.js'
+import { hasPricing } from '../../services/pricing-service.js'
+import { calculateCost, identifyProvider } from '../costs.js'
 
 const VERIFIED_PRICING_PROVIDERS = new Set([
   'deepseek',
@@ -16,7 +16,7 @@ const VERIFIED_PRICING_PROVIDERS = new Set([
   'ark',
   'zhipu',
   'bigmodel',
-]);
+])
 
 /**
  * Actual OpenClaw session JSONL entry structure.
@@ -47,79 +47,79 @@ const VERIFIED_PRICING_PROVIDERS = new Set([
  * }
  */
 export interface OpenClawLogEntry {
-  type: string;
-  id?: string;
-  parentId?: string | null;
-  timestamp?: string;
+  type: string
+  id?: string
+  parentId?: string | null
+  timestamp?: string
   message?: {
-    role?: string;
-    content?: unknown;
-    api?: string;
-    provider?: string;
-    model?: string;
+    role?: string
+    content?: unknown
+    api?: string
+    provider?: string
+    model?: string
     usage?: {
       // Actual OpenClaw format
-      input?: number;
-      output?: number;
-      cacheRead?: number;
-      cacheWrite?: number;
-      totalTokens?: number;
+      input?: number
+      output?: number
+      cacheRead?: number
+      cacheWrite?: number
+      totalTokens?: number
       cost?: {
-        input?: number;
-        output?: number;
-        cacheRead?: number;
-        cacheWrite?: number;
-        total?: number;
-      };
+        input?: number
+        output?: number
+        cacheRead?: number
+        cacheWrite?: number
+        total?: number
+      }
       // Claude Code / legacy format
-      input_tokens?: number;
-      output_tokens?: number;
-      cache_creation_input_tokens?: number;
-      cache_read_input_tokens?: number;
-    };
-    stopReason?: string;
-    timestamp?: number;
-  };
+      input_tokens?: number
+      output_tokens?: number
+      cache_creation_input_tokens?: number
+      cache_read_input_tokens?: number
+    }
+    stopReason?: string
+    timestamp?: number
+  }
   // Tool use events
   tool_use?: {
-    name: string;
-    id: string;
-  };
+    name: string
+    id: string
+  }
   tool_result?: {
-    tool_use_id: string;
-    is_error?: boolean;
-  };
-  [key: string]: unknown;
+    tool_use_id: string
+    is_error?: boolean
+  }
+  [key: string]: unknown
 }
 
 /** Simple tool use info extracted from a log entry (for inline parsing) */
 export interface SessionToolUseInfo {
-  name: string;
-  id: string;
-  isError?: boolean;
+  name: string
+  id: string
+  isError?: boolean
 }
 
 export interface OriginInfo {
-  provider: string;
-  channel: string;
+  provider: string
+  channel: string
 }
 
 export interface ParsedOpenClawResult {
-  sessionId: string;
-  agentId: string;
-  timestamp: string;
-  model: string;
-  provider: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheCreationTokens: number;
-  cacheReadTokens: number;
-  cost: number;
-  cacheSavings: number;
-  origin: OriginInfo | null;
-  toolUse: SessionToolUseInfo | null;
-  messageType: string;
-  rawEntry: OpenClawLogEntry;
+  sessionId: string
+  agentId: string
+  timestamp: string
+  model: string
+  provider: string
+  inputTokens: number
+  outputTokens: number
+  cacheCreationTokens: number
+  cacheReadTokens: number
+  cost: number
+  cacheSavings: number
+  origin: OriginInfo | null
+  toolUse: SessionToolUseInfo | null
+  messageType: string
+  rawEntry: OpenClawLogEntry
 }
 
 /**
@@ -132,65 +132,76 @@ export function parseOpenClawLine(
   sessionId: string,
   agentId: string
 ): ParsedOpenClawResult | null {
-  if (!line.trim()) return null;
+  if (!line.trim()) return null
 
-  let entry: OpenClawLogEntry;
+  let entry: OpenClawLogEntry
   try {
-    entry = JSON.parse(line) as OpenClawLogEntry;
+    entry = JSON.parse(line) as OpenClawLogEntry
   } catch {
-    return null;
+    return null
   }
 
   // Only process message entries with assistant role that have usage
-  if (entry.type !== 'message') return null;
-  if (!entry.message?.usage) return null;
-  if (entry.message.role !== 'assistant') return null;
+  if (entry.type !== 'message') return null
+  if (!entry.message?.usage) return null
+  if (entry.message.role !== 'assistant') return null
 
-  const usage = entry.message.usage;
+  const usage = entry.message.usage
 
   // Extract tokens - support both OpenClaw and Claude Code formats
-  const inputTokens = usage.input ?? usage.input_tokens ?? 0;
-  const outputTokens = usage.output ?? usage.output_tokens ?? 0;
-  const cacheReadTokens = usage.cacheRead ?? usage.cache_read_input_tokens ?? 0;
-  const cacheCreationTokens = usage.cacheWrite ?? usage.cache_creation_input_tokens ?? 0;
+  const inputTokens = usage.input ?? usage.input_tokens ?? 0
+  const outputTokens = usage.output ?? usage.output_tokens ?? 0
+  const cacheReadTokens = usage.cacheRead ?? usage.cache_read_input_tokens ?? 0
+  const cacheCreationTokens =
+    usage.cacheWrite ?? usage.cache_creation_input_tokens ?? 0
 
   // Skip if no tokens at all
-  if (inputTokens === 0 && outputTokens === 0 && cacheReadTokens === 0 && cacheCreationTokens === 0) {
-    return null;
+  if (
+    inputTokens === 0 &&
+    outputTokens === 0 &&
+    cacheReadTokens === 0 &&
+    cacheCreationTokens === 0
+  ) {
+    return null
   }
 
   // Get model and provider info
-  const model = entry.message.model || 'unknown';
-  const provider = entry.message.provider || identifyProvider(model);
-  const rawProviderReportedCost = usage.cost?.total;
-  const providerReportedCost = typeof rawProviderReportedCost === 'number'
-    ? convertUsdToCny(rawProviderReportedCost)
-    : undefined;
-  const hasVerifiedPricing = hasPricing(provider, model);
-  const preferVerifiedPricing = hasVerifiedPricing
-    && VERIFIED_PRICING_PROVIDERS.has(provider.toLowerCase());
+  const model = entry.message.model || 'unknown'
+  const provider = entry.message.provider || identifyProvider(model)
+  const rawProviderReportedCost = usage.cost?.total
+  const providerReportedCost =
+    typeof rawProviderReportedCost === 'number'
+      ? convertUsdToCny(rawProviderReportedCost)
+      : undefined
+  const hasVerifiedPricing = hasPricing(provider, model)
+  const preferVerifiedPricing =
+    hasVerifiedPricing && VERIFIED_PRICING_PROVIDERS.has(provider.toLowerCase())
 
   // Calculate cost from our pricing data
-  const costResult = calculateCost(provider, model, {
-    inputTokens,
-    outputTokens,
-    cacheCreationTokens,
-    cacheReadTokens,
-  }, {
-    suppressMissingPricingWarning: Boolean(providerReportedCost && providerReportedCost > 0),
-  });
+  const costResult = calculateCost(
+    provider,
+    model,
+    {
+      inputTokens,
+      outputTokens,
+      cacheCreationTokens,
+      cacheReadTokens,
+    },
+    {
+      suppressMissingPricingWarning: Boolean(
+        providerReportedCost && providerReportedCost > 0
+      ),
+    }
+  )
 
   // Use provider-reported cost if available, otherwise our calculated cost
-  const cost = (
-    !preferVerifiedPricing
-    && providerReportedCost
-    && providerReportedCost > 0
-  )
-    ? providerReportedCost
-    : costResult.totalCost;
-  const cacheSavings = costResult.cacheSavings;
+  const cost =
+    !preferVerifiedPricing && providerReportedCost && providerReportedCost > 0
+      ? providerReportedCost
+      : costResult.totalCost
+  const cacheSavings = costResult.cacheSavings
 
-  const timestamp = entry.timestamp || new Date().toISOString();
+  const timestamp = entry.timestamp || new Date().toISOString()
 
   return {
     sessionId,
@@ -208,18 +219,20 @@ export function parseOpenClawLine(
     toolUse: extractSessionToolUse(entry),
     messageType: entry.type,
     rawEntry: entry,
-  };
+  }
 }
 
 /**
  * Extract simple tool use info from an OpenClaw log entry
  */
-export function extractSessionToolUse(entry: OpenClawLogEntry): SessionToolUseInfo | null {
+export function extractSessionToolUse(
+  entry: OpenClawLogEntry
+): SessionToolUseInfo | null {
   if (entry.tool_use) {
     return {
       name: entry.tool_use.name,
       id: entry.tool_use.id,
-    };
+    }
   }
 
   if (entry.tool_result) {
@@ -227,13 +240,13 @@ export function extractSessionToolUse(entry: OpenClawLogEntry): SessionToolUseIn
       name: 'tool_result',
       id: entry.tool_result.tool_use_id,
       isError: entry.tool_result.is_error,
-    };
+    }
   }
 
-  return null;
+  return null
 }
 
 // Keep legacy export for backwards compatibility
 export function extractOrigin(_entry: OpenClawLogEntry): OriginInfo | null {
-  return null;
+  return null
 }

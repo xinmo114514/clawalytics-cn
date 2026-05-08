@@ -5,7 +5,10 @@ export function isWindowsDesktopShell() {
     return false
   }
 
-  return navigator.userAgent.includes('Electron') && navigator.userAgent.includes('Windows')
+  return (
+    navigator.userAgent.includes('Electron') &&
+    navigator.userAgent.includes('Windows')
+  )
 }
 
 export function DesktopWindowChrome() {
@@ -23,13 +26,17 @@ export function DesktopWindowChrome() {
       <div className='flex h-full w-full items-center justify-between gap-4 px-4 pe-[var(--desktop-controls-width)]'>
         <div className='flex min-w-0 items-center gap-3'>
           <div className='flex size-8 items-center justify-center rounded-xl border border-white/12 bg-white/10 shadow-[0_12px_30px_-20px_hsl(var(--foreground)/0.85)]'>
-            <img src='/images/logo.png' alt='Clawalytics' className='size-6 object-contain' />
+            <img
+              src='/images/logo.png'
+              alt='Clawalytics'
+              className='size-6 object-contain'
+            />
           </div>
           <div className='min-w-0'>
             <p className='truncate text-sm font-semibold tracking-[0.01em] text-foreground'>
               Clawalytics
             </p>
-            <p className='truncate text-[11px] uppercase tracking-[0.24em] text-muted-foreground'>
+            <p className='truncate text-[11px] tracking-[0.24em] text-muted-foreground uppercase'>
               {text('Windows 桌面版', 'Windows Desktop')}
             </p>
           </div>

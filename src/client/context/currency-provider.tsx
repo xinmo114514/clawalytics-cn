@@ -1,8 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import {
-  getDesktopPreferences,
-  updateDesktopPreferences,
-} from '@/lib/api'
+import { getDesktopPreferences, updateDesktopPreferences } from '@/lib/api'
 
 export type Currency = 'CNY' | 'USD'
 
@@ -62,14 +59,15 @@ function formatUSDPrecise(value: number, fractionDigits = 4): string {
 }
 
 export function CurrencyProvider({ children }: { children: React.ReactNode }) {
-  const [currency, setCurrencyState] = useState<Currency>(() => getStoredCurrency())
+  const [currency, setCurrencyState] = useState<Currency>(() =>
+    getStoredCurrency()
+  )
 
   useEffect(() => {
     const stored = readStoredCurrency()
 
     if (stored) {
       persistCurrency(stored)
-      setCurrencyState(stored)
       void updateDesktopPreferences({ currency: stored }).catch(() => undefined)
       return
     }
@@ -77,7 +75,10 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     void getDesktopPreferences()
       .then((preferences) => {
         const prefCurrency = (preferences as { currency?: Currency }).currency
-        if (prefCurrency && (prefCurrency === 'CNY' || prefCurrency === 'USD')) {
+        if (
+          prefCurrency &&
+          (prefCurrency === 'CNY' || prefCurrency === 'USD')
+        ) {
           persistCurrency(prefCurrency)
           setCurrencyState(prefCurrency)
         }
@@ -88,7 +89,9 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   const setCurrency = (nextCurrency: Currency) => {
     setCurrencyState(nextCurrency)
     persistCurrency(nextCurrency)
-    void updateDesktopPreferences({ currency: nextCurrency }).catch(() => undefined)
+    void updateDesktopPreferences({ currency: nextCurrency }).catch(
+      () => undefined
+    )
   }
 
   const formatCurrencyFn = useMemo(() => {
@@ -116,7 +119,9 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   )
 
   return (
-    <CurrencyContext.Provider value={value}>{children}</CurrencyContext.Provider>
+    <CurrencyContext.Provider value={value}>
+      {children}
+    </CurrencyContext.Provider>
   )
 }
 

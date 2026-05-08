@@ -7,6 +7,9 @@ import {
   Globe,
   User,
 } from 'lucide-react'
+import { type AuditEntry } from '@/lib/api'
+import { formatDate } from '@/lib/i18n'
+import { useLocale } from '@/context/locale-provider'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -18,9 +21,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useLocale } from '@/context/locale-provider'
-import { type AuditEntry } from '@/lib/api'
-import { formatDate } from '@/lib/i18n'
 
 interface AuditTableProps {
   entries: AuditEntry[]
@@ -54,8 +54,7 @@ const actionConfig: Record<
     en: 'Updated',
   },
   delete: {
-    className:
-      'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+    className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
     zh: '删除',
     en: 'Deleted',
   },
@@ -280,7 +279,7 @@ export function AuditTable({ entries, isLoading }: AuditTableProps) {
                         <p className='mb-1 text-xs font-medium text-muted-foreground'>
                           {text('详情', 'Details')}
                         </p>
-                        <pre className='whitespace-pre-wrap rounded-md border bg-background p-3 font-mono text-sm'>
+                        <pre className='rounded-md border bg-background p-3 font-mono text-sm whitespace-pre-wrap'>
                           {entry.details}
                         </pre>
                       </div>

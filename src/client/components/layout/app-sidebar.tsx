@@ -1,11 +1,11 @@
 import { useLayout } from '@/context/layout-provider'
+import { useLocale } from '@/context/locale-provider'
 import {
   Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarRail,
 } from '@/components/ui/sidebar'
-import { useLocale } from '@/context/locale-provider'
 // import { AppTitle } from './app-title'
 import { getSidebarData } from './data/sidebar-data'
 import { NavGroup } from './nav-group'

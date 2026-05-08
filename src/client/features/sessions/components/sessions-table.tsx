@@ -6,6 +6,11 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react'
+import type { EnhancedSession } from '@/lib/api'
+import { formatNumber } from '@/lib/format'
+import { formatDurationCompact, formatRelativeTime } from '@/lib/i18n'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale, type AppLocale } from '@/context/locale-provider'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -15,14 +20,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  useLocale,
-  type AppLocale,
-} from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
-import type { EnhancedSession } from '@/lib/api'
-import { formatNumber } from '@/lib/format'
-import { formatDurationCompact, formatRelativeTime } from '@/lib/i18n'
 import { SessionDetailRow } from './session-detail-row'
 
 interface SessionsTableProps {
@@ -46,12 +43,18 @@ function formatProjectPath(path: string | undefined, fallback: string): string {
   return parts[parts.length - 1] || value
 }
 
-function getProjectInitials(path: string | undefined, fallback: string): string {
+function getProjectInitials(
+  path: string | undefined,
+  fallback: string
+): string {
   const name = formatProjectPath(path, fallback)
   return name.substring(0, 2).toUpperCase()
 }
 
-function getModelShortName(model: string | undefined, fallback: string): string {
+function getModelShortName(
+  model: string | undefined,
+  fallback: string
+): string {
   if (!isNonEmptyString(model)) return fallback
 
   if (model.includes('claude-opus-4')) return 'Opus 4'
@@ -111,11 +114,15 @@ function SortableHeader({
   className?: string
 }) {
   const isActive = sortBy === field
-  const Icon = isActive ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
+  const Icon = isActive
+    ? sortDir === 'asc'
+      ? ArrowUp
+      : ArrowDown
+    : ArrowUpDown
   return (
     <TableHead className={className}>
       <div
-        className='flex items-center gap-1 cursor-pointer select-none hover:text-foreground'
+        className='flex cursor-pointer items-center gap-1 select-none hover:text-foreground'
         onClick={() => onSort(field)}
       >
         {label}
@@ -246,11 +253,8 @@ function SessionTableRow({
 
   return (
     <>
-      <TableRow
-        className='cursor-pointer hover:bg-muted/50'
-        onClick={onToggle}
-      >
-        <TableCell className='py-2 w-8'>
+      <TableRow className='cursor-pointer hover:bg-muted/50' onClick={onToggle}>
+        <TableCell className='w-8 py-2'>
           <ChevronIcon className='h-4 w-4 text-muted-foreground' />
         </TableCell>
         <TableCell className='py-2'>
@@ -261,26 +265,26 @@ function SessionTableRow({
               </span>
             </div>
             <div className='min-w-0'>
-              <div className='font-medium truncate max-w-[120px] sm:max-w-[180px]'>
+              <div className='max-w-[120px] truncate font-medium sm:max-w-[180px]'>
                 {formatProjectPath(session.project_path, unknownProjectLabel)}
               </div>
-              <div className='flex gap-1 mt-0.5 flex-wrap'>
+              <div className='mt-0.5 flex flex-wrap gap-1'>
                 {modelsUsed.slice(0, 2).map((model) => (
                   <Badge
                     key={model}
                     variant='outline'
-                    className={`text-[10px] px-1 py-0 ${getModelBadgeClass(model)}`}
+                    className={`px-1 py-0 text-[10px] ${getModelBadgeClass(model)}`}
                   >
                     {getModelShortName(model, unknownModelLabel)}
                   </Badge>
                 ))}
                 {modelsUsed.length === 0 && (
-                  <Badge variant='outline' className='text-[10px] px-1 py-0'>
+                  <Badge variant='outline' className='px-1 py-0 text-[10px]'>
                     {unknownModelLabel}
                   </Badge>
                 )}
                 {modelsUsed.length > 2 && (
-                  <Badge variant='outline' className='text-[10px] px-1 py-0'>
+                  <Badge variant='outline' className='px-1 py-0 text-[10px]'>
                     +{modelsUsed.length - 2}
                   </Badge>
                 )}
@@ -288,23 +292,23 @@ function SessionTableRow({
             </div>
           </div>
         </TableCell>
-        <TableCell className='py-2 text-muted-foreground text-sm'>
+        <TableCell className='py-2 text-sm text-muted-foreground'>
           {formatRelativeTime(session.last_activity, locale)}
         </TableCell>
-        <TableCell className='py-2 text-muted-foreground text-sm hidden md:table-cell'>
+        <TableCell className='hidden py-2 text-sm text-muted-foreground md:table-cell'>
           {formatDuration(session.started_at, session.last_activity, locale)}
         </TableCell>
-        <TableCell className='py-2 font-mono text-sm text-right'>
+        <TableCell className='py-2 text-right font-mono text-sm'>
           {session.request_count ?? 0}
         </TableCell>
-        <TableCell className='py-2 font-mono text-sm text-right hidden sm:table-cell'>
+        <TableCell className='hidden py-2 text-right font-mono text-sm sm:table-cell'>
           {formatNumber(session.total_input_tokens ?? 0)}
         </TableCell>
-        <TableCell className='py-2 font-mono text-sm text-right hidden sm:table-cell'>
+        <TableCell className='hidden py-2 text-right font-mono text-sm sm:table-cell'>
           {formatNumber(session.total_output_tokens ?? 0)}
         </TableCell>
         <TableCell className='py-2'>
-          <div className='flex items-center gap-2 justify-end'>
+          <div className='flex items-center justify-end gap-2'>
             <span className='font-mono text-sm font-medium'>
               {formatCurrency(cost)}
             </span>
@@ -319,7 +323,7 @@ function SessionTableRow({
       </TableRow>
       {isExpanded && (
         <TableRow>
-          <TableCell colSpan={8} className='p-0 bg-muted/30'>
+          <TableCell colSpan={8} className='bg-muted/30 p-0'>
             <SessionDetailRow sessionId={session.id} />
           </TableCell>
         </TableRow>

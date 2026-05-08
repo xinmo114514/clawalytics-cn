@@ -16,7 +16,8 @@ interface WsMessage {
 
 const RECONNECT_DELAY = 3000
 const MAX_RECONNECT_DELAY = 30000
-export const DESKTOP_CLOSE_REQUESTED_EVENT = 'clawalytics:desktop-close-requested'
+export const DESKTOP_CLOSE_REQUESTED_EVENT =
+  'clawalytics:desktop-close-requested'
 
 export function useWebSocket() {
   const queryClient = useQueryClient()

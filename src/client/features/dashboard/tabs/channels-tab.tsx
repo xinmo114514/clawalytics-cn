@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Coins, DollarSign, Mail, MessageSquare } from 'lucide-react'
+import { getChannelStats } from '@/lib/api'
+import { formatCurrency, formatNumber } from '@/lib/format'
+import { useLocale } from '@/context/locale-provider'
 import {
   Card,
   CardContent,
@@ -8,11 +11,8 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useLocale } from '@/context/locale-provider'
 import { ChannelComparisonChart } from '@/features/channels/components/channel-comparison-chart'
 import { ChannelsTable } from '@/features/channels/components/channels-table'
-import { getChannelStats } from '@/lib/api'
-import { formatCurrency, formatNumber } from '@/lib/format'
 
 interface ChannelsTabProps {
   enabled: boolean
@@ -42,7 +42,7 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
     <div className='space-y-6'>
       <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('渠道总成本', 'Total Channel Cost')}
@@ -71,7 +71,7 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('渠道数量', 'Channels')}
@@ -100,7 +100,7 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('总 Token 数', 'Total Tokens')}
@@ -132,7 +132,7 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('消息总数', 'Total Messages')}

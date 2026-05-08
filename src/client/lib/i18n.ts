@@ -1,4 +1,8 @@
-import { format, formatDistanceToNow, type Locale as DateFnsLocale } from 'date-fns'
+import {
+  format,
+  formatDistanceToNow,
+  type Locale as DateFnsLocale,
+} from 'date-fns'
 import { enUS, zhCN } from 'date-fns/locale'
 import { getStoredLocale, type AppLocale } from '@/context/locale-provider'
 
@@ -47,7 +51,8 @@ export function formatDurationCompact(
   locale?: AppLocale
 ): string {
   if (resolveLocale(locale) === 'zh') {
-    if (hours > 0) return minutes > 0 ? `${hours}小时 ${minutes}分钟` : `${hours}小时`
+    if (hours > 0)
+      return minutes > 0 ? `${hours}小时 ${minutes}分钟` : `${hours}小时`
     if (minutes > 0) return `${minutes}分钟`
     return '少于 1 分钟'
   }

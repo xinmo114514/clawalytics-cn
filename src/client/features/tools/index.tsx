@@ -18,11 +18,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { ToolsIcon } from '@/components/icons/tools-icon'
-import { Header } from '@/components/layout/header'
-import { Main } from '@/components/layout/main'
-import { LanguageSwitch } from '@/components/language-switch'
-import { ThemeSwitch } from '@/components/theme-switch'
+import { getOutboundCalls, getToolStats } from '@/lib/api'
+import { formatRelativeTime } from '@/lib/i18n'
+import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -48,10 +47,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useLocale } from '@/context/locale-provider'
-import { useChartColors } from '@/hooks/use-chart-colors'
-import { getOutboundCalls, getToolStats } from '@/lib/api'
-import { formatRelativeTime } from '@/lib/i18n'
+import { ToolsIcon } from '@/components/icons/tools-icon'
+import { LanguageSwitch } from '@/components/language-switch'
+import { Header } from '@/components/layout/header'
+import { Main } from '@/components/layout/main'
+import { ThemeSwitch } from '@/components/theme-switch'
 
 ToolsAnalytics.displayName = 'ToolsAnalytics'
 
@@ -185,7 +185,9 @@ export function ToolsAnalytics() {
           <Button
             variant='outline'
             size='sm'
-            onClick={() => window.open('/api/export/tools?format=csv', '_blank')}
+            onClick={() =>
+              window.open('/api/export/tools?format=csv', '_blank')
+            }
           >
             <Download className='mr-2 h-4 w-4' />
             {text('导出 CSV', 'Export CSV')}
@@ -194,7 +196,7 @@ export function ToolsAnalytics() {
 
         <div className='mb-6 grid gap-4 sm:grid-cols-3'>
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('总调用数', 'Total Calls')}
@@ -211,9 +213,7 @@ export function ToolsAnalytics() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-primary'>
-                    {total}
-                  </div>
+                  <div className='text-2xl font-bold text-primary'>{total}</div>
                   <p className='text-xs text-muted-foreground'>
                     {text('工具总调用次数', 'Total tool invocations')}
                   </p>
@@ -223,7 +223,7 @@ export function ToolsAnalytics() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('平均耗时', 'Average Duration')}
@@ -252,7 +252,7 @@ export function ToolsAnalytics() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('失败率', 'Error Rate')}
@@ -289,7 +289,10 @@ export function ToolsAnalytics() {
             <CardHeader>
               <CardTitle>{text('工具使用情况', 'Tool Usage')}</CardTitle>
               <CardDescription>
-                {text('最近 30 天最常用的工具', 'Most-used tools in the last 30 days')}
+                {text(
+                  '最近 30 天最常用的工具',
+                  'Most-used tools in the last 30 days'
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -309,7 +312,10 @@ export function ToolsAnalytics() {
                     layout='vertical'
                     margin={{ top: 5, right: 30, left: 5, bottom: 5 }}
                   >
-                    <CartesianGrid strokeDasharray='3 3' className='stroke-muted' />
+                    <CartesianGrid
+                      strokeDasharray='3 3'
+                      className='stroke-muted'
+                    />
                     <XAxis type='number' className='text-xs' />
                     <YAxis
                       dataKey='name'
@@ -321,7 +327,8 @@ export function ToolsAnalytics() {
                     <Tooltip
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
-                          const item = payload[0].payload as (typeof chartData)[0]
+                          const item = payload[0]
+                            .payload as (typeof chartData)[0]
 
                           return (
                             <div className='rounded-lg border bg-background p-3 shadow-md'>
@@ -330,7 +337,8 @@ export function ToolsAnalytics() {
                                 {text('调用次数：', 'Calls:')} {item.count}
                               </p>
                               <p className='text-sm text-muted-foreground'>
-                                {text('平均耗时：', 'Avg duration:')} {item.avgDuration}ms
+                                {text('平均耗时：', 'Avg duration:')}{' '}
+                                {item.avgDuration}ms
                               </p>
                             </div>
                           )
@@ -340,10 +348,7 @@ export function ToolsAnalytics() {
                     />
                     <Bar dataKey='count' radius={[0, 4, 4, 0]}>
                       {chartData.map((_, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={getBarColor(index)}
-                        />
+                        <Cell key={`cell-${index}`} fill={getBarColor(index)} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -403,7 +408,7 @@ export function ToolsAnalytics() {
                             <TableCell>
                               <div className='flex items-center gap-2'>
                                 <Wrench className='h-4 w-4 text-muted-foreground' />
-                                <span className='font-medium text-sm'>
+                                <span className='text-sm font-medium'>
                                   {call.tool_name.length > 20
                                     ? `${call.tool_name.slice(0, 17)}...`
                                     : call.tool_name}
@@ -412,7 +417,7 @@ export function ToolsAnalytics() {
                             </TableCell>
                             <TableCell>
                               <span
-                                className={`font-jersey text-xs uppercase tracking-wider ${
+                                className={`font-jersey text-xs tracking-wider uppercase ${
                                   isError
                                     ? 'text-primary'
                                     : isSuccess
@@ -424,7 +429,9 @@ export function ToolsAnalytics() {
                               </span>
                             </TableCell>
                             <TableCell className='text-right font-mono text-sm'>
-                              {call.duration_ms !== null ? `${call.duration_ms}ms` : '-'}
+                              {call.duration_ms !== null
+                                ? `${call.duration_ms}ms`
+                                : '-'}
                             </TableCell>
                             <TableCell className='text-sm text-muted-foreground'>
                               {formatRelativeTime(call.timestamp, locale)}
@@ -455,9 +462,12 @@ export function ToolsAnalytics() {
           <CardContent>
             <div className='mb-4 flex flex-col gap-4 sm:flex-row sm:items-center'>
               <div className='relative max-w-sm flex-1'>
-                <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
+                <Search className='absolute top-2.5 left-2 h-4 w-4 text-muted-foreground' />
                 <Input
-                  placeholder={text('按工具名称搜索...', 'Search by tool name...')}
+                  placeholder={text(
+                    '按工具名称搜索...',
+                    'Search by tool name...'
+                  )}
                   value={toolNameSearch}
                   onChange={(e) => {
                     setToolNameSearch(e.target.value)
@@ -474,7 +484,9 @@ export function ToolsAnalytics() {
                 }}
               >
                 <SelectTrigger className='w-[170px]'>
-                  <SelectValue placeholder={text('按状态筛选', 'Filter by status')} />
+                  <SelectValue
+                    placeholder={text('按状态筛选', 'Filter by status')}
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {statusOptions.map((option) => (
@@ -489,7 +501,10 @@ export function ToolsAnalytics() {
             {callsLoading ? (
               <div className='space-y-4'>
                 {[...Array(5)].map((_, i) => (
-                  <div key={i} className='h-12 animate-pulse rounded bg-muted' />
+                  <div
+                    key={i}
+                    className='h-12 animate-pulse rounded bg-muted'
+                  />
                 ))}
               </div>
             ) : toolCalls.length === 0 ? (
@@ -524,7 +539,10 @@ export function ToolsAnalytics() {
                             <TableCell>
                               <div className='flex items-center gap-2'>
                                 <Wrench className='h-4 w-4 text-muted-foreground' />
-                                <span className='font-medium text-sm' title={call.tool_name}>
+                                <span
+                                  className='text-sm font-medium'
+                                  title={call.tool_name}
+                                >
                                   {call.tool_name.length > 30
                                     ? `${call.tool_name.slice(0, 27)}...`
                                     : call.tool_name}
@@ -533,7 +551,7 @@ export function ToolsAnalytics() {
                             </TableCell>
                             <TableCell>
                               <span
-                                className={`font-jersey text-xs uppercase tracking-wider ${
+                                className={`font-jersey text-xs tracking-wider uppercase ${
                                   isError
                                     ? 'text-primary'
                                     : isSuccess
@@ -545,7 +563,9 @@ export function ToolsAnalytics() {
                               </span>
                             </TableCell>
                             <TableCell className='text-right font-mono text-sm'>
-                              {call.duration_ms !== null ? `${call.duration_ms}ms` : '-'}
+                              {call.duration_ms !== null
+                                ? `${call.duration_ms}ms`
+                                : '-'}
                             </TableCell>
                             <TableCell className='text-sm text-muted-foreground'>
                               {formatRelativeTime(call.timestamp, locale)}
@@ -578,7 +598,9 @@ export function ToolsAnalytics() {
                     <Button
                       variant='outline'
                       size='sm'
-                      onClick={() => setPage((current) => Math.max(0, current - 1))}
+                      onClick={() =>
+                        setPage((current) => Math.max(0, current - 1))
+                      }
                       disabled={page === 0}
                     >
                       {text('上一页', 'Previous')}

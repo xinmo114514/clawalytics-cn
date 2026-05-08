@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { format, subDays } from 'date-fns'
+import { useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle,
   Download,
@@ -9,18 +9,17 @@ import {
   Smartphone,
   X,
 } from 'lucide-react'
-import { SecurityIcon } from '@/components/icons/security-icon'
-import { Header } from '@/components/layout/header'
-import { Main } from '@/components/layout/main'
-import { LanguageSwitch } from '@/components/language-switch'
-import { ThemeSwitch } from '@/components/theme-switch'
-import { Button } from '@/components/ui/button'
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+  getAlerts,
+  getAuditLog,
+  getDevices,
+  getRecentConnections,
+  getSecurityDashboard,
+  type AuditFilters,
+} from '@/lib/api'
+import { useLocale } from '@/context/locale-provider'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -31,15 +30,11 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useLocale } from '@/context/locale-provider'
-import {
-  getAlerts,
-  getAuditLog,
-  getDevices,
-  getRecentConnections,
-  getSecurityDashboard,
-  type AuditFilters,
-} from '@/lib/api'
+import { SecurityIcon } from '@/components/icons/security-icon'
+import { LanguageSwitch } from '@/components/language-switch'
+import { Header } from '@/components/layout/header'
+import { Main } from '@/components/layout/main'
+import { ThemeSwitch } from '@/components/theme-switch'
 import { AlertsList } from './components/alerts-list'
 import { AuditTable } from './components/audit-table'
 import { ConnectionsList } from './components/connections-list'
@@ -69,7 +64,7 @@ const entityTypeOptions = [
 export function SecurityPage() {
   const { text } = useLocale()
   const [activeTab, setActiveTab] = useState('overview')
-  const visitedTabs = useRef(new Set(['overview']))
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set(['overview']))
 
   const defaultStartDate = format(subDays(new Date(), 7), 'yyyy-MM-dd')
   const defaultEndDate = format(new Date(), 'yyyy-MM-dd')
@@ -83,11 +78,19 @@ export function SecurityPage() {
   const [endDate, setEndDate] = useState(defaultEndDate)
 
   const handleTabChange = (tab: string) => {
-    visitedTabs.current.add(tab)
+    setVisitedTabs((current) => {
+      if (current.has(tab)) {
+        return current
+      }
+
+      const next = new Set(current)
+      next.add(tab)
+      return next
+    })
     setActiveTab(tab)
   }
 
-  const hasVisited = (tab: string) => visitedTabs.current.has(tab)
+  const hasVisited = (tab: string) => visitedTabs.has(tab)
 
   const { data: dashboardStats, isLoading: statsLoading } = useQuery({
     queryKey: ['securityDashboard'],
@@ -233,7 +236,7 @@ export function SecurityPage() {
 
         <div className='mb-6 grid gap-4 sm:grid-cols-3'>
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('活跃设备', 'Active Devices')}
@@ -262,7 +265,7 @@ export function SecurityPage() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('未确认告警', 'Unacknowledged Alerts')}
@@ -291,7 +294,7 @@ export function SecurityPage() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('连接数（24 小时）', 'Connections (24h)')}
@@ -347,9 +350,13 @@ export function SecurityPage() {
 
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList>
-            <TabsTrigger value='overview'>{text('概览', 'Overview')}</TabsTrigger>
+            <TabsTrigger value='overview'>
+              {text('概览', 'Overview')}
+            </TabsTrigger>
             <TabsTrigger value='devices'>{text('设备', 'Devices')}</TabsTrigger>
-            <TabsTrigger value='audit'>{text('审计日志', 'Audit Log')}</TabsTrigger>
+            <TabsTrigger value='audit'>
+              {text('审计日志', 'Audit Log')}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value='overview'>
@@ -378,7 +385,7 @@ export function SecurityPage() {
           <TabsContent value='audit'>
             <div className='mb-4 flex flex-wrap items-end gap-3'>
               <div className='relative'>
-                <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
+                <Search className='absolute top-2.5 left-2 h-4 w-4 text-muted-foreground' />
                 <Input
                   placeholder={text('操作人...', 'Actor...')}
                   value={actor}
@@ -391,7 +398,7 @@ export function SecurityPage() {
               </div>
 
               <div className='relative'>
-                <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
+                <Search className='absolute top-2.5 left-2 h-4 w-4 text-muted-foreground' />
                 <Input
                   placeholder={text('IP 地址...', 'IP address...')}
                   value={ipAddress}
@@ -451,7 +458,9 @@ export function SecurityPage() {
                 className='h-9 w-[140px]'
               />
 
-              <span className='pb-1 text-sm text-muted-foreground'>&ndash;</span>
+              <span className='pb-1 text-sm text-muted-foreground'>
+                &ndash;
+              </span>
 
               <Input
                 type='date'
@@ -511,7 +520,9 @@ export function SecurityPage() {
                       <Button
                         variant='outline'
                         size='sm'
-                        onClick={() => setPage((current) => Math.max(0, current - 1))}
+                        onClick={() =>
+                          setPage((current) => Math.max(0, current - 1))
+                        }
                         disabled={page === 0}
                       >
                         {text('上一页', 'Previous')}

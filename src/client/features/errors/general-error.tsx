@@ -1,6 +1,6 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { useLocale } from '@/context/locale-provider'
 import { cn } from '@/lib/utils'
+import { useLocale } from '@/context/locale-provider'
 import { Button } from '@/components/ui/button'
 
 type GeneralErrorProps = React.HTMLAttributes<HTMLDivElement> & {
@@ -21,7 +21,7 @@ export function GeneralError({
           <h1 className='text-[7rem] leading-tight font-bold'>500</h1>
         )}
         <span className='font-medium'>
-          {text('糟糕，出错了。', "Oops! Something went wrong")}
+          {text('糟糕，出错了。', 'Oops! Something went wrong')}
         </span>
         <p className='text-center text-muted-foreground'>
           {text('给你带来不便了。', 'We apologize for the inconvenience.')}

@@ -1,11 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft, Calendar, Coins, DollarSign, FolderOpen } from 'lucide-react'
-import { AgentsIcon } from '@/components/icons/agents-icon'
-import { Header } from '@/components/layout/header'
-import { Main } from '@/components/layout/main'
-import { LanguageSwitch } from '@/components/language-switch'
-import { ThemeSwitch } from '@/components/theme-switch'
+import {
+  ArrowLeft,
+  Calendar,
+  Coins,
+  DollarSign,
+  FolderOpen,
+} from 'lucide-react'
+import { getAgent, getAgentDailyCosts } from '@/lib/api'
+import { formatDate, formatRelativeTime } from '@/lib/i18n'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -16,10 +21,11 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
-import { getAgent, getAgentDailyCosts } from '@/lib/api'
-import { formatDate, formatRelativeTime } from '@/lib/i18n'
+import { AgentsIcon } from '@/components/icons/agents-icon'
+import { LanguageSwitch } from '@/components/language-switch'
+import { Header } from '@/components/layout/header'
+import { Main } from '@/components/layout/main'
+import { ThemeSwitch } from '@/components/theme-switch'
 import { AgentCostChart } from './components/agent-cost-chart'
 
 interface AgentDetailProps {
@@ -226,7 +232,10 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
             <CardHeader>
               <CardTitle>{text('代理信息', 'Agent Information')}</CardTitle>
               <CardDescription>
-                {text('关于该代理的技术信息', 'Technical details about the agent')}
+                {text(
+                  '关于该代理的技术信息',
+                  'Technical details about the agent'
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>

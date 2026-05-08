@@ -1,5 +1,8 @@
-import { ArrowUpDown } from 'lucide-react'
 import { useState } from 'react'
+import { ArrowUpDown } from 'lucide-react'
+import type { Channel } from '@/lib/api'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -9,9 +12,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
-import type { Channel } from '@/lib/api'
 
 interface ChannelsTableProps {
   channels: Channel[]

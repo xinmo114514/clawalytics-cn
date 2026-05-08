@@ -1,4 +1,6 @@
 import { ArrowRight } from 'lucide-react'
+import type { ModelUsage, TokenBreakdown } from '@/lib/api'
+import { useLocale } from '@/context/locale-provider'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -8,8 +10,6 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useLocale } from '@/context/locale-provider'
-import type { ModelUsage, TokenBreakdown } from '@/lib/api'
 import { ModelUsageChart } from '../components/model-usage-chart'
 import { TokenBreakdownCard } from '../components/token-breakdown-card'
 import { TopModelsTable } from '../components/top-models-table'

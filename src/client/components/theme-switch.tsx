@@ -18,7 +18,10 @@ export function ThemeSwitch() {
   /* Update theme-color meta tag
    * when theme is updated */
   useEffect(() => {
-    const themeColor = theme === 'dark' ? 'hsl(var(--background))' : 'hsl(var(--primary-foreground))'
+    const themeColor =
+      theme === 'dark'
+        ? 'hsl(var(--background))'
+        : 'hsl(var(--primary-foreground))'
     const metaThemeColor = document.querySelector("meta[name='theme-color']")
     if (metaThemeColor) metaThemeColor.setAttribute('content', themeColor)
   }, [theme])

@@ -1,12 +1,12 @@
+import { fonts } from '@/config/fonts'
 import { Check, Monitor, Moon, Sun } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useCurrency } from '@/context/currency-provider'
+import { useFont } from '@/context/font-provider'
 import { useLocale } from '@/context/locale-provider'
 import { useTheme, colorThemes } from '@/context/theme-provider'
-import { useFont } from '@/context/font-provider'
-import { useCurrency } from '@/context/currency-provider'
-import { fonts } from '@/config/fonts'
-import { SettingsCard, SettingsItem } from '../settings-page'
 import { Button } from '@/components/ui/button'
+import { SettingsCard, SettingsItem } from '../settings-page'
 
 const themeOptions = [
   { value: 'light', zh: '浅色', en: 'Light', icon: Sun },
@@ -49,11 +49,17 @@ export function AppearanceSettings() {
   return (
     <SettingsCard
       title={text('外观', 'Appearance')}
-      description={text('自定义应用的外观设置', 'Customize the appearance of the app')}
+      description={text(
+        '自定义应用的外观设置',
+        'Customize the appearance of the app'
+      )}
     >
       <SettingsItem
         label={text('主题', 'Theme')}
-        description={text('选择应用的显示主题', 'Choose the display theme for the app')}
+        description={text(
+          '选择应用的显示主题',
+          'Choose the display theme for the app'
+        )}
       >
         <div className='flex gap-2'>
           {themeOptions.map((option) => {
@@ -72,7 +78,7 @@ export function AppearanceSettings() {
                 <Icon className='h-5 w-5' />
                 <span className='text-sm'>{text(option.zh, option.en)}</span>
                 {isActive && (
-                  <Check className='absolute right-2 top-2 h-4 w-4' />
+                  <Check className='absolute top-2 right-2 h-4 w-4' />
                 )}
               </Button>
             )
@@ -82,7 +88,10 @@ export function AppearanceSettings() {
 
       <SettingsItem
         label={text('主色调', 'Accent Color')}
-        description={text('选择应用的主色调', 'Choose the accent color for the app')}
+        description={text(
+          '选择应用的主色调',
+          'Choose the accent color for the app'
+        )}
       >
         <div className='flex gap-2'>
           {colorThemes.map((option) => {
@@ -98,11 +107,14 @@ export function AppearanceSettings() {
                 onClick={() => setColorTheme(option.value)}
               >
                 <div
-                  className={cn('h-5 w-5 rounded-full', colorThemeStyles[option.value])}
+                  className={cn(
+                    'h-5 w-5 rounded-full',
+                    colorThemeStyles[option.value]
+                  )}
                 />
                 <span className='text-sm'>{text(option.zh, option.en)}</span>
                 {isActive && (
-                  <Check className='absolute right-2 top-2 h-4 w-4' />
+                  <Check className='absolute top-2 right-2 h-4 w-4' />
                 )}
               </Button>
             )
@@ -112,7 +124,10 @@ export function AppearanceSettings() {
 
       <SettingsItem
         label={text('语言', 'Language')}
-        description={text('选择应用的显示语言', 'Choose the display language for the app')}
+        description={text(
+          '选择应用的显示语言',
+          'Choose the display language for the app'
+        )}
       >
         <div className='flex items-center rounded-full border border-white/12 bg-white/45 p-1 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.72)] backdrop-blur-xl dark:bg-white/8'>
           {localeOptions.map((option) => (
@@ -131,7 +146,10 @@ export function AppearanceSettings() {
 
       <SettingsItem
         label={text('货币', 'Currency')}
-        description={text('选择成本显示的货币单位', 'Choose the currency for cost display')}
+        description={text(
+          '选择成本显示的货币单位',
+          'Choose the currency for cost display'
+        )}
       >
         <div className='flex items-center rounded-full border border-white/12 bg-white/45 p-1 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.72)] backdrop-blur-xl dark:bg-white/8'>
           {currencyOptions.map((option) => (
@@ -150,7 +168,10 @@ export function AppearanceSettings() {
 
       <SettingsItem
         label={text('字体', 'Font')}
-        description={text('选择应用的显示字体', 'Choose the display font for the app')}
+        description={text(
+          '选择应用的显示字体',
+          'Choose the display font for the app'
+        )}
       >
         <div className='flex gap-2'>
           {fonts.map((fontOption) => {
@@ -163,12 +184,20 @@ export function AppearanceSettings() {
                   'relative px-6 py-3',
                   isActive && 'ring-2 ring-primary'
                 )}
-                style={{ fontFamily: fontOption === 'system' ? undefined : `var(--font-${fontOption})` }}
+                style={{
+                  fontFamily:
+                    fontOption === 'system'
+                      ? undefined
+                      : `var(--font-${fontOption})`,
+                }}
                 onClick={() => setFont(fontOption)}
               >
-                {text(fontNames[fontOption]?.zh || fontOption, fontNames[fontOption]?.en || fontOption)}
+                {text(
+                  fontNames[fontOption]?.zh || fontOption,
+                  fontNames[fontOption]?.en || fontOption
+                )}
                 {isActive && (
-                  <Check className='absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2' />
+                  <Check className='absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2' />
                 )}
               </Button>
             )

@@ -1,6 +1,6 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { Button } from '@/components/ui/button'
 import { useLocale } from '@/context/locale-provider'
+import { Button } from '@/components/ui/button'
 
 export function ForbiddenError() {
   const navigate = useNavigate()
@@ -10,9 +10,14 @@ export function ForbiddenError() {
     <div className='h-svh'>
       <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
         <h1 className='text-[7rem] leading-tight font-bold'>403</h1>
-        <span className='font-medium'>{text('禁止访问', 'Access Forbidden')}</span>
+        <span className='font-medium'>
+          {text('禁止访问', 'Access Forbidden')}
+        </span>
         <p className='text-center text-muted-foreground'>
-          {text('你没有查看此资源所需的权限。', "You don't have necessary permission")}
+          {text(
+            '你没有查看此资源所需的权限。',
+            "You don't have necessary permission"
+          )}
           <br />
           {text('请联系管理员获取访问权限。', 'to view this resource.')}
         </p>

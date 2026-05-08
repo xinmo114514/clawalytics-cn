@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { ConfigDrawer } from '@/components/config-drawer'
-import { Header } from '@/components/layout/header'
 import { LanguageSwitch } from '@/components/language-switch'
+import { Header } from '@/components/layout/header'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
@@ -15,7 +15,6 @@ export const Route = createFileRoute('/_authenticated/errors/$error')({
   component: RouteComponent,
 })
 
-// eslint-disable-next-line react-refresh/only-export-components
 function RouteComponent() {
   const { error } = Route.useParams()
 

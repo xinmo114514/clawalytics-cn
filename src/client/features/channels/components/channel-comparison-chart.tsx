@@ -8,10 +8,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
-import { useChartColors } from '@/hooks/use-chart-colors'
 import type { Channel } from '@/lib/api'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
 
 interface ChannelComparisonChartProps {
   channels: Channel[]
@@ -149,10 +149,12 @@ export function ChannelComparisonChart({
                     </div>
                     <div className='flex items-center justify-between gap-4 border-t pt-1.5 text-xs text-muted-foreground'>
                       <span>
-                        {(item.inputTokens / 1000).toFixed(1)}K {text('输入', 'in')}
+                        {(item.inputTokens / 1000).toFixed(1)}K{' '}
+                        {text('输入', 'in')}
                       </span>
                       <span>
-                        {(item.outputTokens / 1000).toFixed(1)}K {text('输出', 'out')}
+                        {(item.outputTokens / 1000).toFixed(1)}K{' '}
+                        {text('输出', 'out')}
                       </span>
                     </div>
                   </div>
@@ -165,10 +167,7 @@ export function ChannelComparisonChart({
         />
         <Bar dataKey='cost' radius={[0, 4, 4, 0]} maxBarSize={22}>
           {chartData.map((_, index) => (
-            <Cell
-              key={`cell-${index}`}
-              fill={getBarColor(index)}
-            />
+            <Cell key={`cell-${index}`} fill={getBarColor(index)} />
           ))}
         </Bar>
       </BarChart>

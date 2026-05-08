@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Settings,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { IconDir } from '@/assets/custom/icon-dir'
 import { IconLayoutCompact } from '@/assets/custom/icon-layout-compact'
 import { IconLayoutDefault } from '@/assets/custom/icon-layout-default'
@@ -20,17 +21,25 @@ import { IconThemeDark } from '@/assets/custom/icon-theme-dark'
 import { IconThemeLight } from '@/assets/custom/icon-theme-light'
 import { IconThemeSystem } from '@/assets/custom/icon-theme-system'
 import {
+  getApiErrorMessage,
   getDesktopPreferences,
   updateDesktopPreferences,
   type DesktopPreferences,
   type DesktopStartupMode,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { useLocale } from '@/context/locale-provider'
 import { useDirection } from '@/context/direction-provider'
 import { type Collapsible, useLayout } from '@/context/layout-provider'
+import { useLocale } from '@/context/locale-provider'
 import { useTheme, colorThemes } from '@/context/theme-provider'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Sheet,
   SheetContent,
@@ -40,13 +49,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { isWindowsDesktopShell } from '@/components/layout/desktop-window-chrome'
 import { useSidebar } from './ui/sidebar'
@@ -110,7 +112,10 @@ export function ConfigDrawer() {
           <Button
             variant='destructive'
             onClick={handleReset}
-            aria-label={text('将所有设置重置为默认值', 'Reset all settings to default values')}
+            aria-label={text(
+              '将所有设置重置为默认值',
+              'Reset all settings to default values'
+            )}
           >
             {text('重置', 'Reset')}
           </Button>
@@ -122,7 +127,9 @@ export function ConfigDrawer() {
 
 function DesktopConfig() {
   const { text } = useLocale()
-  const [preferences, setPreferences] = useState<DesktopPreferences | null>(null)
+  const [preferences, setPreferences] = useState<DesktopPreferences | null>(
+    null
+  )
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -136,7 +143,17 @@ function DesktopConfig() {
           setPreferences(nextPreferences)
         }
       } catch (error) {
-        console.error('Failed to load desktop preferences:', error)
+        if (!cancelled) {
+          toast.error(
+            getApiErrorMessage(
+              error,
+              text(
+                '鍔犺浇妗岄潰璁剧疆澶辫触',
+                'Failed to load desktop settings'
+              )
+            )
+          )
+        }
       } finally {
         if (!cancelled) {
           setIsLoading(false)
@@ -149,7 +166,7 @@ function DesktopConfig() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [text])
 
   async function savePreferences(updates: Partial<DesktopPreferences>) {
     setIsSaving(true)
@@ -158,20 +175,27 @@ function DesktopConfig() {
       const nextPreferences = await updateDesktopPreferences(updates)
       setPreferences(nextPreferences)
     } catch (error) {
-      console.error('Failed to save desktop preferences:', error)
+      toast.error(
+        getApiErrorMessage(
+          error,
+          text('淇濆瓨妗岄潰璁剧疆澶辫触', 'Failed to save desktop settings')
+        )
+      )
     } finally {
       setIsSaving(false)
     }
   }
 
   const launchOnStartup = preferences?.launchOnStartup ?? false
-  const startupMode = preferences?.startupMode ?? DEFAULT_DESKTOP_SETTINGS.startupMode
-  const closeAction = preferences?.closeAction ?? DEFAULT_DESKTOP_SETTINGS.closeAction
+  const startupMode =
+    preferences?.startupMode ?? DEFAULT_DESKTOP_SETTINGS.startupMode
+  const closeAction =
+    preferences?.closeAction ?? DEFAULT_DESKTOP_SETTINGS.closeAction
   const controlsDisabled = isLoading || isSaving || !preferences
   const hasCustomSettings =
-    launchOnStartup
-    || startupMode !== DEFAULT_DESKTOP_SETTINGS.startupMode
-    || closeAction !== DEFAULT_DESKTOP_SETTINGS.closeAction
+    launchOnStartup ||
+    startupMode !== DEFAULT_DESKTOP_SETTINGS.startupMode ||
+    closeAction !== DEFAULT_DESKTOP_SETTINGS.closeAction
 
   return (
     <div>
@@ -340,7 +364,9 @@ function DesktopSelectField({
             <Icon className='size-4 text-muted-foreground' />
             <span>{label}</span>
           </div>
-          <p className='text-xs leading-5 text-muted-foreground'>{description}</p>
+          <p className='text-xs leading-5 text-muted-foreground'>
+            {description}
+          </p>
         </div>
         <div className='flex size-9 shrink-0 items-center justify-center rounded-full border border-border/70 bg-muted/30 text-muted-foreground'>
           <ActiveIcon className='size-4' />

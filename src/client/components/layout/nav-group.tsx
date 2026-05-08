@@ -67,12 +67,12 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
   const isActive = checkIsActive(href, item)
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton
-        asChild
-        isActive={isActive}
-        tooltip={item.title}
-      >
-        <Link to={item.url} onClick={() => setOpenMobile(false)} className='flex items-center'>
+      <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
+        <Link
+          to={item.url}
+          onClick={() => setOpenMobile(false)}
+          className='flex items-center'
+        >
           {item.icon && <item.icon active={isActive} />}
           <span>{item.title}</span>
           {item.badge && <NavBadge>{item.badge}</NavBadge>}
@@ -92,11 +92,7 @@ function SidebarMenuCollapsible({
   const { setOpenMobile } = useSidebar()
   const isActive = checkIsActive(href, item, true)
   return (
-    <Collapsible
-      asChild
-      defaultOpen={isActive}
-      className='group/collapsible'
-    >
+    <Collapsible asChild defaultOpen={isActive} className='group/collapsible'>
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
           <SidebarMenuButton tooltip={item.title}>
@@ -112,10 +108,7 @@ function SidebarMenuCollapsible({
               const subIsActive = checkIsActive(href, subItem)
               return (
                 <SidebarMenuSubItem key={subItem.title}>
-                  <SidebarMenuSubButton
-                    asChild
-                    isActive={subIsActive}
-                  >
+                  <SidebarMenuSubButton asChild isActive={subIsActive}>
                     <Link to={subItem.url} onClick={() => setOpenMobile(false)}>
                       {subItem.icon && <subItem.icon active={subIsActive} />}
                       <span>{subItem.title}</span>
@@ -144,10 +137,7 @@ function SidebarMenuCollapsedDropdown({
     <SidebarMenuItem>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <SidebarMenuButton
-            tooltip={item.title}
-            isActive={isActive}
-          >
+          <SidebarMenuButton tooltip={item.title} isActive={isActive}>
             {item.icon && <item.icon active={isActive} />}
             <span>{item.title}</span>
             {item.badge && <NavBadge>{item.badge}</NavBadge>}

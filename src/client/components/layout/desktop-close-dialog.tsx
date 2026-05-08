@@ -1,5 +1,8 @@
 import { startTransition, useEffect, useState } from 'react'
 import { LogOut, Minimize2, Sparkles } from 'lucide-react'
+import { submitDesktopCloseChoice } from '@/lib/api'
+import { DESKTOP_CLOSE_REQUESTED_EVENT } from '@/lib/ws'
+import { useLocale } from '@/context/locale-provider'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -9,9 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { useLocale } from '@/context/locale-provider'
-import { submitDesktopCloseChoice } from '@/lib/api'
-import { DESKTOP_CLOSE_REQUESTED_EVENT } from '@/lib/ws'
 
 type CloseChoiceAction = 'tray' | 'quit' | 'cancel'
 
@@ -19,7 +19,9 @@ export function DesktopCloseDialog() {
   const { text } = useLocale()
   const [open, setOpen] = useState(false)
   const [rememberChoice, setRememberChoice] = useState(false)
-  const [pendingAction, setPendingAction] = useState<CloseChoiceAction | null>(null)
+  const [pendingAction, setPendingAction] = useState<CloseChoiceAction | null>(
+    null
+  )
 
   useEffect(() => {
     function handleOpen() {
@@ -104,7 +106,7 @@ export function DesktopCloseDialog() {
                 onClick={() => {
                   void submitChoice('tray')
                 }}
-                className='group flex min-h-32 flex-col items-start justify-between rounded-[24px] border border-white/16 bg-white/55 p-5 text-left shadow-[0_24px_60px_-42px_hsl(var(--foreground)_/_0.75)] transition duration-200 hover:-translate-y-0.5 hover:border-white/28 hover:bg-white/72 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white/8 dark:hover:bg-white/12'
+                className='group flex min-h-32 flex-col items-start justify-between rounded-[24px] border border-white/16 bg-white/55 p-5 text-left shadow-[0_24px_60px_-42px_hsl(var(--foreground)_/_0.75)] transition duration-200 hover:-translate-y-0.5 hover:border-white/28 hover:bg-white/72 focus-visible:ring-2 focus-visible:ring-sky-400/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white/8 dark:hover:bg-white/12'
               >
                 <div className='flex size-11 items-center justify-center rounded-2xl border border-white/18 bg-white/55 text-foreground/85 dark:bg-white/10'>
                   <Minimize2 className='size-5' />
@@ -128,7 +130,7 @@ export function DesktopCloseDialog() {
                 onClick={() => {
                   void submitChoice('quit')
                 }}
-                className='group flex min-h-32 flex-col items-start justify-between rounded-[24px] border border-white/16 bg-[linear-gradient(180deg,hsl(var(--destructive)/0.12),hsl(var(--destructive)/0.18))] p-5 text-left shadow-[0_24px_60px_-42px_hsl(var(--destructive)_/_0.48)] transition duration-200 hover:-translate-y-0.5 hover:border-destructive/30 hover:bg-[linear-gradient(180deg,hsl(var(--destructive)/0.18),hsl(var(--destructive)/0.24))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-[linear-gradient(180deg,hsl(var(--destructive)/0.45),hsl(var(--destructive)/0.55))] dark:hover:bg-[linear-gradient(180deg,hsl(var(--destructive)/0.55),hsl(var(--destructive)/0.65))]'
+                className='group flex min-h-32 flex-col items-start justify-between rounded-[24px] border border-white/16 bg-[linear-gradient(180deg,hsl(var(--destructive)/0.12),hsl(var(--destructive)/0.18))] p-5 text-left shadow-[0_24px_60px_-42px_hsl(var(--destructive)_/_0.48)] transition duration-200 hover:-translate-y-0.5 hover:border-destructive/30 hover:bg-[linear-gradient(180deg,hsl(var(--destructive)/0.18),hsl(var(--destructive)/0.24))] focus-visible:ring-2 focus-visible:ring-destructive/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-70 dark:bg-[linear-gradient(180deg,hsl(var(--destructive)/0.45),hsl(var(--destructive)/0.55))] dark:hover:bg-[linear-gradient(180deg,hsl(var(--destructive)/0.55),hsl(var(--destructive)/0.65))]'
               >
                 <div className='flex size-11 items-center justify-center rounded-2xl border border-destructive/30 bg-white/60 text-destructive dark:border-destructive/25 dark:bg-white/10 dark:text-destructive-foreground'>
                   <LogOut className='size-5' />
@@ -158,7 +160,10 @@ export function DesktopCloseDialog() {
                   className='border-white/28 bg-white/55 dark:bg-white/10'
                 />
                 <span>
-                  {text('记住我的选择，下次自动处理', 'Remember my choice and use it next time')}
+                  {text(
+                    '记住我的选择，下次自动处理',
+                    'Remember my choice and use it next time'
+                  )}
                 </span>
               </label>
 

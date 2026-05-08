@@ -24,7 +24,11 @@ export function TeamSwitcher({ teams }: TeamSwitcherProps) {
       <SidebarMenu>
         <SidebarMenuItem>
           <div className='flex w-full items-center justify-center py-1'>
-            <img src='/images/logo.png' alt='Clawalytics' className='size-6 object-contain' />
+            <img
+              src='/images/logo.png'
+              alt='Clawalytics'
+              className='size-6 object-contain'
+            />
           </div>
         </SidebarMenuItem>
       </SidebarMenu>
@@ -36,11 +40,15 @@ export function TeamSwitcher({ teams }: TeamSwitcherProps) {
       <SidebarMenuItem>
         <SidebarMenuButton size='lg'>
           <div className='flex size-14 items-center justify-center overflow-hidden rounded-lg'>
-            <img src='/images/logo.png' alt='Clawalytics' className='size-14 object-contain' />
+            <img
+              src='/images/logo.png'
+              alt='Clawalytics'
+              className='size-14 object-contain'
+            />
           </div>
-          <div className='grid flex-1 text-start text-sm leading-tight gap-0'>
+          <div className='grid flex-1 gap-0 text-start text-sm leading-tight'>
             <span className='truncate font-jersey text-3xl'>clawalytics</span>
-            <span className='truncate text-xs -mt-1' >{activeTeam.plan}</span>
+            <span className='-mt-1 truncate text-xs'>{activeTeam.plan}</span>
           </div>
         </SidebarMenuButton>
       </SidebarMenuItem>

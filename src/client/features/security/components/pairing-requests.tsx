@@ -1,7 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, Clock, Smartphone, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
+import { type PairingRequest, respondToPairingRequest } from '@/lib/api'
+import { formatRelativeTime } from '@/lib/i18n'
+import { useLocale } from '@/context/locale-provider'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -10,10 +14,6 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useLocale } from '@/context/locale-provider'
-import { type PairingRequest, respondToPairingRequest } from '@/lib/api'
-import { formatRelativeTime } from '@/lib/i18n'
-import { toast } from 'sonner'
 
 interface PairingRequestsProps {
   requests: PairingRequest[]
@@ -22,10 +22,7 @@ interface PairingRequestsProps {
 
 PairingRequests.displayName = 'PairingRequests'
 
-export function PairingRequests({
-  requests,
-  isLoading,
-}: PairingRequestsProps) {
+export function PairingRequests({ requests, isLoading }: PairingRequestsProps) {
   const { locale, text } = useLocale()
   const queryClient = useQueryClient()
 
@@ -76,7 +73,10 @@ export function PairingRequests({
         <CardContent>
           <div className='space-y-4'>
             {[...Array(2)].map((_, i) => (
-              <div key={i} className='flex items-center gap-4 rounded-lg border p-4'>
+              <div
+                key={i}
+                className='flex items-center gap-4 rounded-lg border p-4'
+              >
                 <Skeleton className='h-10 w-10 rounded-full' />
                 <div className='flex-1 space-y-2'>
                   <Skeleton className='h-4 w-32' />
@@ -118,7 +118,10 @@ export function PairingRequests({
               {text('没有待处理请求', 'No pending requests')}
             </p>
             <p className='text-sm text-muted-foreground'>
-              {text('新的配对请求会显示在这里', 'New pairing requests will appear here')}
+              {text(
+                '新的配对请求会显示在这里',
+                'New pairing requests will appear here'
+              )}
             </p>
           </div>
         ) : (
@@ -134,7 +137,8 @@ export function PairingRequests({
                 <div className='min-w-0 flex-1'>
                   <div className='flex items-center gap-2'>
                     <span className='font-medium'>
-                      {request.device_name ?? text('未命名设备', 'Unnamed Device')}
+                      {request.device_name ??
+                        text('未命名设备', 'Unnamed Device')}
                     </span>
                     <Badge variant='outline' className='text-xs'>
                       {request.status}

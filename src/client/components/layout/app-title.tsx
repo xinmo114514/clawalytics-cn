@@ -25,7 +25,11 @@ export function AppTitle() {
               onClick={() => setOpenMobile(false)}
               className='flex flex-1 items-center gap-2 text-start text-sm leading-tight'
             >
-              <img src='/images/logo.png' alt='Clawalytics' className='size-16 object-contain' />
+              <img
+                src='/images/logo.png'
+                alt='Clawalytics'
+                className='size-16 object-contain'
+              />
               <div className='grid'>
                 <span className='truncate font-bold'>Clawalytics</span>
                 <span className='truncate text-xs'>OpenClaw Analytics</span>

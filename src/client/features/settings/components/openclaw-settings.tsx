@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Check, FolderOpen, Monitor, RefreshCw, Terminal, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { useLocale } from '@/context/locale-provider'
+import {
+  Check,
+  FolderOpen,
+  Monitor,
+  RefreshCw,
+  Terminal,
+  X,
+} from 'lucide-react'
+import { toast } from 'sonner'
 import {
   getApiErrorMessage,
   getConfig,
@@ -12,7 +16,10 @@ import {
   type Config,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
+import { useLocale } from '@/context/locale-provider'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { SettingsCard, SettingsItem } from '../settings-page'
 
 type ValidationStatus = 'idle' | 'valid' | 'invalid'
@@ -32,7 +39,10 @@ function getWindowsOpenClawPath(config: Config) {
     return config.openClawPath
   }
 
-  if (config.defaultOpenClawPath && !isWslHostPath(config.defaultOpenClawPath)) {
+  if (
+    config.defaultOpenClawPath &&
+    !isWslHostPath(config.defaultOpenClawPath)
+  ) {
     return config.defaultOpenClawPath
   }
 
@@ -59,7 +69,8 @@ export function OpenClawSettings() {
   const [lastValidationMessage, setLastValidationMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isValidating, setIsValidating] = useState(false)
-  const [validationStatus, setValidationStatus] = useState<ValidationStatus>('idle')
+  const [validationStatus, setValidationStatus] =
+    useState<ValidationStatus>('idle')
 
   const loadConfig = useCallback(async () => {
     try {
@@ -73,14 +84,13 @@ export function OpenClawSettings() {
       setWslEnabled(nextWslEnabled)
       setWslDistro(config.wsl?.distro || DEFAULT_WSL_DISTRO)
       setWslOpenClawPath(
-        nextWslEnabled ? config.wsl?.openClawPath || DEFAULT_WSL_OPENCLAW_PATH : ''
+        nextWslEnabled
+          ? config.wsl?.openClawPath || DEFAULT_WSL_OPENCLAW_PATH
+          : ''
       )
     } catch (error) {
       toast.error(
-        getApiErrorMessage(
-          error,
-          text('加载配置失败', 'Failed to load config')
-        )
+        getApiErrorMessage(error, text('加载配置失败', 'Failed to load config'))
       )
     } finally {
       setIsLoading(false)
@@ -150,7 +160,8 @@ export function OpenClawSettings() {
       ...(!nextWsl.enabled ? { openClawPath: nextPath } : {}),
       wsl: nextWsl,
     })
-    const resolvedPath = config.openClawPath || (nextWsl.enabled ? nextWsl.openClawPath : nextPath)
+    const resolvedPath =
+      config.openClawPath || (nextWsl.enabled ? nextWsl.openClawPath : nextPath)
 
     if (!nextWsl.enabled) {
       setOpenClawPath(resolvedPath)
@@ -178,7 +189,9 @@ export function OpenClawSettings() {
       await persistOpenClawPath()
 
       setValidationStatus('valid')
-      setLastValidationMessage(text('OpenClaw 数据路径已保存', 'OpenClaw data path saved'))
+      setLastValidationMessage(
+        text('OpenClaw 数据路径已保存', 'OpenClaw data path saved')
+      )
       toast.success(text('OpenClaw 数据路径已保存', 'OpenClaw data path saved'))
 
       window.setTimeout(() => {
@@ -187,10 +200,7 @@ export function OpenClawSettings() {
     } catch (error) {
       setValidationStatus('invalid')
       toast.error(
-        getApiErrorMessage(
-          error,
-          text('保存配置失败', 'Failed to save config')
-        )
+        getApiErrorMessage(error, text('保存配置失败', 'Failed to save config'))
       )
     } finally {
       setIsValidating(false)
@@ -283,11 +293,12 @@ export function OpenClawSettings() {
   const sourceMode: DataSourceMode = wslEnabled ? 'wsl' : 'windows'
   const wslHostPathPreview = buildWslHostPathPreview(wslDistro, wslOpenClawPath)
 
-  const statusIcon = validationStatus === 'idle'
-    ? null
-    : validationStatus === 'valid'
-      ? <Check className='h-4 w-4 text-success' />
-      : <X className='h-4 w-4 text-destructive' />
+  const statusIcon =
+    validationStatus === 'idle' ? null : validationStatus === 'valid' ? (
+      <Check className='h-4 w-4 text-success' />
+    ) : (
+      <X className='h-4 w-4 text-destructive' />
+    )
 
   return (
     <SettingsCard
@@ -319,7 +330,11 @@ export function OpenClawSettings() {
                 : 'border-border bg-muted/10 hover:bg-muted/20'
             )}
           >
-            <RadioGroupItem value='windows' className='mt-1' disabled={isLoading} />
+            <RadioGroupItem
+              value='windows'
+              className='mt-1'
+              disabled={isLoading}
+            />
             <div className='space-y-1'>
               <div className='flex items-center gap-2 text-sm font-medium'>
                 <Monitor className='size-4 text-muted-foreground' />
@@ -392,7 +407,7 @@ export function OpenClawSettings() {
                     className='pr-10'
                   />
                   {statusIcon && (
-                    <div className='absolute right-3 top-1/2 -translate-y-1/2'>
+                    <div className='absolute top-1/2 right-3 -translate-y-1/2'>
                       {statusIcon}
                     </div>
                   )}
@@ -447,7 +462,10 @@ export function OpenClawSettings() {
               </div>
               <div className='space-y-2'>
                 <p className='text-sm font-medium'>
-                  {text('Linux 内的 OpenClaw 路径', 'OpenClaw path inside Linux')}
+                  {text(
+                    'Linux 内的 OpenClaw 路径',
+                    'OpenClaw path inside Linux'
+                  )}
                 </p>
                 <div className='relative'>
                   <Input
@@ -463,7 +481,7 @@ export function OpenClawSettings() {
                     className='pr-10'
                   />
                   {statusIcon && (
-                    <div className='absolute right-3 top-1/2 -translate-y-1/2'>
+                    <div className='absolute top-1/2 right-3 -translate-y-1/2'>
                       {statusIcon}
                     </div>
                   )}
@@ -473,9 +491,14 @@ export function OpenClawSettings() {
               <div className='md:col-span-2'>
                 <div className='rounded-md border border-dashed border-border bg-muted/15 px-3 py-2 text-xs text-muted-foreground'>
                   <div className='mb-1 font-medium text-foreground'>
-                    {text('Windows 将通过这个路径读取：', 'Windows will read through:')}
+                    {text(
+                      'Windows 将通过这个路径读取：',
+                      'Windows will read through:'
+                    )}
                   </div>
-                  <code className='break-all font-mono'>{wslHostPathPreview}</code>
+                  <code className='font-mono break-all'>
+                    {wslHostPathPreview}
+                  </code>
                 </div>
               </div>
             </div>
@@ -510,7 +533,9 @@ export function OpenClawSettings() {
         </div>
 
         {lastValidationMessage && (
-          <p className='text-xs text-muted-foreground'>{lastValidationMessage}</p>
+          <p className='text-xs text-muted-foreground'>
+            {lastValidationMessage}
+          </p>
         )}
       </div>
     </SettingsCard>

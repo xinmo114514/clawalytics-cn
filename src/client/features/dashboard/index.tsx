@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
@@ -8,28 +8,6 @@ import {
   Download,
   TrendingUp,
 } from 'lucide-react'
-import { HomeIcon } from '@/components/icons/home-icon'
-import { Header } from '@/components/layout/header'
-import { Main } from '@/components/layout/main'
-import { LanguageSwitch } from '@/components/language-switch'
-import { ThemeSwitch } from '@/components/theme-switch'
-import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useLocale } from '@/context/locale-provider'
-import { useCurrency } from '@/context/currency-provider'
 import {
   getBudgetStatus,
   getDailyCosts,
@@ -39,6 +17,28 @@ import {
   type BudgetPeriod,
 } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
+import { useCurrency } from '@/context/currency-provider'
+import { useLocale } from '@/context/locale-provider'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { HomeIcon } from '@/components/icons/home-icon'
+import { LanguageSwitch } from '@/components/language-switch'
+import { Header } from '@/components/layout/header'
+import { Main } from '@/components/layout/main'
+import { ThemeSwitch } from '@/components/theme-switch'
 import { DailyCostChart } from './components/daily-cost-chart'
 import { AgentsTab } from './tabs/agents-tab'
 import { ChannelsTab } from './tabs/channels-tab'
@@ -49,15 +49,23 @@ export function Dashboard() {
   const { locale, text } = useLocale()
   const { formatCurrency } = useCurrency()
   const [activeTab, setActiveTab] = useState('overview')
-  const visitedTabs = useRef(new Set(['overview']))
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set(['overview']))
   const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
 
   const handleTabChange = (tab: string) => {
-    visitedTabs.current.add(tab)
+    setVisitedTabs((current) => {
+      if (current.has(tab)) {
+        return current
+      }
+
+      const next = new Set(current)
+      next.add(tab)
+      return next
+    })
     setActiveTab(tab)
   }
 
-  const hasVisited = (tab: string) => visitedTabs.current.has(tab)
+  const hasVisited = (tab: string) => visitedTabs.has(tab)
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['enhancedStats'],
@@ -132,7 +140,9 @@ export function Dashboard() {
           <Button
             variant='outline'
             size='sm'
-            onClick={() => window.open('/api/export/costs?format=csv', '_blank')}
+            onClick={() =>
+              window.open('/api/export/costs?format=csv', '_blank')
+            }
           >
             <Download className='mr-2 h-4 w-4' />
             {text('导出 CSV', 'Export CSV')}
@@ -141,7 +151,7 @@ export function Dashboard() {
 
         <div className='mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('总成本', 'Total Cost')}
@@ -162,7 +172,8 @@ export function Dashboard() {
                     {formatCurrency(stats?.totalCost ?? 0)}
                   </div>
                   <p className='text-xs text-muted-foreground'>
-                    {text('本月', 'This month')} {formatCurrency(stats?.monthCost ?? 0)}
+                    {text('本月', 'This month')}{' '}
+                    {formatCurrency(stats?.monthCost ?? 0)}
                   </p>
                 </>
               )}
@@ -170,7 +181,7 @@ export function Dashboard() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('总 Token 数', 'Total Tokens')}
@@ -242,7 +253,7 @@ export function Dashboard() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('缓存节省', 'Cache Savings')}
@@ -271,7 +282,7 @@ export function Dashboard() {
           </Card>
 
           <Card className='relative overflow-hidden'>
-            <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('活跃会话', 'Active Sessions')}
@@ -301,7 +312,9 @@ export function Dashboard() {
         </div>
 
         {budgetStatus &&
-          (budgetStatus.daily || budgetStatus.weekly || budgetStatus.monthly) && (
+          (budgetStatus.daily ||
+            budgetStatus.weekly ||
+            budgetStatus.monthly) && (
             <div className='mb-6 grid gap-4 sm:grid-cols-3'>
               {budgetStatus.daily && (
                 <BudgetBar
@@ -331,10 +344,7 @@ export function Dashboard() {
               {text('每日成本', 'Daily Cost')}
             </CardTitle>
             <CardDescription>
-              {text(
-                '最近 30 天的花费趋势',
-                'Cost trend over the last 30 days'
-              )}
+              {text('最近 30 天的花费趋势', 'Cost trend over the last 30 days')}
             </CardDescription>
           </CardHeader>
           <CardContent className='ps-2'>
@@ -348,10 +358,14 @@ export function Dashboard() {
 
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList>
-            <TabsTrigger value='overview'>{text('概览', 'Overview')}</TabsTrigger>
+            <TabsTrigger value='overview'>
+              {text('概览', 'Overview')}
+            </TabsTrigger>
             <TabsTrigger value='models'>{text('模型', 'Models')}</TabsTrigger>
             <TabsTrigger value='agents'>{text('代理', 'Agents')}</TabsTrigger>
-            <TabsTrigger value='channels'>{text('渠道', 'Channels')}</TabsTrigger>
+            <TabsTrigger value='channels'>
+              {text('渠道', 'Channels')}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value='overview'>
@@ -381,13 +395,7 @@ export function Dashboard() {
   )
 }
 
-function BudgetBar({
-  label,
-  period,
-}: {
-  label: string
-  period: BudgetPeriod
-}) {
+function BudgetBar({ label, period }: { label: string; period: BudgetPeriod }) {
   const { text } = useLocale()
   const { formatCurrency } = useCurrency()
 

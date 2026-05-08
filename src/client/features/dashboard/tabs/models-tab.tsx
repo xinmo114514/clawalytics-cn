@@ -1,6 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { Building2, Coins, DollarSign, Layers } from 'lucide-react'
 import {
+  getModelDailyUsage,
+  getModels,
+  getModelStats,
+  getProviderSummary,
+} from '@/lib/api'
+import { formatCurrency, formatNumber } from '@/lib/format'
+import { useLocale } from '@/context/locale-provider'
+import {
   Card,
   CardContent,
   CardDescription,
@@ -8,17 +16,9 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useLocale } from '@/context/locale-provider'
 import { ModelCostChart } from '@/features/models/components/model-cost-chart'
 import { ModelsTable } from '@/features/models/components/models-table'
 import { ProviderDistributionChart } from '@/features/models/components/provider-distribution-chart'
-import {
-  getModelDailyUsage,
-  getModels,
-  getModelStats,
-  getProviderSummary,
-} from '@/lib/api'
-import { formatCurrency, formatNumber } from '@/lib/format'
 
 interface ModelsTabProps {
   enabled: boolean
@@ -65,7 +65,7 @@ export function ModelsTab({ enabled }: ModelsTabProps) {
     <div className='space-y-6'>
       <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('模型总成本', 'Total Model Cost')}
@@ -94,7 +94,7 @@ export function ModelsTab({ enabled }: ModelsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('已使用模型', 'Models Used')}
@@ -126,7 +126,7 @@ export function ModelsTab({ enabled }: ModelsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('总 Token 数', 'Total Tokens')}
@@ -158,7 +158,7 @@ export function ModelsTab({ enabled }: ModelsTabProps) {
         </Card>
 
         <Card className='relative overflow-hidden'>
-          <div className='absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>
               {text('主要提供商', 'Top Provider')}
@@ -175,7 +175,7 @@ export function ModelsTab({ enabled }: ModelsTabProps) {
               </>
             ) : (
               <>
-                <div className='text-2xl font-bold capitalize text-primary'>
+                <div className='text-2xl font-bold text-primary capitalize'>
                   {modelStats?.topProvider?.provider ?? text('暂无', 'None')}
                 </div>
                 <p className='text-xs text-muted-foreground'>
@@ -200,7 +200,10 @@ export function ModelsTab({ enabled }: ModelsTabProps) {
               {text('按模型查看每日成本', 'Daily Cost by Model')}
             </CardTitle>
             <CardDescription>
-              {text('最近 30 天的模型成本', 'Model costs over the last 30 days')}
+              {text(
+                '最近 30 天的模型成本',
+                'Model costs over the last 30 days'
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className='ps-2'>
@@ -214,7 +217,9 @@ export function ModelsTab({ enabled }: ModelsTabProps) {
 
         <Card className='col-span-1 lg:col-span-3'>
           <CardHeader>
-            <CardTitle>{text('提供商成本分布', 'Provider Cost Split')}</CardTitle>
+            <CardTitle>
+              {text('提供商成本分布', 'Provider Cost Split')}
+            </CardTitle>
             <CardDescription>
               {text('不同提供商的成本占比', 'Cost share across providers')}
             </CardDescription>

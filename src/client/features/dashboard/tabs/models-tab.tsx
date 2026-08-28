@@ -6,7 +6,8 @@ import {
   getModelStats,
   getProviderSummary,
 } from '@/lib/api'
-import { formatCurrency, formatNumber } from '@/lib/format'
+import { formatNumber } from '@/lib/format'
+import { useCurrency } from '@/context/currency-provider'
 import { useLocale } from '@/context/locale-provider'
 import {
   Card,
@@ -26,6 +27,7 @@ interface ModelsTabProps {
 
 export function ModelsTab({ enabled }: ModelsTabProps) {
   const { text } = useLocale()
+  const { formatCurrency } = useCurrency()
 
   const { data: models, isLoading: modelsLoading } = useQuery({
     queryKey: ['models'],

@@ -36,6 +36,22 @@ export interface TokenBreakdown {
   cacheCreation: number
 }
 
+export interface TokenPeriodSummary {
+  total: number
+  input: number
+  output: number
+  cacheRead: number
+  cacheCreation: number
+  cost: number
+}
+
+export interface TokenSummary {
+  lifetime: TokenPeriodSummary
+  last5Hours: TokenPeriodSummary
+  last7Days: TokenPeriodSummary
+  last30Days: TokenPeriodSummary
+}
+
 export interface Session {
   id: string
   project_path: string
@@ -113,6 +129,7 @@ export interface OpenClawReloadResult {
     sessionCount?: number
     agentsFound?: number
     sessionFilesFound?: number
+    databaseSessionsFound?: number
     parsedUsageEntries?: number
     formatStatus?: 'parsed' | 'no-session-files' | 'no-usage-records'
     warnings?: string[]
@@ -151,6 +168,11 @@ export async function getTokenBreakdown(days = 30): Promise<TokenBreakdown> {
   const { data } = await api.get<TokenBreakdown>('/stats/tokens', {
     params: { days },
   })
+  return data
+}
+
+export async function getTokenSummary(): Promise<TokenSummary> {
+  const { data } = await api.get<TokenSummary>('/stats/token-summary')
   return data
 }
 

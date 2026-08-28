@@ -1,3 +1,5 @@
+/* Jersey 15 Font - Pixel style for headers */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Jersey+15&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import './theme.css';
@@ -54,6 +56,17 @@
   /* Override Radix scroll locking for sticky headers */
   body[data-scroll-locked] {
     overflow: unset !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 
   /* Cursor pointer for buttons */

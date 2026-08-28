@@ -12,6 +12,8 @@ dist
 dist-ssr
 .codex-logs/
 release/
+release-new/
+scripts/custom-nsis.generated.nsh
 *.local
 
 .env

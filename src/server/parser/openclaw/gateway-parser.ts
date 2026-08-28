@@ -12,24 +12,7 @@ import chokidar, { type FSWatcher } from 'chokidar'
 
 import fs from 'fs'
 import { convertUsdToCny } from '../../lib/currency.js'
-import { hasPricing } from '../../services/pricing-service.js'
 import { calculateCost } from '../costs.js'
-
-const VERIFIED_PRICING_PROVIDERS = new Set([
-  'deepseek',
-  'minimax',
-  'minimax-portal',
-  'moonshot',
-  'kimi-coding',
-  'qwen',
-  'qwen-portal',
-  'dashscope',
-  'doubao',
-  'volcengine',
-  'ark',
-  'zhipu',
-  'bigmodel',
-])
 
 // ============================================
 // Interfaces
@@ -101,6 +84,18 @@ export interface ConnectionEvent {
   level: string
 }
 
+function nonNegativeFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined
+}
+
+function normalizeTimestamp(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
+
 // ============================================
 // Parsing Functions
 // ============================================
@@ -135,10 +130,11 @@ export function parseGatewayLogLine(
   )
 
   // Extract token counts
-  const inputTokens = entry.tokens?.input ?? 0
-  const outputTokens = entry.tokens?.output ?? 0
-  const cacheReadTokens = entry.tokens?.cache_read ?? 0
-  const cacheCreationTokens = entry.tokens?.cache_write ?? 0
+  const inputTokens = nonNegativeFiniteNumber(entry.tokens?.input) ?? 0
+  const outputTokens = nonNegativeFiniteNumber(entry.tokens?.output) ?? 0
+  const cacheReadTokens = nonNegativeFiniteNumber(entry.tokens?.cache_read) ?? 0
+  const cacheCreationTokens =
+    nonNegativeFiniteNumber(entry.tokens?.cache_write) ?? 0
 
   // Skip entries with no tokens
   if (
@@ -151,10 +147,11 @@ export function parseGatewayLogLine(
   }
 
   const providerReportedCost =
-    typeof entry.cost === 'number' ? convertUsdToCny(entry.cost) : undefined
-  const hasVerifiedPricing = hasPricing(provider, model)
-  const preferVerifiedPricing =
-    hasVerifiedPricing && VERIFIED_PRICING_PROVIDERS.has(provider.toLowerCase())
+    typeof entry.cost === 'number' &&
+    Number.isFinite(entry.cost) &&
+    entry.cost >= 0
+      ? convertUsdToCny(entry.cost)
+      : undefined
 
   // Always calculate from our pricing data when we need cache savings or
   // when a provider adapter is known to emit placeholder/non-final costs.
@@ -169,20 +166,22 @@ export function parseGatewayLogLine(
     },
     {
       suppressMissingPricingWarning: Boolean(
-        providerReportedCost && providerReportedCost > 0
+        providerReportedCost !== undefined
       ),
     }
   )
 
-  // Use provider cost if available, otherwise our calculated cost
-  const cost =
-    !preferVerifiedPricing && providerReportedCost && providerReportedCost > 0
-      ? providerReportedCost
-      : costResult.totalCost
+  // Prefer the cost already emitted by OpenClaw. The local catalog is a
+  // fallback for older gateway records without a cost field.
+  const cost = providerReportedCost ?? costResult.totalCost
   const cacheSavings = costResult.cacheSavings
+  const timestamp = normalizeTimestamp(entry.timestamp)
+  if (!timestamp) {
+    return null
+  }
 
   return {
-    timestamp: entry.timestamp || new Date().toISOString(),
+    timestamp,
     provider,
     model,
     inputTokens,
@@ -191,7 +190,7 @@ export function parseGatewayLogLine(
     cacheReadTokens,
     cost,
     cacheSavings,
-    durationMs: entry.duration_ms ?? 0,
+    durationMs: nonNegativeFiniteNumber(entry.duration_ms) ?? 0,
     channel: entry.channel || null,
     sessionId: entry.session_id || null,
     agentId: entry.agent_id || null,

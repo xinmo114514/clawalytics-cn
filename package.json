@@ -29,6 +29,7 @@
     "build:server": "tsc -p tsconfig.server.json",
     "build:desktop": "corepack pnpm build && node scripts/run-electron-builder.mjs install-app-deps && node scripts/run-electron-builder.mjs --win portable nsis",
     "start": "node scripts/ensure-native-deps.mjs && node scripts/start-production.mjs",
+    "test:openclaw": "node scripts/ensure-native-deps.mjs && node --import tsx scripts/test-openclaw-data-pipeline.mjs",
     "rebuild:native": "node scripts/ensure-native-deps.mjs",
     "postinstall": "node scripts/postinstall.js",
     "preuninstall": "node scripts/preuninstall.js",
@@ -45,6 +46,7 @@
     "commander": "^13.1.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "json5": "^2.2.3",
     "framer-motion": "^12.32.0",
     "ws": "^8.19.0",
     "yaml": "^2.7.0"
@@ -163,6 +165,7 @@
     "asarUnpack": [
       "node_modules/better-sqlite3/**/*"
     ],
+    "afterPack": "scripts/prepare-nsis-app-dir.cjs",
     "afterSign": "scripts/prepare-nsis-app-dir.cjs",
     "npmRebuild": true,
     "win": {
@@ -183,7 +186,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "include": "scripts/custom-nsis.nsh"
+      "include": "scripts/custom-nsis.generated.nsh"
     }
   },
   "pnpm": {

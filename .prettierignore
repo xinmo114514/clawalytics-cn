@@ -15,4 +15,4 @@
 !postcss.config.js
 
 # Ignore auto generated routeTree.gen.ts
-/src/routeTree.gen.ts
+/src/client/routeTree.gen.ts

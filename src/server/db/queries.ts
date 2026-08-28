@@ -78,6 +78,22 @@ export interface TokenBreakdown {
   cacheCreation: number
 }
 
+export interface TokenPeriodSummary {
+  total: number
+  input: number
+  output: number
+  cacheRead: number
+  cacheCreation: number
+  cost: number
+}
+
+export interface TokenSummary {
+  lifetime: TokenPeriodSummary
+  last5Hours: TokenPeriodSummary
+  last7Days: TokenPeriodSummary
+  last30Days: TokenPeriodSummary
+}
+
 export interface PeriodSummary {
   totalCost: number
   inputTokens: number

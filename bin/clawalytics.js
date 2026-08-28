@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { program } from 'commander';
-import { spawn, execSync } from 'child_process';
+import { spawn, execFileSync, execSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -15,6 +15,8 @@ const CONFIG_DIR = path.join(os.homedir(), '.clawalytics');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.yaml');
 const LOG_FILE = path.join(CONFIG_DIR, 'clawalytics.log');
 const DEFAULT_PORT = '9174';
+const MIN_PORT = 1;
+const MAX_PORT = 65535;
 const UPDATE_CHECK_FILE = path.join(CONFIG_DIR, 'update-check.json');
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -99,27 +101,37 @@ function getServerIPs() {
   return ips;
 }
 
-function getRunningPid() {
+function parsePort(value) {
+  const stringValue = String(value ?? '');
+  const port = Number(stringValue);
+  if (!/^\d+$/.test(stringValue) || !Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) {
+    console.error(`Invalid port: ${stringValue}. Expected an integer from ${MIN_PORT} to ${MAX_PORT}.`);
+    process.exit(1);
+  }
+  return port;
+}
+
+function getRunningPid(port = DEFAULT_PORT) {
   try {
     if (process.platform === 'win32') {
-      const output = execSync(`netstat -ano | findstr :${DEFAULT_PORT} | findstr LISTENING`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] });
+      const output = execSync(`netstat -ano | findstr :${port} | findstr LISTENING`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] });
       const match = output.trim().split(/\s+/).pop();
       return match ? parseInt(match) : null;
     } else {
       // Try lsof first
       try {
-        const output = execSync(`lsof -ti:${DEFAULT_PORT}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+        const output = execSync(`lsof -ti:${port}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
         if (output) return parseInt(output.split('\n')[0]);
       } catch {}
       // Fallback to ss (common on Linux servers without lsof)
       try {
-        const output = execSync(`ss -tlnp sport = :${DEFAULT_PORT}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+        const output = execSync(`ss -tlnp sport = :${port}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
         const pidMatch = output.match(/pid=(\d+)/);
         if (pidMatch) return parseInt(pidMatch[1]);
       } catch {}
       // Fallback to fuser
       try {
-        const output = execSync(`fuser ${DEFAULT_PORT}/tcp 2>/dev/null`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+        const output = execSync(`fuser ${port}/tcp 2>/dev/null`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
         if (output) return parseInt(output.split(/\s+/).pop());
       } catch {}
       return null;
@@ -136,7 +148,7 @@ function isServiceInstalled() {
     return fs.existsSync(path.join(os.homedir(), '.config', 'systemd', 'user', 'clawalytics.service'));
   } else if (process.platform === 'win32') {
     try {
-      execSync(`schtasks /query /tn "${TASK_NAME}" 2>nul`, { stdio: 'ignore' });
+      execFileSync('schtasks.exe', ['/query', '/tn', TASK_NAME], { stdio: 'ignore' });
       return true;
     } catch { return false; }
   }
@@ -373,7 +385,7 @@ program
   .description('Start Clawalytics in foreground (for development/debugging)')
   .option('-p, --port <port>', 'Port to run the server on', DEFAULT_PORT)
   .action(async (options) => {
-    const port = parseInt(options.port);
+    const port = parsePort(options.port);
     const serverPath = path.join(__dirname, '../dist/server/index.js');
 
     if (!fs.existsSync(serverPath)) {
@@ -415,8 +427,8 @@ program
   .description('Show server status, spending stats, and usage')
   .option('-p, --port <port>', 'Port where the server is running', DEFAULT_PORT)
   .action(async (options) => {
-    const pid = getRunningPid();
-    const port = options.port;
+    const port = parsePort(options.port);
+    const pid = getRunningPid(port);
     const serviceOk = isServiceInstalled();
 
     console.log('');
@@ -589,7 +601,7 @@ program
   .description('Show SSH tunnel instructions for remote dashboard access')
   .option('-p, --port <port>', 'Port where the server is running', DEFAULT_PORT)
   .action((options) => {
-    const port = options.port;
+    const port = parsePort(options.port);
     const hostname = os.hostname();
     const user = os.userInfo().username;
     const ips = getServerIPs();
@@ -841,7 +853,7 @@ program
   .description('Manually install the auto-start service (normally done automatically on npm install)')
   .option('-p, --port <port>', 'Port to run the server on', DEFAULT_PORT)
   .action((options) => {
-    const port = options.port;
+    const port = parsePort(options.port);
     const nodePath = process.execPath;
     const serverPath = path.resolve(__dirname, '../dist/server/index.js');
 
@@ -907,6 +919,9 @@ program
           fs.mkdirSync(serviceDir, { recursive: true });
         }
 
+        // Stop the previous unit before replacing its command or port.
+        try { execFileSync('systemctl', ['--user', 'stop', 'clawalytics'], { stdio: 'ignore' }); } catch {}
+
         const serviceContent = `[Unit]
 Description=Clawalytics - AI Cost Analytics Dashboard
 After=network.target
@@ -931,9 +946,23 @@ WantedBy=default.target
         console.log(`   Service: ${svcPath}`);
 
       } else if (process.platform === 'win32') {
-        try { execSync(`schtasks /delete /tn "${TASK_NAME}" /f 2>nul`, { stdio: 'ignore' }); } catch {}
-        execSync(`schtasks /create /tn "${TASK_NAME}" /tr "\\"${nodePath}\\" \\"${serverPath}\\"" /sc onlogon /rl limited /f`);
-        try { execSync(`schtasks /run /tn "${TASK_NAME}"`, { stdio: 'ignore' }); } catch {}
+        const startScriptPath = path.resolve(__dirname, '../scripts/start-production.mjs');
+        const command = [nodePath, startScriptPath, '--port', port]
+          .map(quoteWindowsArgument)
+          .join(' ');
+
+        try {
+          execFileSync('schtasks.exe', ['/end', '/tn', TASK_NAME], { stdio: 'ignore' });
+        } catch {}
+
+        execFileSync(
+          'schtasks.exe',
+          ['/create', '/tn', TASK_NAME, '/tr', command, '/sc', 'onlogon', '/rl', 'limited', '/f'],
+          { stdio: 'inherit' }
+        );
+        try {
+          execFileSync('schtasks.exe', ['/run', '/tn', TASK_NAME], { stdio: 'ignore' });
+        } catch {}
         console.log(`🦞 Service installed (Task Scheduler)`);
 
       } else {
@@ -947,6 +976,13 @@ WantedBy=default.target
       console.error(`Failed to install service: ${err.message}`);
     }
   });
+
+function quoteWindowsArgument(value) {
+  const escaped = String(value)
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\+)$/g, '$1$1');
+  return `"${escaped}"`;
+}
 
 // ============================================
 // uninstall-service (cross-platform)
@@ -980,7 +1016,11 @@ program
 
       } else if (process.platform === 'win32') {
         try {
-          execSync(`schtasks /delete /tn "${TASK_NAME}" /f`, { stdio: 'ignore' });
+          execFileSync('schtasks.exe', ['/end', '/tn', TASK_NAME], { stdio: 'ignore' });
+        } catch {}
+
+        try {
+          execFileSync('schtasks.exe', ['/delete', '/tn', TASK_NAME, '/f'], { stdio: 'ignore' });
           console.log('🦞 Service uninstalled (Task Scheduler entry removed)');
         } catch {
           console.log('🦞 No service found. Nothing to uninstall.');

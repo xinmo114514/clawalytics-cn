@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Activity, Bot, Coins, DollarSign, TrendingUp } from 'lucide-react'
 import { getAgentStats, getAllAgentsDailyCosts } from '@/lib/api'
-import { formatCurrency, formatNumber } from '@/lib/format'
+import { formatNumber } from '@/lib/format'
+import { useCurrency } from '@/context/currency-provider'
 import { useLocale } from '@/context/locale-provider'
 import {
   Card,
@@ -21,6 +22,7 @@ interface AgentsTabProps {
 
 export function AgentsTab({ enabled }: AgentsTabProps) {
   const { text } = useLocale()
+  const { formatCurrency } = useCurrency()
 
   const { data: agentStats, isLoading: statsLoading } = useQuery({
     queryKey: ['agentStats'],

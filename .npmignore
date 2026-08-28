@@ -31,3 +31,4 @@ netlify.toml
 public/
 index.html
 # Ignore shadcn image
+scripts/custom-nsis.generated.nsh

@@ -1,22 +1,5 @@
 import { convertUsdToCny } from '../../lib/currency.js'
-import { hasPricing } from '../../services/pricing-service.js'
 import { calculateCost, identifyProvider } from '../costs.js'
-
-const VERIFIED_PRICING_PROVIDERS = new Set([
-  'deepseek',
-  'minimax',
-  'minimax-portal',
-  'moonshot',
-  'kimi-coding',
-  'qwen',
-  'qwen-portal',
-  'dashscope',
-  'doubao',
-  'volcengine',
-  'ark',
-  'zhipu',
-  'bigmodel',
-])
 
 /**
  * Actual OpenClaw session JSONL entry structure.
@@ -76,6 +59,8 @@ export interface OpenClawLogEntry {
       output_tokens?: number
       cache_creation_input_tokens?: number
       cache_read_input_tokens?: number
+      cache_creation_tokens?: number
+      cache_read_tokens?: number
     }
     stopReason?: string
     timestamp?: number
@@ -90,6 +75,31 @@ export interface OpenClawLogEntry {
     is_error?: boolean
   }
   [key: string]: unknown
+}
+
+function nonNegativeFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined
+}
+
+function normalizeTimestamp(
+  timestamp: unknown,
+  messageTimestamp: unknown
+): string | null {
+  const candidates = [timestamp, messageTimestamp]
+  for (const candidate of candidates) {
+    const date =
+      typeof candidate === 'number' && Number.isFinite(candidate)
+        ? new Date(candidate < 1_000_000_000_000 ? candidate * 1000 : candidate)
+        : typeof candidate === 'string'
+          ? new Date(candidate)
+          : null
+    if (date && !Number.isNaN(date.getTime())) {
+      return date.toISOString()
+    }
+  }
+  return null
 }
 
 /** Simple tool use info extracted from a log entry (for inline parsing) */
@@ -149,11 +159,24 @@ export function parseOpenClawLine(
   const usage = entry.message.usage
 
   // Extract tokens - support both OpenClaw and Claude Code formats
-  const inputTokens = usage.input ?? usage.input_tokens ?? 0
-  const outputTokens = usage.output ?? usage.output_tokens ?? 0
-  const cacheReadTokens = usage.cacheRead ?? usage.cache_read_input_tokens ?? 0
+  const inputTokens =
+    nonNegativeFiniteNumber(usage.input) ??
+    nonNegativeFiniteNumber(usage.input_tokens) ??
+    0
+  const outputTokens =
+    nonNegativeFiniteNumber(usage.output) ??
+    nonNegativeFiniteNumber(usage.output_tokens) ??
+    0
+  const cacheReadTokens =
+    nonNegativeFiniteNumber(usage.cacheRead) ??
+    nonNegativeFiniteNumber(usage.cache_read_input_tokens) ??
+    nonNegativeFiniteNumber(usage.cache_read_tokens) ??
+    0
   const cacheCreationTokens =
-    usage.cacheWrite ?? usage.cache_creation_input_tokens ?? 0
+    nonNegativeFiniteNumber(usage.cacheWrite) ??
+    nonNegativeFiniteNumber(usage.cache_creation_input_tokens) ??
+    nonNegativeFiniteNumber(usage.cache_creation_tokens) ??
+    0
 
   // Skip if no tokens at all
   if (
@@ -168,14 +191,11 @@ export function parseOpenClawLine(
   // Get model and provider info
   const model = entry.message.model || 'unknown'
   const provider = entry.message.provider || identifyProvider(model)
-  const rawProviderReportedCost = usage.cost?.total
+  const rawProviderReportedCost = nonNegativeFiniteNumber(usage.cost?.total)
   const providerReportedCost =
-    typeof rawProviderReportedCost === 'number'
+    rawProviderReportedCost !== undefined
       ? convertUsdToCny(rawProviderReportedCost)
       : undefined
-  const hasVerifiedPricing = hasPricing(provider, model)
-  const preferVerifiedPricing =
-    hasVerifiedPricing && VERIFIED_PRICING_PROVIDERS.has(provider.toLowerCase())
 
   // Calculate cost from our pricing data
   const costResult = calculateCost(
@@ -189,19 +209,24 @@ export function parseOpenClawLine(
     },
     {
       suppressMissingPricingWarning: Boolean(
-        providerReportedCost && providerReportedCost > 0
+        providerReportedCost !== undefined
       ),
     }
   )
 
-  // Use provider-reported cost if available, otherwise our calculated cost
-  const cost =
-    !preferVerifiedPricing && providerReportedCost && providerReportedCost > 0
-      ? providerReportedCost
-      : costResult.totalCost
+  // OpenClaw persists the authoritative per-response estimate in
+  // usage.cost.total. Local pricing is only a fallback for older records that
+  // did not persist a cost (including zero-cost/free-tier models).
+  const cost = providerReportedCost ?? costResult.totalCost
   const cacheSavings = costResult.cacheSavings
 
-  const timestamp = entry.timestamp || new Date().toISOString()
+  const timestamp = normalizeTimestamp(
+    entry.timestamp,
+    entry.message?.timestamp
+  )
+  if (!timestamp) {
+    return null
+  }
 
   return {
     sessionId,

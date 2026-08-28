@@ -95,47 +95,19 @@ function formatCurrency(value) {
   return `¥${value.toFixed(4)}`;
 }
 
-function hexToOklch(hex) {
+function normalizeWindowsAccentColor(hex) {
   if (!hex || typeof hex !== 'string') {
     return null;
   }
 
-  const cleanHex = hex.replace('#', '');
-  if (!/^[0-9A-Fa-f]{6}$/.test(cleanHex)) {
+  // Electron returns Windows accent colors as RRGGBBAA. Alpha is not useful
+  // for the semantic theme tokens, so keep only the opaque RGB channels.
+  const cleanHex = hex.replace(/^#/, '');
+  if (!/^[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$/.test(cleanHex)) {
     return null;
   }
 
-  const r = parseInt(cleanHex.substr(0, 2), 16) / 255;
-  const g = parseInt(cleanHex.substr(2, 2), 16) / 255;
-  const b = parseInt(cleanHex.substr(4, 2), 16) / 255;
-
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-
-  let h = 0;
-  let s = 0;
-
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-
-    switch (max) {
-      case r:
-        h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-        break;
-      case g:
-        h = ((b - r) / d + 2) / 6;
-        break;
-      case b:
-        h = ((r - g) / d + 4) / 6;
-        break;
-    }
-  }
-
-  const hDeg = h * 360;
-
-  return `oklch(0.55 0.2 ${hDeg.toFixed(0)})`;
+  return `#${cleanHex.slice(0, 6).toLowerCase()}`;
 }
 
 function getWindowsAccentColor() {
@@ -149,7 +121,7 @@ function getWindowsAccentColor() {
       return null;
     }
 
-    return hexToOklch(accentColorHex);
+    return normalizeWindowsAccentColor(accentColorHex);
   } catch (error) {
     console.error('Failed to get Windows accent color:', error);
     return null;
@@ -423,6 +395,31 @@ function getStartupLaunchArgs() {
     : [];
 }
 
+function getWindowsStartupExecutablePath() {
+  if (!isWindows) {
+    return process.execPath;
+  }
+
+  // electron-builder's portable executable starts the app from a temporary
+  // unpack directory. Keep the outer portable executable in the startup
+  // entry, otherwise the entry points at a path that disappears after exit.
+  const portableExecutablePath = process.env.PORTABLE_EXECUTABLE_FILE
+    || (
+      process.env.PORTABLE_EXECUTABLE_DIR
+      && process.env.PORTABLE_EXECUTABLE_APP_FILENAME
+        ? path.join(
+            process.env.PORTABLE_EXECUTABLE_DIR,
+            process.env.PORTABLE_EXECUTABLE_APP_FILENAME
+          )
+        : null
+    );
+  if (portableExecutablePath && fs.existsSync(portableExecutablePath)) {
+    return path.resolve(portableExecutablePath);
+  }
+
+  return process.execPath;
+}
+
 function normalizeWindowsPathForCompare(value) {
   return path.resolve(String(value || '')).toLowerCase();
 }
@@ -455,7 +452,10 @@ function getWindowsStartupShortcutPath() {
 }
 
 function quoteWindowsCommandArgument(value) {
-  return `"${String(value).replace(/"/g, '\\"')}"`;
+  const escaped = String(value)
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\+)$/g, '$1$1');
+  return `"${escaped}"`;
 }
 
 function getStartupSyncErrorMessage(error) {
@@ -578,7 +578,7 @@ async function hasExpectedWindowsStartupRegistryValue(args) {
   }
 
   const normalizedStdout = stdout.toLowerCase();
-  const normalizedExecPath = process.execPath.toLowerCase();
+  const normalizedExecPath = getWindowsStartupExecutablePath().toLowerCase();
   const normalizedHiddenArg = STARTUP_HIDDEN_ARG.toLowerCase();
 
   return (
@@ -612,7 +612,9 @@ function hasExpectedWindowsStartupShortcut(args) {
   try {
     const shortcut = shell.readShortcutLink(shortcutPath);
     const normalizedTarget = normalizeWindowsPathForCompare(shortcut.target);
-    const normalizedExecPath = normalizeWindowsPathForCompare(process.execPath);
+    const normalizedExecPath = normalizeWindowsPathForCompare(
+      getWindowsStartupExecutablePath()
+    );
     const normalizedShortcutArgs = String(shortcut.args || '').toLowerCase();
     const normalizedHiddenArg = STARTUP_HIDDEN_ARG.toLowerCase();
 
@@ -644,14 +646,15 @@ async function writeWindowsStartupShortcut(openAtLogin, args) {
   }
 
   fs.mkdirSync(path.dirname(shortcutPath), { recursive: true });
+  const executablePath = getWindowsStartupExecutablePath();
 
   const shortcutWritten = shell.writeShortcutLink(shortcutPath, 'replace', {
-    target: process.execPath,
+    target: executablePath,
     args: args.join(' '),
-    cwd: path.dirname(process.execPath),
+    cwd: path.dirname(executablePath),
     description: 'Start Clawalytics after Windows sign-in',
     appUserModelId: APP_ID,
-    icon: process.execPath,
+    icon: executablePath,
     iconIndex: 0,
   });
 
@@ -694,8 +697,8 @@ async function writeWindowsStartupRegistry(openAtLogin, args) {
   );
 
   const command = [
-    quoteWindowsCommandArgument(process.execPath),
-    ...args,
+    quoteWindowsCommandArgument(getWindowsStartupExecutablePath()),
+    ...args.map(quoteWindowsCommandArgument),
   ].join(' ');
 
   await runWindowsRegistryCommand([
@@ -734,7 +737,7 @@ async function syncLaunchOnStartupSettings(strict = false) {
       app.setLoginItemSettings({
         name: STARTUP_REGISTRY_VALUE_NAME,
         openAtLogin,
-        path: process.execPath,
+        path: getWindowsStartupExecutablePath(),
         args,
       });
     } catch (error) {
@@ -749,18 +752,11 @@ async function syncLaunchOnStartupSettings(strict = false) {
       console.warn('Failed to update Windows Run startup registry:', error);
     }
 
-    try {
-      await writeWindowsStartupShortcut(openAtLogin, args);
-    } catch (error) {
-      startupErrors.startupShortcut = error;
-      console.warn('Failed to update Windows Startup folder shortcut:', error);
-    }
-
     let loginItemSettings = { openAtLogin: false };
     try {
       loginItemSettings = app.getLoginItemSettings({
         name: STARTUP_REGISTRY_VALUE_NAME,
-        path: process.execPath,
+        path: getWindowsStartupExecutablePath(),
         args,
       });
     } catch (error) {
@@ -768,8 +764,32 @@ async function syncLaunchOnStartupSettings(strict = false) {
       console.warn('Failed to read Electron login item settings:', error);
     }
 
-    const hasStartupRegistryValue = await hasExpectedWindowsStartupRegistryValue(args);
-    const hasStartupShortcut = hasExpectedWindowsStartupShortcut(args);
+    let hasStartupRegistryValue = await hasExpectedWindowsStartupRegistryValue(args);
+    let hasStartupShortcut = hasExpectedWindowsStartupShortcut(args);
+
+    if (!openAtLogin || loginItemSettings.openAtLogin || hasStartupRegistryValue) {
+      // The registry is the primary mechanism. Remove any shortcut left by an
+      // older version so Windows does not launch the app twice at sign-in.
+      try {
+        await writeWindowsStartupShortcut(false, args);
+      } catch (error) {
+        startupErrors.startupShortcut = error;
+        console.warn('Failed to remove the Windows startup shortcut:', error);
+      }
+      hasStartupShortcut = hasExpectedWindowsStartupShortcut(args);
+    } else {
+      // Use the Startup folder only when the primary mechanism could not be
+      // confirmed. This keeps the fallback useful without creating duplicate
+      // launches when both mechanisms are available.
+      try {
+        await writeWindowsStartupShortcut(true, args);
+      } catch (error) {
+        startupErrors.startupShortcut = error;
+        console.warn('Failed to update Windows startup shortcut:', error);
+      }
+      hasStartupShortcut = hasExpectedWindowsStartupShortcut(args);
+      hasStartupRegistryValue = await hasExpectedWindowsStartupRegistryValue(args);
+    }
 
     if (!openAtLogin) {
       if (loginItemSettings.openAtLogin || hasStartupRegistryValue || hasStartupShortcut) {
@@ -1368,8 +1388,8 @@ async function createMainWindow(options = {}) {
   const preloadPath = getAppAssetPath('electron', 'preload.mjs');
 
   const window = new BrowserWindow({
-    width: 1440,
-    height: 920,
+    width: 1280,
+    height: 720,
     minWidth: 1100,
     minHeight: 720,
     show: false,
@@ -1505,6 +1525,9 @@ if (!app.requestSingleInstanceLock()) {
     loadDesktopPreferences();
     Menu.setApplicationMenu(null);
     createTray();
+    // Repair entries on every launch so updates and portable-app moves do not
+    // leave Windows pointing at an old executable path.
+    await syncLaunchOnStartupSettings();
     scheduleLaunchOnStartupRepair();
 
     ipcMain.handle('get-windows-accent-color', () => {

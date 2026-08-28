@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Coins, DollarSign, Mail, MessageSquare } from 'lucide-react'
 import { getChannelStats } from '@/lib/api'
-import { formatCurrency, formatNumber } from '@/lib/format'
+import { formatNumber } from '@/lib/format'
+import { useCurrency } from '@/context/currency-provider'
 import { useLocale } from '@/context/locale-provider'
 import {
   Card,
@@ -20,6 +21,7 @@ interface ChannelsTabProps {
 
 export function ChannelsTab({ enabled }: ChannelsTabProps) {
   const { text } = useLocale()
+  const { formatCurrency } = useCurrency()
 
   const { data: channelStats, isLoading } = useQuery({
     queryKey: ['channelStats'],

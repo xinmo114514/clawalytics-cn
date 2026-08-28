@@ -4,6 +4,39 @@ export const USD_TO_CNY_RATE = 7
 
 let currentCurrency: Currency = 'CNY'
 
+function normalizeCurrencyValue(value: number, currency: Currency): number {
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+
+  return currency === 'USD' ? value / USD_TO_CNY_RATE : value
+}
+
+function getCompactFractionDigits(value: number): {
+  minimumFractionDigits: number
+  maximumFractionDigits: number
+} {
+  const absoluteValue = Math.abs(value)
+  if (absoluteValue >= 100) {
+    return { minimumFractionDigits: 0, maximumFractionDigits: 0 }
+  }
+  if (absoluteValue >= 10) {
+    return { minimumFractionDigits: 1, maximumFractionDigits: 1 }
+  }
+  if (absoluteValue >= 0.01) {
+    return { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+  }
+  return { minimumFractionDigits: 4, maximumFractionDigits: 4 }
+}
+
+function getSafeFractionDigits(fractionDigits: number): number {
+  return Number.isInteger(fractionDigits) &&
+    fractionDigits >= 0 &&
+    fractionDigits <= 20
+    ? fractionDigits
+    : 4
+}
+
 export function setGlobalCurrency(currency: Currency): void {
   currentCurrency = currency
 }
@@ -14,21 +47,15 @@ export function getGlobalCurrency(): Currency {
 
 export function formatCurrency(value: number, currency?: Currency): string {
   const targetCurrency = currency ?? currentCurrency
+  const normalizedValue = normalizeCurrencyValue(value, targetCurrency)
+  const digits = getCompactFractionDigits(normalizedValue)
 
-  if (targetCurrency === 'USD') {
-    const usdValue = value / USD_TO_CNY_RATE
-    if (usdValue >= 100) return `$${usdValue.toFixed(0)}`
-    if (usdValue >= 10) return `$${usdValue.toFixed(1)}`
-    if (usdValue >= 1) return `$${usdValue.toFixed(2)}`
-    if (usdValue >= 0.01) return `$${usdValue.toFixed(2)}`
-    return `$${usdValue.toFixed(4)}`
-  }
-
-  if (value >= 100) return `¥${value.toFixed(0)}`
-  if (value >= 10) return `¥${value.toFixed(1)}`
-  if (value >= 1) return `¥${value.toFixed(2)}`
-  if (value >= 0.01) return `¥${value.toFixed(2)}`
-  return `¥${value.toFixed(4)}`
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: targetCurrency,
+    currencyDisplay: 'narrowSymbol',
+    ...digits,
+  }).format(normalizedValue)
 }
 
 export function formatCurrencyPrecise(
@@ -37,13 +64,16 @@ export function formatCurrencyPrecise(
   currency?: Currency
 ): string {
   const targetCurrency = currency ?? currentCurrency
+  const digits = getSafeFractionDigits(fractionDigits)
+  const normalizedValue = normalizeCurrencyValue(value, targetCurrency)
 
-  if (targetCurrency === 'USD') {
-    const usdValue = value / USD_TO_CNY_RATE
-    return `$${usdValue.toFixed(fractionDigits)}`
-  }
-
-  return `¥${value.toFixed(fractionDigits)}`
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: targetCurrency,
+    currencyDisplay: 'narrowSymbol',
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(normalizedValue)
 }
 
 export function formatNumber(value: number): string {

@@ -89,8 +89,9 @@ if (initialCheck.ok) {
 
 const isAbiMismatch = initialCheck.output.includes('NODE_MODULE_VERSION');
 const isNativeLoadFailure = initialCheck.output.includes('ERR_DLOPEN_FAILED');
+const isMissingBinding = initialCheck.output.includes('Could not locate the bindings file');
 
-if (!isAbiMismatch && !isNativeLoadFailure) {
+if (!isAbiMismatch && !isNativeLoadFailure && !isMissingBinding) {
   process.stderr.write(initialCheck.output);
   process.exit(1);
 }

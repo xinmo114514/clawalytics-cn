@@ -31,6 +31,39 @@ interface SessionsJsonEntry {
   [key: string]: unknown
 }
 
+const ACTIVE_SESSION_FILE_PATTERN = /^.+\.jsonl$/i
+const ARCHIVED_SESSION_FILE_PATTERN = /^.+\.jsonl\.(?:reset|deleted)\.[^\\/]+$/i
+
+/**
+ * OpenClaw keeps active transcripts as `<id>.jsonl` and rotates old
+ * transcripts to `<id>.jsonl.reset.<timestamp>` or
+ * `<id>.jsonl.deleted.<timestamp>`. Checkpoint files are deliberately not
+ * included because they are snapshots, not additional model conversations.
+ */
+export function isSessionTranscriptFileName(fileName: string): boolean {
+  if (/\.checkpoint\.[^\\/]+\.jsonl$/i.test(fileName)) {
+    return false
+  }
+
+  return (
+    ACTIVE_SESSION_FILE_PATTERN.test(fileName) ||
+    ARCHIVED_SESSION_FILE_PATTERN.test(fileName)
+  )
+}
+
+export function isActiveSessionTranscriptFileName(fileName: string): boolean {
+  return (
+    ACTIVE_SESSION_FILE_PATTERN.test(fileName) &&
+    !/\.checkpoint\.[^\\/]+\.jsonl$/i.test(fileName)
+  )
+}
+
+export function getSessionIdFromFileName(fileName: string): string {
+  return fileName
+    .replace(/\.jsonl\.(?:reset|deleted)\.[^\\/]+$/i, '')
+    .replace(/\.jsonl$/i, '')
+}
+
 /**
  * Load the session index for an agent.
  * sessions.json is a map: { "agent:main:main": { sessionId, updatedAt, ... }, ... }
@@ -146,8 +179,16 @@ export function listSessionFiles(agentPath: string): string[] {
   try {
     const files = fs.readdirSync(sessionsDir)
     return files
-      .filter((file) => file.endsWith('.jsonl'))
+      .filter(isSessionTranscriptFileName)
       .map((file) => path.join(sessionsDir, file))
+      .filter((filePath) => {
+        try {
+          return fs.statSync(filePath).isFile()
+        } catch {
+          return false
+        }
+      })
+      .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
   } catch (error) {
     console.error(`Failed to list session files in ${sessionsDir}:`, error)
     return []

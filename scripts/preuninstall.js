@@ -5,7 +5,7 @@
  * when the user runs `npm uninstall -g clawalytics`.
  */
 
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -59,8 +59,15 @@ function uninstallLinux() {
 // ─────────────────────────────────────────────
 
 function uninstallWindows() {
+  // Removing a task does not terminate the process it started. Stop the
+  // running task before deleting it so npm upgrades do not leave the old
+  // server behind with the listening port occupied.
   try {
-    execSync(`schtasks /delete /tn "${TASK_NAME}" /f 2>nul`, { stdio: 'ignore' });
+    execFileSync('schtasks.exe', ['/end', '/tn', TASK_NAME], { stdio: 'ignore' });
+  } catch {}
+
+  try {
+    execFileSync('schtasks.exe', ['/delete', '/tn', TASK_NAME, '/f'], { stdio: 'ignore' });
     console.log('  Clawalytics service removed (Task Scheduler)');
   } catch {}
 }

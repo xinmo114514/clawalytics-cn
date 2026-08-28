@@ -212,28 +212,41 @@ export function OpenClawSettings() {
       setIsValidating(true)
       resetValidationStatus()
 
-      const resolvedPath = await persistOpenClawPath()
+      const requestedPath = openClawPath.trim()
       const wsl = buildWslPayload()
+      if (!wsl.enabled && !requestedPath) {
+        throw new Error(
+          text(
+            '请输入 OpenClaw 目录路径',
+            'Please enter an OpenClaw directory path'
+          )
+        )
+      }
+
       const result = await reloadOpenClawData({
-        ...(!wsl.enabled ? { openClawPath: resolvedPath } : {}),
+        ...(!wsl.enabled ? { openClawPath: requestedPath } : {}),
         wsl,
       })
 
       if (!wsl.enabled) {
-        setOpenClawPath(result.openClawPath || resolvedPath)
+        setOpenClawPath(result.openClawPath || requestedPath)
       }
       setValidationStatus('valid')
 
       const source = result.details?.source || 'OpenClaw'
       const parsedUsageEntries = result.details?.parsedUsageEntries ?? 0
       const sessionFilesFound = result.details?.sessionFilesFound ?? 0
+      const databaseSessionsFound = result.details?.databaseSessionsFound ?? 0
       const message = text(
         `${source} 数据已验证，已解析 ${result.sessionCount || 0} 个会话和 ${parsedUsageEntries} 条用量记录。`,
         `${source} data verified. Parsed ${result.sessionCount || 0} sessions and ${parsedUsageEntries} usage records.`
       )
 
       setLastValidationMessage(
-        `${message} ${text('会话文件：', 'Session files:')} ${sessionFilesFound}`
+        `${message} ${text('JSONL 会话文件：', 'JSONL session files:')} ${sessionFilesFound}` +
+          (databaseSessionsFound > 0
+            ? ` ${text('SQLite 会话：', 'SQLite sessions:')} ${databaseSessionsFound}`
+            : '')
       )
       toast.success(message)
 
@@ -295,9 +308,9 @@ export function OpenClawSettings() {
 
   const statusIcon =
     validationStatus === 'idle' ? null : validationStatus === 'valid' ? (
-      <Check className='h-4 w-4 text-success' />
+      <Check className='h-4 w-4 text-success' aria-hidden='true' />
     ) : (
-      <X className='h-4 w-4 text-destructive' />
+      <X className='h-4 w-4 text-destructive' aria-hidden='true' />
     )
 
   return (
@@ -398,11 +411,15 @@ export function OpenClawSettings() {
               <div className='flex flex-col gap-2 md:flex-row'>
                 <div className='relative flex-1'>
                   <Input
+                    id='openclaw-windows-path'
+                    name='openClawPath'
                     value={openClawPath}
                     onChange={(event) => {
                       updatePathLocally(event.target.value)
                     }}
                     placeholder={WINDOWS_PATH_PLACEHOLDER}
+                    autoComplete='off'
+                    spellCheck={false}
                     disabled={isLoading}
                     className='pr-10'
                   />
@@ -445,10 +462,15 @@ export function OpenClawSettings() {
           ) : (
             <div className='grid gap-3 md:grid-cols-2'>
               <div className='space-y-2'>
-                <p className='text-sm font-medium'>
+                <label
+                  htmlFor='openclaw-wsl-distro'
+                  className='text-sm font-medium'
+                >
                   {text('发行版', 'Distribution')}
-                </p>
+                </label>
                 <Input
+                  id='openclaw-wsl-distro'
+                  name='wslDistro'
                   value={wslDistro}
                   onChange={(event) => {
                     updateWslConfigLocally((current) => ({
@@ -457,18 +479,25 @@ export function OpenClawSettings() {
                     }))
                   }}
                   placeholder='Ubuntu'
+                  autoComplete='off'
+                  spellCheck={false}
                   disabled={isLoading}
                 />
               </div>
               <div className='space-y-2'>
-                <p className='text-sm font-medium'>
+                <label
+                  htmlFor='openclaw-wsl-path'
+                  className='text-sm font-medium'
+                >
                   {text(
                     'Linux 内的 OpenClaw 路径',
                     'OpenClaw path inside Linux'
                   )}
-                </p>
+                </label>
                 <div className='relative'>
                   <Input
+                    id='openclaw-wsl-path'
+                    name='wslOpenClawPath'
                     value={wslOpenClawPath}
                     onChange={(event) => {
                       updateWslConfigLocally((current) => ({
@@ -477,6 +506,8 @@ export function OpenClawSettings() {
                       }))
                     }}
                     placeholder={WSL_PATH_PLACEHOLDER}
+                    autoComplete='off'
+                    spellCheck={false}
                     disabled={isLoading}
                     className='pr-10'
                   />
@@ -514,6 +545,9 @@ export function OpenClawSettings() {
             }}
             disabled={isLoading || isValidating || !canSubmit}
           >
+            {isValidating && (
+              <RefreshCw className='mr-2 h-4 w-4 animate-spin' />
+            )}
             {text('保存路径', 'Save Path')}
           </Button>
           <Button
@@ -533,7 +567,11 @@ export function OpenClawSettings() {
         </div>
 
         {lastValidationMessage && (
-          <p className='text-xs text-muted-foreground'>
+          <p
+            className='text-xs text-muted-foreground'
+            role='status'
+            aria-live='polite'
+          >
             {lastValidationMessage}
           </p>
         )}

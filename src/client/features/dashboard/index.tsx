@@ -14,6 +14,7 @@ import {
   getEnhancedStats,
   getModelUsage,
   getTokenBreakdown,
+  getTokenSummary,
   type BudgetPeriod,
 } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
@@ -40,6 +41,7 @@ import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { DailyCostChart } from './components/daily-cost-chart'
+import { TokenUsageCard } from './components/token-usage-card'
 import { AgentsTab } from './tabs/agents-tab'
 import { ChannelsTab } from './tabs/channels-tab'
 import { ModelsTab } from './tabs/models-tab'
@@ -95,6 +97,18 @@ export function Dashboard() {
     refetchIntervalInBackground: false,
   })
 
+  const {
+    data: tokenSummary,
+    isLoading: tokenSummaryLoading,
+    isError: tokenSummaryError,
+    refetch: refetchTokenSummary,
+  } = useQuery({
+    queryKey: ['tokenSummary'],
+    queryFn: getTokenSummary,
+    refetchInterval: 25000,
+    refetchIntervalInBackground: false,
+  })
+
   const { data: budgetStatus } = useQuery({
     queryKey: ['budgetStatus'],
     queryFn: getBudgetStatus,
@@ -125,39 +139,48 @@ export function Dashboard() {
       </Header>
 
       <Main>
-        <div className='mb-6 flex items-center justify-between'>
-          <div>
-            <h1 className='text-3xl font-bold tracking-tight'>
+        <div className='mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between'>
+          <div className='space-y-2'>
+            <div className='flex items-center gap-2 text-xs font-medium tracking-[0.16em] text-muted-foreground'>
+              <span className='h-1.5 w-1.5 rounded-full bg-primary' />
+              {text('成本控制台', 'COST CONTROL CENTER')}
+            </div>
+            <h1 className='text-3xl font-bold tracking-tight sm:text-4xl'>
               {text('概览', 'Overview')}
             </h1>
-            <p className='text-muted-foreground'>
+            <p className='mt-1 max-w-xl text-sm text-muted-foreground'>
               {text(
                 '一眼掌握你的成本分析概况',
                 'Your cost analytics at a glance'
               )}
             </p>
           </div>
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() =>
-              window.open('/api/export/costs?format=csv', '_blank')
-            }
-          >
-            <Download className='mr-2 h-4 w-4' />
-            {text('导出 CSV', 'Export CSV')}
-          </Button>
+          <div className='flex items-center gap-3'>
+            <div className='hidden items-center gap-2 text-xs font-medium text-muted-foreground sm:flex'>
+              <span className='h-2 w-2 rounded-full bg-success' />
+              {text('实时同步', 'Live sync')}
+            </div>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() =>
+                window.open('/api/export/costs?format=csv', '_blank')
+              }
+            >
+              <Download className='mr-2 h-4 w-4' />
+              {text('导出 CSV', 'Export CSV')}
+            </Button>
+          </div>
         </div>
 
         <div className='mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
-          <Card className='relative overflow-hidden'>
-            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <Card className='relative overflow-hidden border-border/70 bg-card/90 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-chart-1/70'>
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('总成本', 'Total Cost')}
               </CardTitle>
-              <div className='rounded-full bg-primary/10 p-2'>
-                <DollarSign className='h-4 w-4 text-primary' />
+              <div className='rounded-lg border border-chart-1/15 bg-chart-1/10 p-2.5'>
+                <DollarSign className='h-4 w-4 text-chart-1' />
               </div>
             </CardHeader>
             <CardContent>
@@ -168,7 +191,7 @@ export function Dashboard() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-primary'>
+                  <div className='text-2xl font-bold text-chart-1'>
                     {formatCurrency(stats?.totalCost ?? 0)}
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -180,14 +203,13 @@ export function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className='relative overflow-hidden'>
-            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <Card className='relative overflow-hidden border-border/70 bg-card/90 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-chart-2/70'>
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('总 Token 数', 'Total Tokens')}
               </CardTitle>
-              <div className='rounded-full bg-primary/10 p-2'>
-                <Coins className='h-4 w-4 text-primary' />
+              <div className='rounded-lg border border-chart-2/15 bg-chart-2/10 p-2.5'>
+                <Coins className='h-4 w-4 text-chart-2' />
               </div>
             </CardHeader>
             <CardContent>
@@ -200,9 +222,12 @@ export function Dashboard() {
                 <>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div className='cursor-help text-2xl font-bold text-primary'>
+                      <button
+                        type='button'
+                        className='cursor-help rounded-md text-left text-2xl font-bold text-chart-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+                      >
                         {formatNumber(totalTokens)}
-                      </div>
+                      </button>
                     </TooltipTrigger>
                     <TooltipContent side='bottom' className='text-sm'>
                       <div className='space-y-1'>
@@ -252,14 +277,13 @@ export function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className='relative overflow-hidden'>
-            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <Card className='relative overflow-hidden border-border/70 bg-card/90 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-success/70'>
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('缓存节省', 'Cache Savings')}
               </CardTitle>
-              <div className='rounded-full bg-primary/10 p-2'>
-                <Database className='h-4 w-4 text-primary' />
+              <div className='rounded-lg border border-success/15 bg-success/10 p-2.5'>
+                <Database className='h-4 w-4 text-success' />
               </div>
             </CardHeader>
             <CardContent>
@@ -270,7 +294,7 @@ export function Dashboard() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-primary'>
+                  <div className='text-2xl font-bold text-success'>
                     {formatCurrency(stats?.cacheSavings ?? 0)}
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -281,14 +305,13 @@ export function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className='relative overflow-hidden'>
-            <div className='absolute top-0 right-0 h-24 w-24 rounded-bl-full bg-gradient-to-bl from-primary/10 to-transparent' />
+          <Card className='relative overflow-hidden border-border/70 bg-card/90 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-info/70'>
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
               <CardTitle className='text-sm font-medium'>
                 {text('活跃会话', 'Active Sessions')}
               </CardTitle>
-              <div className='rounded-full bg-primary/10 p-2'>
-                <Activity className='h-4 w-4 text-primary' />
+              <div className='rounded-lg border border-info/15 bg-info/10 p-2.5'>
+                <Activity className='h-4 w-4 text-info' />
               </div>
             </CardHeader>
             <CardContent>
@@ -299,7 +322,7 @@ export function Dashboard() {
                 </>
               ) : (
                 <>
-                  <div className='text-2xl font-bold text-primary'>
+                  <div className='text-2xl font-bold text-info'>
                     {stats?.activeSessionsThisMonth ?? 0}
                   </div>
                   <p className='text-xs text-muted-foreground'>
@@ -337,24 +360,50 @@ export function Dashboard() {
             </div>
           )}
 
-        <Card className='mb-6'>
-          <CardHeader>
-            <CardTitle className='flex items-center gap-2'>
-              <TrendingUp className='h-5 w-5' />
-              {text('每日成本', 'Daily Cost')}
-            </CardTitle>
-            <CardDescription>
-              {text('最近 30 天的花费趋势', 'Cost trend over the last 30 days')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className='ps-2'>
-            {dailyCostsLoading ? (
-              <Skeleton className='h-[300px] w-full' />
-            ) : (
-              <DailyCostChart data={dailyCosts ?? []} />
-            )}
-          </CardContent>
-        </Card>
+        <div className='mb-6 grid gap-6 lg:grid-cols-2'>
+          <Card className='min-w-0'>
+            <CardHeader className='gap-3 border-b bg-muted/10'>
+              <CardTitle className='flex items-center gap-2'>
+                <TrendingUp className='h-5 w-5' />
+                {text('每日成本', 'Daily Cost')}
+              </CardTitle>
+              <CardDescription>
+                {text(
+                  '最近 30 天的花费趋势',
+                  'Cost trend over the last 30 days'
+                )}
+              </CardDescription>
+              <div className='mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground'>
+                <span className='flex items-center gap-2'>
+                  <span className='h-2 w-2 rounded-full bg-chart-1' />
+                  {text('成本', 'Cost')}
+                </span>
+                <span className='flex items-center gap-2'>
+                  <span className='h-2 w-2 rounded-full bg-chart-2' />
+                  {text('缓存节省', 'Cache savings')}
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className='ps-2 pe-4'>
+              {dailyCostsLoading ? (
+                <Skeleton className='h-[300px] w-full' />
+              ) : (
+                <DailyCostChart data={dailyCosts ?? []} />
+              )}
+            </CardContent>
+          </Card>
+
+          <TokenUsageCard
+            data={dailyCosts ?? []}
+            summary={tokenSummary}
+            chartLoading={dailyCostsLoading}
+            summaryLoading={tokenSummaryLoading}
+            summaryError={tokenSummaryError}
+            onRetry={() => {
+              void refetchTokenSummary()
+            }}
+          />
+        </div>
 
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList>

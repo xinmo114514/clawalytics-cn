@@ -1,6 +1,7 @@
 import path from 'path'
 import chokidar, { type FSWatcher } from 'chokidar'
 import fs from 'fs'
+import JSON5 from 'json5'
 
 function shouldUsePollingWatcher(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, '/').toLowerCase()
@@ -17,7 +18,73 @@ export interface OpenClawAgent {
 }
 
 export interface OpenClawConfig {
-  agents: OpenClawAgent[]
+  agents?:
+    | OpenClawAgent[]
+    | {
+        list?: OpenClawAgent[]
+        entries?: Record<string, Omit<OpenClawAgent, 'id'>>
+        defaults?: { workspace?: string }
+      }
+}
+
+function normalizeAgentId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const id = value.trim()
+  if (!id || id === '.' || id === '..' || /[\\/]/.test(id)) {
+    return undefined
+  }
+  return id
+}
+
+function normalizeWorkspace(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const workspace = value.trim()
+  return workspace || undefined
+}
+
+function normalizeAgents(config: OpenClawConfig): OpenClawAgent[] {
+  if (Array.isArray(config.agents)) {
+    return config.agents
+      .map((agent) => ({ agent, id: normalizeAgentId(agent?.id) }))
+      .filter((entry): entry is { agent: OpenClawAgent; id: string } =>
+        Boolean(entry.id)
+      )
+      .map(({ agent, id }) => ({
+        id,
+        name:
+          typeof agent.name === 'string' && agent.name.trim()
+            ? agent.name.trim()
+            : id,
+        workspace: normalizeWorkspace(agent.workspace),
+      }))
+  }
+
+  const agentConfig = config.agents
+  if (!agentConfig || Array.isArray(agentConfig)) {
+    return []
+  }
+
+  const defaultsWorkspace = normalizeWorkspace(agentConfig.defaults?.workspace)
+  const configured = Array.isArray(agentConfig.list)
+    ? agentConfig.list
+    : Object.entries(agentConfig.entries ?? {}).map(([id, agent]) => ({
+        id,
+        ...agent,
+      }))
+
+  return configured
+    .map((agent) => ({ agent, id: normalizeAgentId(agent?.id) }))
+    .filter((entry): entry is { agent: OpenClawAgent; id: string } =>
+      Boolean(entry.id)
+    )
+    .map(({ agent, id }) => ({
+      id,
+      name:
+        typeof agent.name === 'string' && agent.name.trim()
+          ? agent.name.trim()
+          : id,
+      workspace: normalizeWorkspace(agent.workspace) ?? defaultsWorkspace,
+    }))
 }
 
 /**
@@ -29,17 +96,10 @@ export function loadAgents(openClawPath: string): OpenClawAgent[] {
   if (fs.existsSync(configPath)) {
     try {
       const content = fs.readFileSync(configPath, 'utf-8')
-      const config = JSON.parse(content) as OpenClawConfig
-      if (
-        config.agents &&
-        Array.isArray(config.agents) &&
-        config.agents.length > 0
-      ) {
-        return config.agents.map((agent) => ({
-          id: agent.id,
-          name: agent.name,
-          workspace: agent.workspace,
-        }))
+      const config = JSON5.parse(content) as OpenClawConfig
+      const agents = normalizeAgents(config)
+      if (agents.length > 0) {
+        return agents
       }
     } catch {
       // Fall through to filesystem discovery
@@ -67,12 +127,18 @@ export function discoverAgents(openClawPath: string): OpenClawAgent[] {
     for (const entry of entries) {
       if (!entry.isDirectory()) continue
 
-      const sessionsDir = path.join(agentsDir, entry.name, 'sessions')
-      if (fs.existsSync(sessionsDir)) {
+      const agentPath = path.join(agentsDir, entry.name)
+      const sessionsDir = path.join(agentPath, 'sessions')
+      const databasePath = path.join(
+        agentPath,
+        'agent',
+        'openclaw-agent.sqlite'
+      )
+      if (fs.existsSync(sessionsDir) || fs.existsSync(databasePath)) {
         agents.push({
           id: entry.name,
           name: entry.name,
-          workspace: path.join(agentsDir, entry.name),
+          workspace: agentPath,
         })
       }
     }

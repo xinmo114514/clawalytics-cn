@@ -89,6 +89,7 @@ function handleMessage(
       queryClient.invalidateQueries({ queryKey: ['dailyCosts'] })
       queryClient.invalidateQueries({ queryKey: ['modelUsage'] })
       queryClient.invalidateQueries({ queryKey: ['tokenBreakdown'] })
+      queryClient.invalidateQueries({ queryKey: ['tokenSummary'] })
       queryClient.invalidateQueries({ queryKey: ['budgetStatus'] })
       queryClient.invalidateQueries({ queryKey: ['sessionStats'] })
       queryClient.invalidateQueries({ queryKey: ['projectBreakdown'] })

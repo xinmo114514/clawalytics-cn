@@ -5,7 +5,8 @@ import os from 'os'
 
 const WSL_COMMAND_TIMEOUT_MS = 4000
 const WSL_CACHE_TTL_MS = 30000
-const WSL_UNC_PATTERN = /^\\\\(?:wsl\$|wsl\.localhost)\\([^\\/]+)([\\/].*)?$/i
+const WSL_UNC_PATTERN =
+  /^(?:\\\\|\/\/)(?:wsl\$|wsl\.localhost)[\\/]([^\\/]+)([\\/].*)?$/i
 
 export const DEFAULT_WSL_OPENCLAW_PATH = '~/.openclaw'
 

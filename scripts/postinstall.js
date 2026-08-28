@@ -9,7 +9,7 @@
  * Windows: Task Scheduler
  */
 
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -25,6 +25,7 @@ const CONFIG_DIR = path.join(HOME, '.clawalytics');
 const LOG_FILE = path.join(CONFIG_DIR, 'clawalytics.log');
 const NODE_PATH = process.execPath;
 const SERVER_PATH = path.resolve(__dirname, '../dist/server/index.js');
+const START_SCRIPT_PATH = path.resolve(__dirname, 'start-production.mjs');
 const PORT = '9174';
 
 // Ensure config dir exists (needed for log file paths)
@@ -112,6 +113,13 @@ function installLinux() {
     fs.mkdirSync(serviceDir, { recursive: true });
   }
 
+  // Reloading an existing unit does not restart the process that was started
+  // from the previous package. Stop it before replacing the unit file so an
+  // upgrade cannot leave the old server holding port 9174.
+  try {
+    execFileSync('systemctl', ['--user', 'stop', 'clawalytics'], { stdio: 'ignore' });
+  } catch {}
+
   const serviceContent = `[Unit]
 Description=Clawalytics - AI Cost Analytics Dashboard
 After=network.target
@@ -143,21 +151,36 @@ WantedBy=default.target
 // ─────────────────────────────────────────────
 
 function installWindows() {
-  // Delete existing task if present (ignore errors)
+  // Deleting a scheduled task does not stop a process that it already
+  // launched. End it first or the replacement server will fail to bind to
+  // port 9174 during an upgrade.
   try {
-    execSync(`schtasks /delete /tn "${TASK_NAME}" /f 2>nul`, { stdio: 'ignore' });
+    execFileSync('schtasks.exe', ['/end', '/tn', TASK_NAME], { stdio: 'ignore' });
   } catch {}
 
-  const cmd = `schtasks /create /tn "${TASK_NAME}" /tr "\\"${NODE_PATH}\\" \\"${SERVER_PATH}\\"" /sc onlogon /rl limited /f`;
-  execSync(cmd);
+  // /f replaces the task definition without creating a window where the
+  // task is missing if the package update is interrupted.
+  const command = [NODE_PATH, START_SCRIPT_PATH].map(quoteWindowsArgument).join(' ');
+  execFileSync(
+    'schtasks.exe',
+    ['/create', '/tn', TASK_NAME, '/tr', command, '/sc', 'onlogon', '/rl', 'limited', '/f'],
+    { stdio: 'inherit' }
+  );
 
   // Also start it right now
   try {
-    execSync(`schtasks /run /tn "${TASK_NAME}"`, { stdio: 'ignore' });
+    execFileSync('schtasks.exe', ['/run', '/tn', TASK_NAME], { stdio: 'ignore' });
   } catch {}
 
   console.log(`  Clawalytics service installed (Task Scheduler)`);
   console.log(`  Dashboard: http://localhost:${PORT}`);
+}
+
+function quoteWindowsArgument(value) {
+  const escaped = String(value)
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\+)$/g, '$1$1');
+  return `"${escaped}"`;
 }
 
 // ─────────────────────────────────────────────

@@ -1,7 +1,8 @@
 import path from 'path'
 import fs from 'fs'
+import { readOpenClawAgentDatabase } from './agent-database.js'
 import { loadAgents } from './agent-loader.js'
-import { listSessionFiles } from './session-index.js'
+import { getSessionIdFromFileName, listSessionFiles } from './session-index.js'
 import { parseOpenClawLine } from './session-parser.js'
 
 const MAX_SAMPLE_FILES = 10
@@ -18,6 +19,7 @@ export interface OpenClawDataValidation {
   hasAgentsDirectory: boolean
   agentsFound: number
   sessionFilesFound: number
+  databaseSessionsFound: number
   sampledLines: number
   parsedUsageEntries: number
   formatStatus: OpenClawFormatStatus
@@ -83,7 +85,10 @@ function assertReadableDirectory(directoryPath: string): void {
   }
 }
 
-function countParsedUsageEntries(files: string[]): {
+function countParsedUsageEntries(
+  files: string[],
+  databaseSessionKeys: Set<string>
+): {
   sampledLines: number
   parsedUsageEntries: number
 } {
@@ -98,21 +103,25 @@ function countParsedUsageEntries(files: string[]): {
       continue
     }
 
-    const sessionId = path.basename(filePath, '.jsonl')
     const agentId = path.basename(path.dirname(path.dirname(filePath)))
+    const sessionId = getSessionIdFromFileName(path.basename(filePath))
+    if (databaseSessionKeys.has(`${agentId}:${sessionId}`)) {
+      continue
+    }
 
+    let sampledLinesInFile = 0
     for (const line of content.split('\n')) {
+      if (sampledLinesInFile >= MAX_SAMPLE_LINES_PER_FILE) {
+        break
+      }
       if (!line.trim()) {
         continue
       }
 
       sampledLines++
+      sampledLinesInFile++
       if (parseOpenClawLine(line, sessionId, agentId)) {
         parsedUsageEntries++
-      }
-
-      if (sampledLines >= MAX_SAMPLE_FILES * MAX_SAMPLE_LINES_PER_FILE) {
-        return { sampledLines, parsedUsageEntries }
       }
     }
   }
@@ -145,6 +154,14 @@ export function validateOpenClawDataSource(
     const agentPath = path.join(rootPath, 'agents', agent.id)
     return listSessionFiles(agentPath)
   })
+  const databaseResults = agents.map((agent) => {
+    const agentPath = path.join(rootPath, 'agents', agent.id)
+    return readOpenClawAgentDatabase(agentPath, agent.id)
+  })
+  const databaseSessionsFound = databaseResults.reduce(
+    (total, result) => total + result.sessions.length,
+    0
+  )
 
   if (hasAgentsDirectory && agents.length === 0) {
     warnings.push(
@@ -152,22 +169,56 @@ export function validateOpenClawDataSource(
     )
   }
 
-  if (sessionFiles.length === 0) {
-    warnings.push('No OpenClaw session JSONL files were found yet.')
+  if (sessionFiles.length === 0 && databaseSessionsFound === 0) {
+    warnings.push(
+      'No OpenClaw session transcripts were found yet (JSONL or agent SQLite).'
+    )
   }
 
-  const { sampledLines, parsedUsageEntries } =
-    countParsedUsageEntries(sessionFiles)
-  if (sessionFiles.length > 0 && parsedUsageEntries === 0) {
+  for (const result of databaseResults) {
+    if (result.warning) {
+      warnings.push(result.warning)
+    }
+  }
+
+  const parsedDatabaseUsageEntries = databaseResults.reduce(
+    (total, result) =>
+      total +
+      result.sessions.reduce(
+        (count, session) => count + session.requests.length,
+        0
+      ),
+    0
+  )
+  const databaseSessionKeys = new Set<string>()
+  databaseResults.forEach((result, index) => {
+    const agent = agents[index]
+    if (!agent) return
+    for (const session of result.sessions) {
+      if (session.requests.length > 0) {
+        databaseSessionKeys.add(`${agent.id}:${session.id}`)
+      }
+    }
+  })
+  const {
+    sampledLines: effectiveSampledLines,
+    parsedUsageEntries: parsedJsonlUsageEntries,
+  } = countParsedUsageEntries(sessionFiles, databaseSessionKeys)
+  const parsedUsageEntries =
+    parsedJsonlUsageEntries + parsedDatabaseUsageEntries
+  if (
+    (sessionFiles.length > 0 || databaseSessionsFound > 0) &&
+    parsedUsageEntries === 0
+  ) {
     warnings.push(
-      'Session files are readable, but no assistant usage records were parsed from the sample.'
+      'OpenClaw transcripts are readable, but no assistant usage records were parsed.'
     )
   }
 
   const formatStatus: OpenClawFormatStatus =
     parsedUsageEntries > 0
       ? 'parsed'
-      : sessionFiles.length === 0
+      : sessionFiles.length === 0 && databaseSessionsFound === 0
         ? 'no-session-files'
         : 'no-usage-records'
 
@@ -177,7 +228,8 @@ export function validateOpenClawDataSource(
     hasAgentsDirectory,
     agentsFound: agents.length,
     sessionFilesFound: sessionFiles.length,
-    sampledLines,
+    databaseSessionsFound,
+    sampledLines: effectiveSampledLines,
     parsedUsageEntries,
     formatStatus,
     warnings,

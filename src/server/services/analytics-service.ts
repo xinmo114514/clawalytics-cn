@@ -20,6 +20,8 @@ import type {
   Stats,
   EnhancedStats,
   TokenBreakdown,
+  TokenPeriodSummary,
+  TokenSummary,
   PeriodSummary,
   CostSummary,
   CacheSavingsDetail,
@@ -34,11 +36,18 @@ import type {
   EnhancedSessionsOptions,
 } from '../db/queries.js'
 import {
+  getOpenClawAgentDatabasePath,
+  readOpenClawAgentDatabase,
+} from '../parser/openclaw/agent-database.js'
+import {
   loadAgents,
   watchAgentConfig,
   type OpenClawAgent,
 } from '../parser/openclaw/agent-loader.js'
 import {
+  getSessionIdFromFileName,
+  isActiveSessionTranscriptFileName,
+  isSessionTranscriptFileName,
   listSessionFiles,
   loadSessionIndex,
   watchSessionIndex,
@@ -65,6 +74,8 @@ export type {
   Stats,
   EnhancedStats,
   TokenBreakdown,
+  TokenPeriodSummary,
+  TokenSummary,
   PeriodSummary,
   CostSummary,
   CacheSavingsDetail,
@@ -218,6 +229,11 @@ class AnalyticsService {
   private budgetCheckTimeout: ReturnType<typeof setTimeout> | null = null
   private backgroundRefreshTimer: ReturnType<typeof setTimeout> | null = null
   private backgroundRefreshPromise: Promise<void> | null = null
+  private queuedBackgroundRefresh: {
+    openClawPath: string
+    agents: OpenClawAgent[]
+    generation: number
+  } | null = null
   private cacheSaveTimer: ReturnType<typeof setTimeout> | null = null
   private pendingToolCalls = new Map<string, PendingToolCall>()
   private toolCleanupInterval: ReturnType<typeof setInterval> | null = null
@@ -272,10 +288,25 @@ class AnalyticsService {
 
     // Watch agent config
     const configWatcher = watchAgentConfig(agentConfigPath, (updatedAgents) => {
+      const activeAgentIds = new Set(updatedAgents.map((agent) => agent.id))
+      for (const [sessionId, session] of this.sessions) {
+        if (!activeAgentIds.has(session.agentId)) {
+          this.sessions.delete(sessionId)
+          this.sessionFileKeys.delete(sessionId)
+        }
+      }
+      for (const [cacheKey, entry] of this.sessionCache) {
+        if (!activeAgentIds.has(entry.agentId)) {
+          this.sessionCache.delete(cacheKey)
+        }
+      }
+      this.agents.clear()
       for (const agent of updatedAgents) {
         this.agents.set(agent.id, agent)
         this.loadCachedAgentSessions(agentConfigPath, agent)
       }
+      this.markDirty()
+      this.scheduleSessionCacheSave()
       this.scheduleBackgroundSessionRefresh(
         agentConfigPath,
         updatedAgents,
@@ -321,6 +352,7 @@ class AnalyticsService {
     this.sessionCache.clear()
     this.sessionFileKeys.clear()
     this.pendingToolCalls.clear()
+    this.queuedBackgroundRefresh = null
     this.activeOpenClawPath = ''
     this.dirty = true
     this.initialized = false
@@ -343,9 +375,27 @@ class AnalyticsService {
     }
 
     let restored = 0
+    const preferredCacheKeys = new Set(
+      this.getPreferredSessionFiles(
+        [...this.sessionCache.values()]
+          .filter((entry) => entry.agentId === agent.id)
+          .map((entry) => entry.filePath)
+      ).map((filePath) => this.getFileCacheKey(filePath))
+    )
 
     for (const [cacheKey, entry] of this.sessionCache) {
       if (entry.agentId !== agent.id || this.sessions.has(entry.sessionId)) {
+        continue
+      }
+      if (!preferredCacheKeys.has(cacheKey)) {
+        continue
+      }
+
+      const stat = this.safeStat(entry.filePath)
+      if (
+        !stat ||
+        !this.isCacheEntryFresh(entry, entry.sessionId, agent.id, stat)
+      ) {
         continue
       }
 
@@ -362,6 +412,11 @@ class AnalyticsService {
       restored++
     }
 
+    // OpenClaw 2026.7+ stores canonical sessions/transcripts in SQLite.
+    // Load it before the background refresh so the first response is already
+    // based on the authoritative source.
+    this.loadAgentDatabaseSessions(agentPath, agent)
+
     if (restored > 0) {
       this.markDirty()
     }
@@ -370,6 +425,7 @@ class AnalyticsService {
     const sessionWatcher = watchSessionIndex(
       agentPath,
       (session: SessionMetadata) => {
+        if (!this.agents.has(agent.id)) return
         if (this.sessions.has(session.id)) return
 
         const logPath = path.join(agentPath, 'sessions', `${session.id}.jsonl`)
@@ -396,6 +452,188 @@ class AnalyticsService {
       agent.id,
       agent.workspace || agentPath
     )
+    this.watchAgentDatabase(agentPath, agent.id)
+  }
+
+  private getPreferredSessionFiles(filePaths: string[]): string[] {
+    const filesBySession = new Map<string, string[]>()
+
+    for (const filePath of filePaths) {
+      const fileName = path.basename(filePath)
+      const sessionId = getSessionIdFromFileName(fileName)
+      if (!sessionId || !isSessionTranscriptFileName(fileName)) continue
+
+      const files = filesBySession.get(sessionId) ?? []
+      files.push(filePath)
+      filesBySession.set(sessionId, files)
+    }
+
+    const preferred: string[] = []
+    for (const files of filesBySession.values()) {
+      const activeFiles = files.filter((filePath) =>
+        isActiveSessionTranscriptFileName(path.basename(filePath))
+      )
+      const candidates = activeFiles.length > 0 ? activeFiles : files
+      const selected = [...candidates].sort((left, right) => {
+        const leftMtime = this.safeStat(left)?.mtimeMs ?? 0
+        const rightMtime = this.safeStat(right)?.mtimeMs ?? 0
+        return rightMtime - leftMtime || right.localeCompare(left)
+      })[0]
+      if (selected) preferred.push(selected)
+    }
+
+    return preferred.sort((left, right) =>
+      left < right ? -1 : left > right ? 1 : 0
+    )
+  }
+
+  private isCanonicalDatabaseSession(
+    agentPath: string,
+    sessionId: string
+  ): boolean {
+    const sourceKey = this.sessionFileKeys.get(sessionId)
+    return Boolean(
+      sourceKey?.startsWith(
+        `${this.getFileCacheKey(getOpenClawAgentDatabasePath(agentPath))}#`
+      )
+    )
+  }
+
+  private getDatabaseSessionKey(
+    databasePath: string,
+    sessionId: string
+  ): string {
+    return `${this.getFileCacheKey(databasePath)}#${sessionId}`
+  }
+
+  private loadAgentDatabaseSessions(
+    agentPath: string,
+    agent: OpenClawAgent
+  ): Set<string> {
+    const databaseResult = readOpenClawAgentDatabase(agentPath, agent.id)
+    const databasePath = databaseResult.databasePath
+    const sourcePrefix = `${this.getFileCacheKey(databasePath)}#`
+    const sessionIds = new Set<string>()
+
+    if (databaseResult.warning) {
+      if (!isProduction) {
+        console.warn(databaseResult.warning)
+      }
+      for (const [sessionId, sourceKey] of this.sessionFileKeys) {
+        if (sourceKey.startsWith(sourcePrefix)) {
+          sessionIds.add(sessionId)
+        }
+      }
+      return sessionIds
+    }
+
+    const legacySessionIds = new Set(
+      listSessionFiles(agentPath).map((filePath) =>
+        getSessionIdFromFileName(path.basename(filePath))
+      )
+    )
+
+    for (const databaseSession of databaseResult.sessions) {
+      const fallbackTimestamp =
+        databaseSession.startedAt ||
+        databaseSession.createdAt ||
+        databaseSession.lastActivity ||
+        '1970-01-01T00:00:00.000Z'
+      const session: SessionData = {
+        id: databaseSession.id,
+        agentId: agent.id,
+        projectPath: agent.workspace || agentPath,
+        startedAt: databaseSession.startedAt || fallbackTimestamp,
+        lastActivity: databaseSession.lastActivity || fallbackTimestamp,
+        channel: databaseSession.channel,
+        requests: databaseSession.requests.map((result) => ({
+          timestamp: result.timestamp,
+          provider: result.provider,
+          model: result.model,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          cacheCreationTokens: result.cacheCreationTokens,
+          cacheReadTokens: result.cacheReadTokens,
+          cost: result.cost,
+          cacheSavings: result.cacheSavings,
+          messageType: result.messageType,
+        })),
+        totalCost: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        modelsUsed: new Set(),
+        toolCalls: [],
+      }
+
+      for (const request of session.requests) {
+        session.totalCost += request.cost
+        session.totalInputTokens += request.inputTokens
+        session.totalOutputTokens += request.outputTokens
+        if (request.model && request.model !== 'unknown') {
+          session.modelsUsed.add(request.model)
+        }
+      }
+
+      const previous = this.sessions.get(session.id)
+      if (
+        databaseSession.requests.length === 0 &&
+        legacySessionIds.has(session.id)
+      ) {
+        // A partially migrated/older database may contain session metadata
+        // while its legacy transcript still owns the actual usage records.
+        // Let the JSONL fallback handle that file instead of hiding it.
+        continue
+      }
+      this.sessions.set(session.id, session)
+      this.sessionFileKeys.set(
+        session.id,
+        this.getDatabaseSessionKey(databasePath, session.id)
+      )
+      sessionIds.add(session.id)
+
+      if (
+        previous &&
+        (previous.requests.length !== session.requests.length ||
+          previous.totalCost !== session.totalCost ||
+          previous.lastActivity !== session.lastActivity)
+      ) {
+        this.markDirty()
+      }
+    }
+
+    return sessionIds
+  }
+
+  private watchAgentDatabase(agentPath: string, agentId: string): void {
+    const databasePath = getOpenClawAgentDatabasePath(agentPath)
+
+    const watcher = chokidar.watch([databasePath, `${databasePath}-wal`], {
+      persistent: true,
+      ignoreInitial: true,
+      usePolling: this.shouldUsePollingWatcher(databasePath),
+      interval: 1000,
+      awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 50 },
+    })
+    const refreshFromDatabaseChange = () => {
+      if (!this.agents.has(agentId)) return
+      const agents = loadAgents(this.activeOpenClawPath)
+      this.scheduleBackgroundSessionRefresh(
+        this.activeOpenClawPath,
+        agents,
+        this.refreshGeneration
+      )
+    }
+    watcher.on('change', refreshFromDatabaseChange)
+    watcher.on('add', refreshFromDatabaseChange)
+    watcher.on('error', (error) => {
+      if (!isProduction) {
+        console.warn(
+          `Error watching OpenClaw agent database ${databasePath}:`,
+          error
+        )
+      }
+    })
+    this.watchers.push(watcher)
   }
 
   private watchSessionDirectory(
@@ -416,8 +654,27 @@ class AnalyticsService {
     })
 
     const handleSessionFile = (filePath: string, isNewSession: boolean) => {
-      const sessionId = path.basename(filePath, '.jsonl')
-      if (!filePath.endsWith('.jsonl') || sessionId.includes('.deleted')) {
+      if (!this.agents.has(agentId)) return
+      const fileName = path.basename(filePath)
+      const sessionId = getSessionIdFromFileName(fileName)
+      if (!sessionId || !isSessionTranscriptFileName(fileName)) {
+        return
+      }
+
+      if (this.isCanonicalDatabaseSession(agentPath, sessionId)) {
+        return
+      }
+
+      const preferredFile = this.getPreferredSessionFiles(
+        listSessionFiles(agentPath)
+      ).find(
+        (candidate) =>
+          getSessionIdFromFileName(path.basename(candidate)) === sessionId
+      )
+      if (
+        preferredFile &&
+        this.getFileCacheKey(preferredFile) !== this.getFileCacheKey(filePath)
+      ) {
         return
       }
 
@@ -445,15 +702,50 @@ class AnalyticsService {
     watcher.on('add', (filePath) => handleSessionFile(filePath, true))
     watcher.on('change', (filePath) => handleSessionFile(filePath, false))
     watcher.on('unlink', (filePath) => {
-      const sessionId = path.basename(filePath, '.jsonl')
-      if (!filePath.endsWith('.jsonl')) {
+      const fileName = path.basename(filePath)
+      const sessionId = getSessionIdFromFileName(fileName)
+      if (!sessionId || !isSessionTranscriptFileName(fileName)) {
         return
       }
 
       const cacheKey = this.getFileCacheKey(filePath)
+      if (this.sessionFileKeys.get(sessionId) !== cacheKey) {
+        // A canonical SQLite session or a newer transcript may still own this
+        // session id. Removing an archived file must not remove that source.
+        this.sessionCache.delete(cacheKey)
+        this.scheduleSessionCacheSave()
+        return
+      }
       this.sessions.delete(sessionId)
       this.sessionFileKeys.delete(sessionId)
       this.sessionCache.delete(cacheKey)
+
+      const fallbackFile = this.getPreferredSessionFiles(
+        listSessionFiles(agentPath)
+      ).find(
+        (candidate) =>
+          getSessionIdFromFileName(path.basename(candidate)) === sessionId
+      )
+      if (fallbackFile) {
+        const meta = loadSessionIndex(agentPath).find(
+          (session) => session.id === sessionId
+        )
+        if (
+          this.parseSessionFile(
+            fallbackFile,
+            sessionId,
+            agentId,
+            projectPath,
+            meta?.channel
+          )
+        ) {
+          this.markDirty()
+          this.scheduleSessionCacheSave()
+          broadcastCostsUpdated()
+          return
+        }
+      }
+
       this.markDirty()
       this.scheduleSessionCacheSave()
       broadcastCostsUpdated()
@@ -783,23 +1075,65 @@ class AnalyticsService {
       clearTimeout(this.backgroundRefreshTimer)
     }
 
+    if (this.backgroundRefreshPromise) {
+      this.queuedBackgroundRefresh = { openClawPath, agents, generation }
+      return
+    }
+
     this.backgroundRefreshTimer = setTimeout(() => {
       this.backgroundRefreshTimer = null
 
       if (this.backgroundRefreshPromise) {
+        this.queuedBackgroundRefresh = { openClawPath, agents, generation }
         return
       }
 
-      this.backgroundRefreshPromise = this.refreshSessionFilesInBackground(
-        openClawPath,
-        agents,
-        generation
-      ).finally(() => {
-        this.backgroundRefreshPromise = null
-      })
+      this.startBackgroundSessionRefresh(openClawPath, agents, generation)
     }, BACKGROUND_SESSION_REFRESH_DELAY_MS)
 
     this.backgroundRefreshTimer.unref?.()
+  }
+
+  private startBackgroundSessionRefresh(
+    openClawPath: string,
+    agents: OpenClawAgent[],
+    generation: number
+  ): Promise<void> {
+    this.backgroundRefreshPromise = this.refreshSessionFilesInBackground(
+      openClawPath,
+      agents,
+      generation
+    ).finally(() => {
+      this.backgroundRefreshPromise = null
+      const queuedRefresh = this.queuedBackgroundRefresh
+      this.queuedBackgroundRefresh = null
+      if (queuedRefresh && this.initialized) {
+        this.scheduleBackgroundSessionRefresh(
+          queuedRefresh.openClawPath,
+          queuedRefresh.agents,
+          queuedRefresh.generation
+        )
+      }
+    })
+    return this.backgroundRefreshPromise
+  }
+
+  async refreshNow(): Promise<void> {
+    if (this.backgroundRefreshTimer) {
+      clearTimeout(this.backgroundRefreshTimer)
+      this.backgroundRefreshTimer = null
+    }
+
+    if (this.backgroundRefreshPromise) {
+      await this.backgroundRefreshPromise
+      return
+    }
+
+    await this.startBackgroundSessionRefresh(
+      this.activeOpenClawPath,
+      [...this.agents.values()],
+      this.refreshGeneration
+    )
   }
 
   private async yieldToEventLoop(): Promise<void> {
@@ -858,21 +1192,35 @@ class AnalyticsService {
           continue
         }
 
+        const databasePath = getOpenClawAgentDatabasePath(agentPath)
+        const databaseSessionIds = this.loadAgentDatabaseSessions(
+          agentPath,
+          agent
+        )
+        for (const sessionId of databaseSessionIds) {
+          activeFileKeys.add(
+            this.getDatabaseSessionKey(databasePath, sessionId)
+          )
+        }
+        if (databaseSessionIds.size > 0) {
+          changed = true
+        }
+
         const sessionMetas = loadSessionIndex(agentPath)
         const metaBySessionId = new Map<string, SessionMetadata>()
         for (const meta of sessionMetas) {
           metaBySessionId.set(meta.id, meta)
         }
 
-        const files = listSessionFiles(agentPath)
+        const files = this.getPreferredSessionFiles(listSessionFiles(agentPath))
 
         for (const filePath of files) {
           if (generation !== this.refreshGeneration || !this.initialized) {
             return
           }
 
-          const sessionId = path.basename(filePath, '.jsonl')
-          if (sessionId.includes('.deleted')) continue
+          const sessionId = getSessionIdFromFileName(path.basename(filePath))
+          if (!sessionId || databaseSessionIds.has(sessionId)) continue
 
           const stat = this.safeStat(filePath)
           if (!stat) continue
@@ -1236,17 +1584,27 @@ class AnalyticsService {
   }
 
   private dateStr(iso: string): string {
-    return iso.split('T')[0]
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) {
+      return iso.split('T')[0]
+    }
+    return this.formatLocalDate(date)
   }
 
   private today(): string {
-    return new Date().toISOString().split('T')[0]
+    return this.formatLocalDate(new Date())
   }
 
   private daysAgo(days: number): string {
     const d = new Date()
     d.setDate(d.getDate() - days)
-    return d.toISOString().split('T')[0]
+    return this.formatLocalDate(d)
+  }
+
+  private formatLocalDate(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+      date.getDate()
+    ).padStart(2, '0')}`
   }
 
   private startOfMonth(): string {
@@ -1580,6 +1938,76 @@ class AnalyticsService {
       cacheCreation,
       total: input + output + cacheRead + cacheCreation,
     }
+  }
+
+  getTokenSummary(): TokenSummary {
+    const lifetime = this.createTokenPeriodSummary()
+    const last5Hours = this.createTokenPeriodSummary()
+    const last7Days = this.createTokenPeriodSummary()
+    const last30Days = this.createTokenPeriodSummary()
+    const now = Date.now()
+    const fiveHoursCutoff = now - 5 * 60 * 60 * 1000
+    const sevenDaysCutoff = now - 7 * 24 * 60 * 60 * 1000
+    const thirtyDaysCutoff = now - 30 * 24 * 60 * 60 * 1000
+
+    for (const [, session] of this.sessions) {
+      for (const req of session.requests) {
+        this.addRequestToTokenPeriod(lifetime, req)
+
+        const timestamp = new Date(req.timestamp).getTime()
+        if (
+          Number.isFinite(timestamp) &&
+          timestamp >= fiveHoursCutoff &&
+          timestamp <= now
+        ) {
+          this.addRequestToTokenPeriod(last5Hours, req)
+        }
+
+        if (
+          Number.isFinite(timestamp) &&
+          timestamp >= sevenDaysCutoff &&
+          timestamp <= now
+        ) {
+          this.addRequestToTokenPeriod(last7Days, req)
+        }
+        if (
+          Number.isFinite(timestamp) &&
+          timestamp >= thirtyDaysCutoff &&
+          timestamp <= now
+        ) {
+          this.addRequestToTokenPeriod(last30Days, req)
+        }
+      }
+    }
+
+    return { lifetime, last5Hours, last7Days, last30Days }
+  }
+
+  private createTokenPeriodSummary(): TokenPeriodSummary {
+    return {
+      total: 0,
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheCreation: 0,
+      cost: 0,
+    }
+  }
+
+  private addRequestToTokenPeriod(
+    summary: TokenPeriodSummary,
+    req: ParsedRequest
+  ): void {
+    summary.input += req.inputTokens
+    summary.output += req.outputTokens
+    summary.cacheRead += req.cacheReadTokens
+    summary.cacheCreation += req.cacheCreationTokens
+    summary.total +=
+      req.inputTokens +
+      req.outputTokens +
+      req.cacheReadTokens +
+      req.cacheCreationTokens
+    summary.cost += req.cost
   }
 
   // ============================================

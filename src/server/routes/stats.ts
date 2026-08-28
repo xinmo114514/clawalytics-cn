@@ -35,6 +35,16 @@ router.get('/tokens', (req: Request, res: Response): void => {
   }
 })
 
+router.get('/token-summary', (_req: Request, res: Response): void => {
+  try {
+    const summary = getAnalyticsService().getTokenSummary()
+    res.json(summary)
+  } catch (error) {
+    console.error('Error fetching token summary:', error)
+    res.status(500).json({ error: 'Failed to fetch token summary' })
+  }
+})
+
 router.get('/budget', (_req: Request, res: Response): void => {
   try {
     const budget = getBudgetStatus()

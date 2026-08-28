@@ -46,6 +46,7 @@ const isElectron = process.env.ELECTRON === 'true'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const DEFAULT_PORT = 9174
+const MAX_PORT = 65535
 
 const app: Express = express()
 const clientPath = path.join(__dirname, '../client')
@@ -118,12 +119,19 @@ export interface StartedServer {
 }
 
 function resolvePort(port?: number): number {
-  if (typeof port === 'number' && Number.isInteger(port) && port > 0) {
+  if (
+    typeof port === 'number' &&
+    Number.isInteger(port) &&
+    port >= 1 &&
+    port <= MAX_PORT
+  ) {
     return port
   }
 
   const envPort = Number.parseInt(process.env.PORT || '', 10)
-  return Number.isInteger(envPort) && envPort > 0 ? envPort : DEFAULT_PORT
+  return Number.isInteger(envPort) && envPort >= 1 && envPort <= MAX_PORT
+    ? envPort
+    : DEFAULT_PORT
 }
 
 function listen(port: number): Promise<Server> {

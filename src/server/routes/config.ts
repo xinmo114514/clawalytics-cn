@@ -330,167 +330,177 @@ router.delete(
   }
 )
 
-router.post('/openclaw/reload', (req: Request, res: Response): void => {
-  try {
-    const requestedUpdates = req.body as Partial<Config>
-    const config = loadConfig()
-    const requestedWslConfig = normalizeWslConfig({
-      ...config.wsl,
-      ...requestedUpdates.wsl,
-    })
-    const shouldResolveOpenClawPath =
-      requestedUpdates.openClawPath !== undefined ||
-      requestedUpdates.wsl !== undefined
-    const requestedOpenClawPath = shouldResolveOpenClawPath
-      ? normalizeOpenClawPath(
-          requestedUpdates.openClawPath ?? config.openClawPath,
-          requestedWslConfig
-        )
-      : undefined
-    const effectiveOpenClawPath = requestedOpenClawPath ?? config.openClawPath
-
-    if (
-      (requestedOpenClawPath &&
-        requestedOpenClawPath !== config.openClawPath) ||
-      JSON.stringify(requestedWslConfig) !== JSON.stringify(config.wsl)
-    ) {
-      saveConfig({
-        ...config,
-        openClawPath: effectiveOpenClawPath,
-        wsl: requestedWslConfig,
+router.post(
+  '/openclaw/reload',
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const requestedUpdates = req.body as Partial<Config>
+      const config = loadConfig()
+      const requestedWslConfig = normalizeWslConfig({
+        ...config.wsl,
+        ...requestedUpdates.wsl,
       })
-    }
+      const shouldResolveOpenClawPath =
+        requestedUpdates.openClawPath !== undefined ||
+        requestedUpdates.wsl !== undefined
+      const requestedOpenClawPath = shouldResolveOpenClawPath
+        ? normalizeOpenClawPath(
+            requestedUpdates.openClawPath ?? config.openClawPath,
+            requestedWslConfig
+          )
+        : undefined
+      const effectiveOpenClawPath = requestedOpenClawPath ?? config.openClawPath
 
-    const openClawPath = effectiveOpenClawPath
-    const sourceInfo = resolveOpenClawDataPath(openClawPath, requestedWslConfig)
+      const openClawPath = effectiveOpenClawPath
+      const sourceInfo = resolveOpenClawDataPath(
+        openClawPath,
+        requestedWslConfig
+      )
 
-    if (!openClawPath) {
-      res.status(400).json({
-        error: 'OpenClaw path not configured',
-        solution: 'Please set the OpenClaw directory path in settings',
-      })
-      return
-    }
-
-    if (sourceInfo?.error) {
-      res.status(400).json({
-        error: 'Unable to resolve OpenClaw data path',
-        details: sourceInfo.error,
-        path: openClawPath,
-        solution:
-          'Check the WSL2 distribution name and OpenClaw Linux path in settings.',
-      })
-      return
-    }
-
-    if (sourceInfo?.isWsl) {
-      const availability = getWslAvailability(sourceInfo.distro)
-      if (!availability.available) {
+      if (!openClawPath) {
         res.status(400).json({
-          error: 'WSL2 environment is not available',
-          details: availability.error,
-          path: openClawPath,
-          solution:
-            'Start WSL2, confirm the configured distribution exists, and try connecting again.',
+          error: 'OpenClaw path not configured',
+          solution: 'Please set the OpenClaw directory path in settings',
         })
         return
       }
-    }
 
-    const validation = validateOpenClawDataSource(openClawPath)
-
-    try {
-      shutdownAnalyticsService()
-    } catch {
-      // Continue with initialization even if shutdown fails
-    }
-
-    if (config.securityAlertsEnabled) {
-      try {
-        stopSecurityWatcher()
-      } catch {
-        // Continue with initialization even if security watcher stop fails
-      }
-    }
-
-    try {
-      initializeAnalyticsService(openClawPath)
-    } catch (initError) {
-      res.status(500).json({
-        error: 'Failed to initialize analytics service',
-        details:
-          initError instanceof Error ? initError.message : String(initError),
-        solution: 'Please check OpenClaw data format and try again',
-      })
-      return
-    }
-
-    if (config.securityAlertsEnabled) {
-      try {
-        startSecurityWatcher({
-          openClawPath,
-          gatewayLogsPath: config.gatewayLogsPath,
-          enabled: config.securityAlertsEnabled,
+      if (sourceInfo?.error) {
+        res.status(400).json({
+          error: 'Unable to resolve OpenClaw data path',
+          details: sourceInfo.error,
+          path: openClawPath,
+          solution:
+            'Check the WSL2 distribution name and OpenClaw Linux path in settings.',
         })
-      } catch {
-        // Continue even if security watcher start fails
+        return
       }
-    }
 
-    let sessionCount = 0
-    try {
-      sessionCount = getAnalyticsService().getSessionCount()
-    } catch {
-      // Ignore count errors
-    }
+      if (sourceInfo?.isWsl) {
+        const availability = getWslAvailability(sourceInfo.distro)
+        if (!availability.available) {
+          res.status(400).json({
+            error: 'WSL2 environment is not available',
+            details: availability.error,
+            path: openClawPath,
+            solution:
+              'Start WSL2, confirm the configured distribution exists, and try connecting again.',
+          })
+          return
+        }
+      }
 
-    const dataSource = sourceInfo?.isWsl ? 'wsl' : 'local'
-    const sourceLabel = sourceInfo?.isWsl
-      ? `WSL2${sourceInfo.distro ? ` (${sourceInfo.distro})` : ''}`
-      : 'local filesystem'
-    console.log(
-      `OpenClaw data source verified: ${sourceLabel}; path=${openClawPath}; ` +
-        `sessions=${sessionCount}; parsedUsageEntries=${validation.parsedUsageEntries}; ` +
-        `formatStatus=${validation.formatStatus}`
-    )
+      const validation = validateOpenClawDataSource(openClawPath)
 
-    res.json({
-      success: true,
-      sessionCount,
-      openClawPath,
-      message: `Successfully reloaded OpenClaw data from ${openClawPath}`,
-      details: {
-        dataSource,
-        source: sourceLabel,
-        distro: sourceInfo?.distro,
-        linuxPath: sourceInfo?.linuxPath,
-        directoryAccess: 'Success',
-        analyticsService: 'Initialized',
-        securityWatcher: config.securityAlertsEnabled ? 'Started' : 'Disabled',
-        sessionCount: sessionCount,
-        agentsFound: validation.agentsFound,
-        sessionFilesFound: validation.sessionFilesFound,
-        parsedUsageEntries: validation.parsedUsageEntries,
-        formatStatus: validation.formatStatus,
-        warnings: validation.warnings,
-      },
-    })
-  } catch (error) {
-    if (error instanceof OpenClawDataValidationError) {
-      res.status(error.statusCode).json({
-        error: error.message,
-        path: error.path,
-        solution: error.solution,
+      if (
+        (requestedOpenClawPath &&
+          requestedOpenClawPath !== config.openClawPath) ||
+        JSON.stringify(requestedWslConfig) !== JSON.stringify(config.wsl)
+      ) {
+        saveConfig({
+          ...config,
+          openClawPath: effectiveOpenClawPath,
+          wsl: requestedWslConfig,
+        })
+      }
+
+      try {
+        shutdownAnalyticsService()
+      } catch {
+        // Continue with initialization even if shutdown fails
+      }
+
+      if (config.securityAlertsEnabled) {
+        try {
+          stopSecurityWatcher()
+        } catch {
+          // Continue with initialization even if security watcher stop fails
+        }
+      }
+
+      try {
+        const analyticsService = initializeAnalyticsService(openClawPath)
+        await analyticsService.refreshNow()
+      } catch (initError) {
+        res.status(500).json({
+          error: 'Failed to initialize analytics service',
+          details:
+            initError instanceof Error ? initError.message : String(initError),
+          solution: 'Please check OpenClaw data format and try again',
+        })
+        return
+      }
+
+      if (config.securityAlertsEnabled) {
+        try {
+          startSecurityWatcher({
+            openClawPath,
+            gatewayLogsPath: config.gatewayLogsPath,
+            enabled: config.securityAlertsEnabled,
+          })
+        } catch {
+          // Continue even if security watcher start fails
+        }
+      }
+
+      let sessionCount = 0
+      try {
+        sessionCount = getAnalyticsService().getSessionCount()
+      } catch {
+        // Ignore count errors
+      }
+
+      const dataSource = sourceInfo?.isWsl ? 'wsl' : 'local'
+      const sourceLabel = sourceInfo?.isWsl
+        ? `WSL2${sourceInfo.distro ? ` (${sourceInfo.distro})` : ''}`
+        : 'local filesystem'
+      console.log(
+        `OpenClaw data source verified: ${sourceLabel}; path=${openClawPath}; ` +
+          `sessions=${sessionCount}; parsedUsageEntries=${validation.parsedUsageEntries}; ` +
+          `formatStatus=${validation.formatStatus}`
+      )
+
+      res.json({
+        success: true,
+        sessionCount,
+        openClawPath,
+        message: `Successfully reloaded OpenClaw data from ${openClawPath}`,
+        details: {
+          dataSource,
+          source: sourceLabel,
+          distro: sourceInfo?.distro,
+          linuxPath: sourceInfo?.linuxPath,
+          directoryAccess: 'Success',
+          analyticsService: 'Initialized',
+          securityWatcher: config.securityAlertsEnabled
+            ? 'Started'
+            : 'Disabled',
+          sessionCount: sessionCount,
+          agentsFound: validation.agentsFound,
+          sessionFilesFound: validation.sessionFilesFound,
+          databaseSessionsFound: validation.databaseSessionsFound,
+          parsedUsageEntries: validation.parsedUsageEntries,
+          formatStatus: validation.formatStatus,
+          warnings: validation.warnings,
+        },
       })
-      return
-    }
+    } catch (error) {
+      if (error instanceof OpenClawDataValidationError) {
+        res.status(error.statusCode).json({
+          error: error.message,
+          path: error.path,
+          solution: error.solution,
+        })
+        return
+      }
 
-    res.status(500).json({
-      error: 'Failed to reload OpenClaw data',
-      details: error instanceof Error ? error.message : String(error),
-      solution: 'Please check logs for more details and try again',
-    })
+      res.status(500).json({
+        error: 'Failed to reload OpenClaw data',
+        details: error instanceof Error ? error.message : String(error),
+        solution: 'Please check logs for more details and try again',
+      })
+    }
   }
-})
+)
 
 export default router

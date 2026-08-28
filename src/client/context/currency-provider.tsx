@@ -1,5 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { getDesktopPreferences, updateDesktopPreferences } from '@/lib/api'
+import {
+  formatCurrency as formatCurrencyValue,
+  formatCurrencyPrecise as formatCurrencyPreciseValue,
+  setGlobalCurrency,
+} from '@/lib/format'
 
 export type Currency = 'CNY' | 'USD'
 
@@ -13,49 +18,30 @@ type CurrencyContextValue = {
 const CurrencyContext = createContext<CurrencyContextValue | null>(null)
 
 const STORAGE_KEY = 'clawalytics-currency'
-const USD_TO_CNY_RATE = 7
 
 function readStoredCurrency(): Currency | null {
   if (typeof window === 'undefined') return null
 
-  const saved = window.localStorage.getItem(STORAGE_KEY)
-  return saved === 'CNY' || saved === 'USD' ? saved : null
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY)
+    return saved === 'CNY' || saved === 'USD' ? saved : null
+  } catch {
+    return null
+  }
 }
 
 function persistCurrency(currency: Currency) {
   if (typeof window === 'undefined') return
 
-  window.localStorage.setItem(STORAGE_KEY, currency)
+  try {
+    window.localStorage.setItem(STORAGE_KEY, currency)
+  } catch {
+    // Private browsing and locked-down webviews may deny storage access.
+  }
 }
 
 export function getStoredCurrency(): Currency {
   return readStoredCurrency() ?? 'CNY'
-}
-
-function formatCNY(value: number): string {
-  if (value >= 100) return `¥${value.toFixed(0)}`
-  if (value >= 10) return `¥${value.toFixed(1)}`
-  if (value >= 1) return `¥${value.toFixed(2)}`
-  if (value >= 0.01) return `¥${value.toFixed(2)}`
-  return `¥${value.toFixed(4)}`
-}
-
-function formatUSD(value: number): string {
-  const usdValue = value / USD_TO_CNY_RATE
-  if (usdValue >= 100) return `$${usdValue.toFixed(0)}`
-  if (usdValue >= 10) return `$${usdValue.toFixed(1)}`
-  if (usdValue >= 1) return `$${usdValue.toFixed(2)}`
-  if (usdValue >= 0.01) return `$${usdValue.toFixed(2)}`
-  return `$${usdValue.toFixed(4)}`
-}
-
-function formatCNYPrecise(value: number, fractionDigits = 4): string {
-  return `¥${value.toFixed(fractionDigits)}`
-}
-
-function formatUSDPrecise(value: number, fractionDigits = 4): string {
-  const usdValue = value / USD_TO_CNY_RATE
-  return `$${usdValue.toFixed(fractionDigits)}`
 }
 
 export function CurrencyProvider({ children }: { children: React.ReactNode }) {
@@ -86,6 +72,10 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
       .catch(() => undefined)
   }, [])
 
+  useEffect(() => {
+    setGlobalCurrency(currency)
+  }, [currency])
+
   const setCurrency = (nextCurrency: Currency) => {
     setCurrencyState(nextCurrency)
     persistCurrency(nextCurrency)
@@ -95,17 +85,12 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   }
 
   const formatCurrencyFn = useMemo(() => {
-    return (value: number) => {
-      return currency === 'USD' ? formatUSD(value) : formatCNY(value)
-    }
+    return (value: number) => formatCurrencyValue(value, currency)
   }, [currency])
 
   const formatCurrencyPreciseFn = useMemo(() => {
-    return (value: number, fractionDigits = 4) => {
-      return currency === 'USD'
-        ? formatUSDPrecise(value, fractionDigits)
-        : formatCNYPrecise(value, fractionDigits)
-    }
+    return (value: number, fractionDigits = 4) =>
+      formatCurrencyPreciseValue(value, fractionDigits, currency)
   }, [currency])
 
   const value = useMemo(

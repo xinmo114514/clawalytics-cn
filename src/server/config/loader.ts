@@ -165,6 +165,16 @@ export function getDefaultOpenClawPath(): string {
   const platform = os.platform()
   const home = os.homedir()
 
+  // OpenClaw supports relocating its state directory. Respect that contract
+  // on both Windows and Unix instead of silently reading a second default
+  // state directory.
+  const configuredStatePath = normalizeOpenClawPath(
+    process.env.OPENCLAW_STATE_DIR
+  )
+  if (configuredStatePath) {
+    return configuredStatePath
+  }
+
   if (platform === 'darwin') {
     return path.join(home, '.openclaw')
   } else if (platform === 'win32') {
@@ -174,7 +184,7 @@ export function getDefaultOpenClawPath(): string {
     ]
 
     const existingPath = candidates.find((candidate) =>
-      fs.existsSync(candidate)
+      isOpenClawRoot(candidate)
     )
     if (existingPath) {
       return existingPath
@@ -216,8 +226,8 @@ function resolveConfiguredOpenClawPath(
 
     if (
       normalizedConfiguredPath === legacyWindowsPath &&
-      !fs.existsSync(legacyWindowsPath) &&
-      fs.existsSync(modernWindowsPath)
+      !isOpenClawRoot(legacyWindowsPath) &&
+      isOpenClawRoot(modernWindowsPath)
     ) {
       return modernWindowsPath
     }

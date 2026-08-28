@@ -265,16 +265,26 @@ export function getModelPricing(
     return memoryCache.models[model]
   }
 
-  // Try partial matching (for model variants)
+  // Try safe prefix matching for model variants. The previous bidirectional
+  // `includes` fallback could map `gpt-4o` to a `gpt-4` price simply because
+  // the shorter name appeared first in the catalog.
   const modelLower = model.toLowerCase()
-  for (const [key, pricing] of Object.entries(memoryCache.models)) {
-    const keyLower = key.toLowerCase()
-    if (
-      keyLower.includes(modelLower) ||
-      modelLower.includes(keyLower.split('/').pop() || '')
-    ) {
-      return pricing
-    }
+  const variantMatches = Object.entries(memoryCache.models)
+    .map(([key, pricing]) => ({
+      key: key.toLowerCase().split('/').pop() || '',
+      pricing,
+    }))
+    .filter(
+      ({ key }) =>
+        key &&
+        (modelLower.startsWith(`${key}-`) ||
+          modelLower.startsWith(`${key}:`) ||
+          modelLower.startsWith(`${key}.`))
+    )
+    .sort((left, right) => right.key.length - left.key.length)
+
+  if (variantMatches.length > 0) {
+    return variantMatches[0].pricing
   }
 
   return null

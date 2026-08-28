@@ -2,6 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 
 const PAYLOAD_FILES = ['Clawalytics.exe'];
+const GENERATED_NSIS_INCLUDE = path.join(__dirname, 'custom-nsis.generated.nsh');
 
 async function pathExists(filePath) {
   try {
@@ -56,6 +57,21 @@ async function copyElevateHelper(sourceDir, targetDir) {
   await fs.copyFile(cachedElevate, targetElevate);
 }
 
+function escapeNsisString(value) {
+  return String(value).replace(/\$/g, '$$$$').replace(/"/g, '$\\"');
+}
+
+async function writeGeneratedNsisInclude(targetDir) {
+  const targetPath = escapeNsisString(targetDir);
+  const content = [
+    `!define APP_BUILD_DIR "${targetPath}"`,
+    '!include "${__FILEDIR__}\\custom-nsis.nsh"',
+    '',
+  ].join('\n');
+
+  await fs.writeFile(GENERATED_NSIS_INCLUDE, content, 'utf8');
+}
+
 module.exports = async function prepareNsisAppDir(context) {
   if (context.electronPlatformName !== 'win32') {
     return;
@@ -76,5 +92,6 @@ module.exports = async function prepareNsisAppDir(context) {
     );
   }
 
+  await writeGeneratedNsisInclude(targetDir);
   console.log(`[prepare-nsis-app-dir] Created ${targetDir}`);
 };

@@ -126,6 +126,9 @@ export function identifyProvider(model: string): string {
   if (modelLower.includes('deepseek')) {
     return 'deepseek'
   }
+  if (modelLower.includes('hunyuan') || modelLower.includes('腾讯混元')) {
+    return 'tencent'
+  }
   if (modelLower.includes('qwen')) {
     return 'qwen'
   }

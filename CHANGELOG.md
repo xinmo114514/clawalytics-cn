@@ -1,3 +1,16 @@
+## v0.7.2 (2026-08-29)
+
+### Feat
+
+- add built-in GPT-5.6 Sol, Terra, and Luna pricing, including cached input rates
+- update DeepSeek V4 peak-hour pricing and add V4 Flash Vision pricing
+- add current pricing mappings for GLM, MiniMax, Qwen Coder, Kimi, and Tencent Hunyuan models
+- infer the Tencent/Hunyuan provider automatically when parsing model usage
+
+### Docs
+
+- document the model pricing updates used by the cost calculator
+
 ## v0.7.1 (2026-05-08)
 
 ### Fix

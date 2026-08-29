@@ -332,6 +332,15 @@ export async function refreshPricing(endpoint: string): Promise<boolean> {
   if (freshData) {
     memoryCache = freshData
     saveCacheToDisk(freshData)
+    // Parsed analytics records contain derived costs. Rebuild them whenever
+    // the effective pricing table changes so historical totals stay correct.
+    void import('./analytics-service.js')
+      .then(({ getAnalyticsService }) => {
+        getAnalyticsService().invalidateCostCache()
+      })
+      .catch(() => {
+        // Pricing refresh must not fail merely because analytics is unavailable.
+      })
     return true
   }
   return false

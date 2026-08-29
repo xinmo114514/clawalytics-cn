@@ -102,6 +102,7 @@ export interface OutboundCall {
   session_id: string | null
   agent_id: string | null
   tool_name: string
+  tool_use_id: string | null
   timestamp: string
   duration_ms: number | null
   status: string | null
@@ -112,6 +113,7 @@ export interface OutboundCallInput {
   session_id?: string | null
   agent_id?: string | null
   tool_name: string
+  tool_use_id?: string | null
   duration_ms?: number | null
   status?: string | null
   error?: string | null
@@ -365,13 +367,14 @@ export function getRecentConnectionEvents(hours = 24): ConnectionEvent[] {
 
 export function logOutboundCall(call: OutboundCallInput): number {
   const stmt = prepareCached(`
-    INSERT INTO outbound_calls (session_id, agent_id, tool_name, duration_ms, status, error)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO outbound_calls (session_id, agent_id, tool_name, tool_use_id, duration_ms, status, error)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `)
   const result = stmt.run(
     call.session_id ?? null,
     call.agent_id ?? null,
     call.tool_name,
+    call.tool_use_id ?? null,
     call.duration_ms ?? null,
     call.status ?? null,
     call.error ?? null
@@ -388,8 +391,8 @@ export function logOutboundCalls(calls: OutboundCallInput[]): void {
   if (calls.length === 0) return
 
   const stmt = prepareCached(`
-    INSERT INTO outbound_calls (session_id, agent_id, tool_name, duration_ms, status, error)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO outbound_calls (session_id, agent_id, tool_name, tool_use_id, duration_ms, status, error)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `)
   const db = getDatabase()
   db.transaction((rows: OutboundCallInput[]) => {
@@ -398,6 +401,7 @@ export function logOutboundCalls(calls: OutboundCallInput[]): void {
         call.session_id ?? null,
         call.agent_id ?? null,
         call.tool_name,
+        call.tool_use_id ?? null,
         call.duration_ms ?? null,
         call.status ?? null,
         call.error ?? null
@@ -620,9 +624,9 @@ export function getAlerts(
 }
 
 export function getAlert(id: number): SecurityAlert | undefined {
-  return prepareCached('SELECT * FROM security_alerts WHERE id = ?').get(
-    id
-  ) as SecurityAlert | undefined
+  return prepareCached('SELECT * FROM security_alerts WHERE id = ?').get(id) as
+    | SecurityAlert
+    | undefined
 }
 
 export function getUnacknowledgedAlerts(): SecurityAlert[] {

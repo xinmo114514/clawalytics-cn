@@ -29,6 +29,20 @@ export interface EnhancedStats {
   activeSessionsThisMonth: number
 }
 
+export type AnalyticsStatus = 'scanning' | 'ready' | 'unavailable' | 'error'
+
+export interface AnalyticsStatusResponse {
+  status: AnalyticsStatus
+  hasData: boolean
+  timestamp: string
+  lastScanStartedAt?: string
+  lastScanCompletedAt?: string
+  lastScanError?: {
+    code: 'INITIAL_SCAN_FAILED' | 'SCAN_FAILED'
+    message: string
+  }
+}
+
 export interface TokenBreakdown {
   input: number
   output: number
@@ -100,6 +114,8 @@ export interface ModelUsage {
 }
 
 export interface Config {
+  schemaVersion?: number
+  currency?: 'CNY'
   logPath: string
   rates: Record<string, Record<string, { input: number; output: number }>>
   alertThresholds: {
@@ -168,6 +184,11 @@ export async function getStats(): Promise<Stats> {
 
 export async function getEnhancedStats(): Promise<EnhancedStats> {
   const { data } = await api.get<EnhancedStats>('/stats/enhanced')
+  return data
+}
+
+export async function getAnalyticsStatus(): Promise<AnalyticsStatusResponse> {
+  const { data } = await api.get<AnalyticsStatusResponse>('/stats/status')
   return data
 }
 

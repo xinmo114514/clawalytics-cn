@@ -103,6 +103,7 @@ function handleMessage(message: WsMessage, queryClient: QueryClient) {
   switch (message.type) {
     case 'costs:updated':
       debounceInvalidate(message.type, () => {
+        queryClient.invalidateQueries({ queryKey: ['analyticsStatus'] })
         queryClient.invalidateQueries({ queryKey: ['enhancedStats'] })
         queryClient.invalidateQueries({ queryKey: ['dailyCosts'] })
         queryClient.invalidateQueries({ queryKey: ['modelUsage'] })
@@ -116,6 +117,7 @@ function handleMessage(message: WsMessage, queryClient: QueryClient) {
 
     case 'session:new':
       debounceInvalidate(message.type, () => {
+        queryClient.invalidateQueries({ queryKey: ['analyticsStatus'] })
         queryClient.invalidateQueries({ queryKey: ['sessions'] })
         queryClient.invalidateQueries({ queryKey: ['enhancedStats'] })
         queryClient.invalidateQueries({ queryKey: ['sessionStats'] })

@@ -75,6 +75,10 @@ router.post('/', (req: Request, res: Response): void => {
     }
 
     saveConfig(newConfig)
+    if (updates.rates || updates.pricingEndpoint !== undefined) {
+      refreshPricingCache()
+      getAnalyticsService().invalidateCostCache()
+    }
     res.json({
       ...newConfig,
       defaultOpenClawPath: getDefaultOpenClawPath(),
@@ -136,18 +140,24 @@ router.post('/rates/:provider/:model', (req: Request, res: Response): void => {
     }
 
     const config = loadConfig()
-    if (!config.rates[provider]) {
-      config.rates[provider] = {}
-    }
-    config.rates[provider][model] = {
+    const rates = Object.fromEntries(
+      Object.entries(config.rates).map(([name, providerRates]) => [
+        name,
+        { ...providerRates },
+      ])
+    )
+    if (!rates[provider]) rates[provider] = {}
+    rates[provider][model] = {
       input,
       output,
       ...(cacheRead !== undefined ? { cacheRead } : {}),
       ...(cacheWrite !== undefined ? { cacheWrite } : {}),
     }
 
-    saveConfig(config)
-    res.json(config.rates[provider][model])
+    saveConfig({ ...config, rates })
+    refreshPricingCache()
+    getAnalyticsService().invalidateCostCache()
+    res.json(rates[provider][model])
   } catch {
     res.status(500).json({ error: 'Failed to update rate' })
   }
@@ -255,20 +265,25 @@ router.put(
       }
 
       const config = loadConfig()
-      if (!config.rates[provider]) {
-        config.rates[provider] = {}
-      }
+      const rates = Object.fromEntries(
+        Object.entries(config.rates).map(([name, providerRates]) => [
+          name,
+          { ...providerRates },
+        ])
+      )
+      if (!rates[provider]) rates[provider] = {}
 
-      const oldRate = config.rates[provider][model]
-      config.rates[provider][model] = {
+      const oldRate = rates[provider][model]
+      rates[provider][model] = {
         input,
         output,
         ...(cacheRead !== undefined ? { cacheRead } : {}),
         ...(cacheWrite !== undefined ? { cacheWrite } : {}),
       }
 
-      saveConfig(config)
+      saveConfig({ ...config, rates })
       refreshPricingCache()
+      getAnalyticsService().invalidateCostCache()
 
       // Check for significant price change for notification
       const priceChange = oldRate
@@ -286,7 +301,7 @@ router.put(
         : null
 
       res.json({
-        rate: config.rates[provider][model],
+        rate: rates[provider][model],
         priceChange,
       })
     } catch (error) {
@@ -315,9 +330,16 @@ router.delete(
         return
       }
 
-      delete config.rates[provider][model]
-      saveConfig(config)
+      const rates = Object.fromEntries(
+        Object.entries(config.rates).map(([name, providerRates]) => [
+          name,
+          { ...providerRates },
+        ])
+      )
+      delete rates[provider][model]
+      saveConfig({ ...config, rates })
       refreshPricingCache()
+      getAnalyticsService().invalidateCostCache()
 
       res.json({
         success: true,
@@ -405,7 +427,7 @@ router.post(
       }
 
       try {
-        shutdownAnalyticsService()
+        await shutdownAnalyticsService()
       } catch {
         // Continue with initialization even if shutdown fails
       }

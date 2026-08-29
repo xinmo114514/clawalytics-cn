@@ -68,6 +68,27 @@ app.use(
 )
 app.use(express.json())
 
+// Keep all analytics endpoints consistent: malformed/negative/oversized day
+// windows should never silently become the default or trigger an unbounded
+// scan.
+const MAX_ANALYTICS_DAYS = 3650
+app.use('/api', (req, res, next) => {
+  const value = req.query.days
+  if (value === undefined) {
+    next()
+    return
+  }
+  const raw = Array.isArray(value) ? value[0] : value
+  const days = typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : NaN
+  if (!Number.isSafeInteger(days) || days < 1 || days > MAX_ANALYTICS_DAYS) {
+    res.status(400).json({
+      error: `days must be an integer between 1 and ${MAX_ANALYTICS_DAYS}`,
+    })
+    return
+  }
+  next()
+})
+
 // Serve static files in production (before API routes)
 if (process.env.NODE_ENV === 'production') {
   // Hashed asset filenames under /assets/* never change content, so cache
@@ -159,7 +180,7 @@ async function cleanupServerState(): Promise<void> {
   httpServer = null
   activePort = null
 
-  shutdownAnalyticsService()
+  await shutdownAnalyticsService()
   stopSecurityWatcher()
   closeWebSocket()
   clearDesktopBridge()

@@ -186,6 +186,7 @@ function initializeSchema(database: Database.Database): void {
       session_id TEXT,
       agent_id TEXT,
       tool_name TEXT NOT NULL,
+      tool_use_id TEXT,
       timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
       duration_ms INTEGER,
       status TEXT,
@@ -317,6 +318,23 @@ const migrations: {
       )
       db.exec(
         'CREATE INDEX IF NOT EXISTS idx_sessions_source_type ON sessions(source_type)'
+      )
+    },
+  },
+  {
+    version: 3,
+    description: 'Add idempotency key for OpenClaw tool calls',
+    up: (db) => {
+      const info = db.prepare('PRAGMA table_info(outbound_calls)').all() as {
+        name: string
+      }[]
+      if (!info.some((column) => column.name === 'tool_use_id')) {
+        db.exec('ALTER TABLE outbound_calls ADD COLUMN tool_use_id TEXT')
+      }
+      db.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_outbound_calls_tool_use_id
+         ON outbound_calls(session_id, tool_use_id)
+         WHERE tool_use_id IS NOT NULL`
       )
     },
   },

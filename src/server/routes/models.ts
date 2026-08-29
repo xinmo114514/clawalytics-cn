@@ -100,6 +100,7 @@ router.post(
 
       const success = await refreshPricing(config.pricingEndpoint)
       if (success) {
+        getAnalyticsService().invalidateCostCache()
         const pricing = getAllPricing()
         res.json({ success: true, pricing })
       } else {

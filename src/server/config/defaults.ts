@@ -299,6 +299,9 @@ export const DEFAULT_RATES: DefaultRates = {
 }
 
 export interface Config {
+  /** Versioned currency marker used to make legacy migrations unambiguous. */
+  schemaVersion?: number
+  currency?: 'CNY'
   rates: DefaultRates
   alertThresholds: {
     dailyBudget: number
@@ -319,6 +322,8 @@ export interface Config {
 }
 
 export const DEFAULT_CONFIG: Config = {
+  schemaVersion: 2,
+  currency: 'CNY',
   rates: DEFAULT_RATES,
   alertThresholds: {
     dailyBudget: 70,

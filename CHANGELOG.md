@@ -1,3 +1,18 @@
+## v0.7.3 (2026-08-29)
+
+### Perf
+
+- move the backend into an Electron utilityProcess so the main window no longer freezes during heavy parsing
+- add SQLite incremental reads keyed by session seq so watcher events only reparse the changed agent and startup skips a second full SQLite scan
+- collapse double `JSON.parse` per JSONL line and replace the unconditional `changed = true` with a real diff before broadcasting
+- activate the previously dead `_dailyCosts` / `_modelUsage` / `_statsCache` aggregations so dashboard reads stop rescanning every request
+- switch session cache persistence to async write+atomic rename, batch `transcript_events` inserts in a single transaction, and bound the `warnedModels` map
+- raise watcher debounce to 2s with `awaitWriteFinish` and yield to the event loop every 200 lines during parsing
+- add a 30s WS heartbeat with `maxPayload` and memoize reusable prepared statements in security queries
+- debounce WS invalidations per event type, fix the `alerts` / `securityAlerts` / `recentConnections` key mismatch, and route polling through `pollWhenVisible` so background tabs stop hammering the API
+- disable Recharts enter animations, memoize chart/table transforms, memo the theme provider value, and split vendor chunks so the entry bundle no longer ships recharts/react-dom inline
+- enable `compression()` and 30-day immutable caching for `/assets/*`, cache `loadConfig()` by mtime, and cap `getRequests` with a default 200-row limit
+
 ## v0.7.2 (2026-08-29)
 
 ### Feat

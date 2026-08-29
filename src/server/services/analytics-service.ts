@@ -2,6 +2,7 @@ import path from 'path'
 import chokidar, { type FSWatcher } from 'chokidar'
 import fs, { type Stats as FsStats } from 'fs'
 import os from 'os'
+import readline from 'readline'
 import { getConfigDir, normalizeOpenClawPath } from '../config/loader.js'
 import type {
   Agent,
@@ -205,6 +206,7 @@ interface CachedSessionEntry {
   size: number
   mtimeMs: number
   parsedAt: string
+  pricingRevision?: number
   session: SerializedSessionData
   // Only set for canonical SQLite-backed sessions: the highest transcript
   // event seq already reflected in `session`. Persisted so a restart can
@@ -243,15 +245,18 @@ interface AggregatedStats {
   activeThisMonth: number
 }
 
-interface DailyCostAggregate extends DailyCost {
-  sessionIds: Set<string>
-}
+export type AnalyticsStatus = 'scanning' | 'ready' | 'unavailable' | 'error'
 
-interface ChannelDailyAggregate {
-  totalCost: number
-  inputTokens: number
-  outputTokens: number
-  messageCount: number
+export interface AnalyticsStatusResponse {
+  status: AnalyticsStatus
+  hasData: boolean
+  timestamp: string
+  lastScanStartedAt?: string
+  lastScanCompletedAt?: string
+  lastScanError?: {
+    code: 'INITIAL_SCAN_FAILED' | 'SCAN_FAILED'
+    message: string
+  }
 }
 
 class AnalyticsService {
@@ -259,7 +264,6 @@ class AnalyticsService {
   private agents = new Map<string, OpenClawAgent>()
   private sessionCache = new Map<string, CachedSessionEntry>()
   private sessionFileKeys = new Map<string, string>()
-  private dirty = true
   private watchers: FSWatcher[] = []
   private budgetCheckTimeout: ReturnType<typeof setTimeout> | null = null
   private backgroundRefreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -275,6 +279,11 @@ class AnalyticsService {
   private initialized = false
   private refreshGeneration = 0
   private activeOpenClawPath = ''
+  private analyticsStatus: AnalyticsStatus = 'unavailable'
+  private lastScanStartedAt: string | undefined
+  private lastScanCompletedAt: string | undefined
+  private lastScanError: AnalyticsStatusResponse['lastScanError']
+  private hasCompletedScan = false
   // Incremental read checkpoints for canonical SQLite sessions.
   // Key: getDatabaseSessionKey(databasePath, sessionId) -> last consumed seq.
   private dbSeqCheckpoints = new Map<string, number>()
@@ -285,16 +294,14 @@ class AnalyticsService {
   // Cached aggregates
   private _dailyCosts: Map<string, DailyCost> | null = null
   private _modelUsage: Map<string, Map<string, ModelUsage>> | null = null
-  private _channelDaily: Map<
-    string,
-    Map<string, ChannelDailyAggregate>
-  > | null = null
   private _statsCache: AggregatedStats | null = null
   private _statsCacheDate: string = ''
   // Cache-file persistence state (async, deduplicated writes)
   private lastCachePayload: string | null = null
   private cacheSaveInFlight = false
   private cacheSavePending = false
+  private cacheSaveCompletion: Promise<void> = Promise.resolve()
+  private pricingRevision = 0
 
   initialize(openClawPath?: string): void {
     const agentConfigPath =
@@ -302,14 +309,20 @@ class AnalyticsService {
       path.join(os.homedir(), '.openclaw')
 
     if (this.initialized) {
-      this.shutdown()
+      void this.shutdown()
     }
 
     this.refreshGeneration++
     const generation = this.refreshGeneration
     this.activeOpenClawPath = agentConfigPath
+    this.analyticsStatus = 'scanning'
+    this.lastScanStartedAt = new Date().toISOString()
+    this.lastScanCompletedAt = undefined
+    this.lastScanError = undefined
+    this.hasCompletedScan = false
 
     if (!fs.existsSync(agentConfigPath)) {
+      this.analyticsStatus = 'unavailable'
       this.initialized = true
       return
     }
@@ -364,7 +377,7 @@ class AnalyticsService {
     this.scheduleBackgroundSessionRefresh(agentConfigPath, agents, generation)
   }
 
-  shutdown(): void {
+  shutdown(): Promise<void> {
     this.refreshGeneration++
 
     for (const watcher of this.watchers) {
@@ -383,7 +396,7 @@ class AnalyticsService {
       clearInterval(this.toolCleanupInterval)
       this.toolCleanupInterval = null
     }
-    this.flushSessionCache()
+    const cacheFlush = this.flushSessionCache()
     this.sessions.clear()
     this.agents.clear()
     this.sessionCache.clear()
@@ -394,8 +407,31 @@ class AnalyticsService {
     this.lastCachePayload = null
     this.queuedBackgroundRefresh = null
     this.activeOpenClawPath = ''
-    this.dirty = true
+    this.analyticsStatus = 'unavailable'
+    this.lastScanStartedAt = undefined
+    this.lastScanCompletedAt = undefined
+    this.lastScanError = undefined
+    this.hasCompletedScan = false
     this.initialized = false
+    return Promise.all([cacheFlush, this.cacheSaveCompletion]).then(() => {})
+  }
+
+  getStatus(): AnalyticsStatusResponse {
+    return {
+      status: this.analyticsStatus,
+      // Keep this O(1): the status endpoint is polled frequently while an
+      // initial scan is running. A metadata-only session still represents an
+      // available OpenClaw data source and is safe to expose as a snapshot.
+      hasData: this.sessions.size > 0,
+      timestamp: new Date().toISOString(),
+      ...(this.lastScanStartedAt
+        ? { lastScanStartedAt: this.lastScanStartedAt }
+        : {}),
+      ...(this.lastScanCompletedAt
+        ? { lastScanCompletedAt: this.lastScanCompletedAt }
+        : {}),
+      ...(this.lastScanError ? { lastScanError: this.lastScanError } : {}),
+    }
   }
 
   private loadCachedAgentSessions(
@@ -432,6 +468,7 @@ class AnalyticsService {
       // persisted seq checkpoint so the database load below only reads new
       // events. Freshness is keyed off lastSeq, not file mtime/size.
       if (entry.lastSeq !== undefined) {
+        if (entry.pricingRevision !== this.pricingRevision) continue
         this.dbSeqCheckpoints.set(cacheKey, entry.lastSeq)
         const session = this.deserializeSession(entry, {
           sessionId: entry.sessionId,
@@ -469,12 +506,6 @@ class AnalyticsService {
       this.sessionFileKeys.set(entry.sessionId, cacheKey)
       restored++
     }
-
-    // OpenClaw 2026.7+ stores canonical sessions/transcripts in SQLite.
-    // Load it before the background refresh so the first response is already
-    // based on the authoritative source. Runs asynchronously with per-session
-    // yields so cold-start cannot freeze the Electron main process.
-    this.triggerAgentDatabaseLoad(agentPath, agent)
 
     if (restored > 0) {
       this.markDirty()
@@ -593,39 +624,7 @@ class AnalyticsService {
     return `${this.getFileCacheKey(databasePath)}#${sessionId}`
   }
 
-  /**
-   * Fire-and-forget incremental load of one agent's canonical SQLite
-   * sessions, used from synchronous call sites (initialize, config watcher).
-   */
-  private triggerAgentDatabaseLoad(
-    agentPath: string,
-    agent: OpenClawAgent
-  ): void {
-    const generation = this.refreshGeneration
-    void this.loadAgentDatabaseSessions(agentPath, agent, generation)
-      .then((result) => {
-        if (generation !== this.refreshGeneration || !this.initialized) {
-          return
-        }
-        if (result.changed) {
-          this.markDirty()
-          broadcastCostsUpdated()
-        }
-        this.scheduleSessionCacheSave()
-      })
-      .catch((error) => {
-        if (!isProduction) {
-          console.warn(
-            `Failed to load agent database for ${agent.id}:`,
-            error
-          )
-        }
-      })
-  }
-
-  private parsedRequestFromResult(
-    result: ParsedOpenClawResult
-  ): ParsedRequest {
+  private parsedRequestFromResult(result: ParsedOpenClawResult): ParsedRequest {
     return {
       timestamp: result.timestamp,
       provider: result.provider,
@@ -662,6 +661,7 @@ class AnalyticsService {
     generation: number
   ): Promise<{ sessionIds: Set<string>; changed: boolean }> {
     const databasePath = getOpenClawAgentDatabasePath(agentPath)
+    const pricingRevision = this.pricingRevision
     const dbCacheKey = this.getFileCacheKey(databasePath)
     const sourcePrefix = `${dbCacheKey}#`
     const sessionIds = new Set<string>()
@@ -727,7 +727,7 @@ class AnalyticsService {
         const previous = this.sessions.get(sessionId)
         const previousIsCanonical = Boolean(
           previous &&
-            this.sessionFileKeys.get(sessionId)?.startsWith(sourcePrefix)
+          this.sessionFileKeys.get(sessionId)?.startsWith(sourcePrefix)
         )
 
         // Full per-session reload when there is no usable checkpoint, when
@@ -764,16 +764,10 @@ class AnalyticsService {
               )
               if (!parsed) continue
               newRequests.push(this.parsedRequestFromResult(parsed))
-              if (
-                !minTimestamp ||
-                parsed.timestamp < minTimestamp
-              ) {
+              if (!minTimestamp || parsed.timestamp < minTimestamp) {
                 minTimestamp = parsed.timestamp
               }
-              if (
-                !maxTimestamp ||
-                parsed.timestamp > maxTimestamp
-              ) {
+              if (!maxTimestamp || parsed.timestamp > maxTimestamp) {
                 maxTimestamp = parsed.timestamp
               }
             } catch {
@@ -807,10 +801,11 @@ class AnalyticsService {
         }
 
         let session: SessionData
+        let sessionChanged = false
         if (!rebuild && previous) {
           session = previous
           if (this.appendRequestsToSession(session, newRequests)) {
-            changed = true
+            sessionChanged = true
           }
           if (minTimestamp && minTimestamp < session.startedAt) {
             session.startedAt = minTimestamp
@@ -845,14 +840,15 @@ class AnalyticsService {
           if (maxTimestamp && maxTimestamp > session.lastActivity) {
             session.lastActivity = maxTimestamp
           }
-          if (rowsRead > 0 || previous) {
-            // New session, replaced JSONL source, or reloaded canonical data.
-            changed = true
-          }
+          // A new session or a source replacement changes the published data.
+          sessionChanged = !previous || rowsRead > 0
         }
 
-        // Session metadata (channel / interaction timestamps) updates even
-        // without new events; that alone does not mark the data as changed.
+        // Session metadata affects active-session and channel aggregates even
+        // when no transcript rows were added.
+        const previousChannel = session.channel
+        const previousStartedAt = session.startedAt
+        const previousLastActivity = session.lastActivity
         session.channel = meta.channel
         if (meta.lastActivity && meta.lastActivity > session.lastActivity) {
           session.lastActivity = meta.lastActivity
@@ -860,6 +856,16 @@ class AnalyticsService {
         if (meta.startedAt && meta.startedAt < session.startedAt) {
           session.startedAt = meta.startedAt
         }
+
+        if (
+          previousChannel !== session.channel ||
+          previousStartedAt !== session.startedAt ||
+          previousLastActivity !== session.lastActivity
+        ) {
+          sessionChanged = true
+        }
+
+        if (sessionChanged) changed = true
 
         if (maxSeq !== undefined) {
           const lastSeq = fullReload
@@ -882,6 +888,7 @@ class AnalyticsService {
           size: 0,
           mtimeMs: 0,
           parsedAt: new Date().toISOString(),
+          pricingRevision,
           session: this.serializeSession(session),
           lastSeq: this.dbSeqCheckpoints.get(checkpointKey),
         })
@@ -954,7 +961,10 @@ class AnalyticsService {
       awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 50 },
     })
 
-    const handleSessionFile = async (filePath: string, isNewSession: boolean) => {
+    const handleSessionFile = async (
+      filePath: string,
+      isNewSession: boolean
+    ) => {
       if (!this.agents.has(agentId)) return
       const fileName = path.basename(filePath)
       const sessionId = getSessionIdFromFileName(fileName)
@@ -1088,6 +1098,7 @@ class AnalyticsService {
     return (
       entry.sessionId === sessionId &&
       entry.agentId === agentId &&
+      entry.pricingRevision === this.pricingRevision &&
       entry.size === stat.size &&
       Math.abs(entry.mtimeMs - stat.mtimeMs) < 1
     )
@@ -1185,6 +1196,15 @@ class AnalyticsService {
         typeof entry.parsedAt === 'string'
           ? entry.parsedAt
           : new Date().toISOString(),
+      ...(typeof entry.lastSeq === 'number' &&
+      Number.isSafeInteger(entry.lastSeq) &&
+      entry.lastSeq >= 0
+        ? { lastSeq: entry.lastSeq }
+        : {}),
+      ...(typeof entry.pricingRevision === 'number' &&
+      Number.isSafeInteger(entry.pricingRevision)
+        ? { pricingRevision: entry.pricingRevision }
+        : {}),
       session: {
         id: session.id,
         agentId: session.agentId,
@@ -1244,7 +1264,13 @@ class AnalyticsService {
         const entry = this.normalizeCachedEntry(rawEntry)
         if (!entry) continue
 
-        this.sessionCache.set(this.getFileCacheKey(entry.filePath), entry)
+        // SQLite has one file for many sessions; its cache key must include
+        // the session id so entries do not overwrite one another on restart.
+        const cacheKey =
+          entry.lastSeq !== undefined
+            ? this.getDatabaseSessionKey(entry.filePath, entry.sessionId)
+            : this.getFileCacheKey(entry.filePath)
+        this.sessionCache.set(cacheKey, entry)
       }
     } catch (error) {
       if (!isProduction) {
@@ -1288,7 +1314,8 @@ class AnalyticsService {
     projectPath: string,
     channel: string | undefined,
     stat: FsStats,
-    session: SessionData
+    session: SessionData,
+    pricingRevision = this.pricingRevision
   ): void {
     const entry: CachedSessionEntry = {
       filePath,
@@ -1299,6 +1326,7 @@ class AnalyticsService {
       size: stat.size,
       mtimeMs: stat.mtimeMs,
       parsedAt: new Date().toISOString(),
+      pricingRevision,
       session: this.serializeSession(session),
     }
 
@@ -1319,20 +1347,21 @@ class AnalyticsService {
 
     this.cacheSaveTimer = setTimeout(() => {
       this.cacheSaveTimer = null
-      this.saveSessionCacheNow()
+      this.cacheSaveCompletion = this.saveSessionCacheNow()
     }, CACHE_SAVE_DEBOUNCE_MS)
 
     this.cacheSaveTimer.unref?.()
   }
 
-  private flushSessionCache(): void {
+  private flushSessionCache(): Promise<void> {
     if (!this.cacheSaveTimer) {
-      return
+      return Promise.resolve()
     }
 
     clearTimeout(this.cacheSaveTimer)
     this.cacheSaveTimer = null
-    void this.saveSessionCacheNow()
+    this.cacheSaveCompletion = this.saveSessionCacheNow()
+    return this.cacheSaveCompletion
   }
 
   private async saveSessionCacheNow(): Promise<void> {
@@ -1344,7 +1373,7 @@ class AnalyticsService {
       // A write is already running; re-schedule once it settles so the
       // latest state is never lost.
       this.cacheSavePending = true
-      return
+      return this.cacheSaveCompletion
     }
     this.cacheSaveInFlight = true
 
@@ -1387,8 +1416,23 @@ class AnalyticsService {
       clearTimeout(this.backgroundRefreshTimer)
     }
 
+    this.analyticsStatus = 'scanning'
+    this.lastScanStartedAt = new Date().toISOString()
+    this.lastScanError = undefined
+
     if (this.backgroundRefreshPromise) {
-      this.queuedBackgroundRefresh = { openClawPath, agents, generation }
+      const queuedAgents = new Map(
+        (this.queuedBackgroundRefresh?.agents ?? []).map((agent) => [
+          agent.id,
+          agent,
+        ])
+      )
+      for (const agent of agents) queuedAgents.set(agent.id, agent)
+      this.queuedBackgroundRefresh = {
+        openClawPath,
+        agents: [...queuedAgents.values()],
+        generation,
+      }
       return
     }
 
@@ -1396,7 +1440,18 @@ class AnalyticsService {
       this.backgroundRefreshTimer = null
 
       if (this.backgroundRefreshPromise) {
-        this.queuedBackgroundRefresh = { openClawPath, agents, generation }
+        const queuedAgents = new Map(
+          (this.queuedBackgroundRefresh?.agents ?? []).map((agent) => [
+            agent.id,
+            agent,
+          ])
+        )
+        for (const agent of agents) queuedAgents.set(agent.id, agent)
+        this.queuedBackgroundRefresh = {
+          openClawPath,
+          agents: [...queuedAgents.values()],
+          generation,
+        }
         return
       }
 
@@ -1411,6 +1466,9 @@ class AnalyticsService {
     agents: OpenClawAgent[],
     generation: number
   ): Promise<void> {
+    this.analyticsStatus = 'scanning'
+    this.lastScanStartedAt = new Date().toISOString()
+    this.lastScanError = undefined
     this.backgroundRefreshPromise = this.refreshSessionFilesInBackground(
       openClawPath,
       agents,
@@ -1438,10 +1496,32 @@ class AnalyticsService {
 
     if (this.backgroundRefreshPromise) {
       await this.backgroundRefreshPromise
+      if (this.analyticsStatus === 'error') {
+        throw new Error(this.lastScanError?.message ?? 'Analytics scan failed')
+      }
       return
     }
 
     await this.startBackgroundSessionRefresh(
+      this.activeOpenClawPath,
+      [...this.agents.values()],
+      this.refreshGeneration
+    )
+    if (this.analyticsStatus === 'error') {
+      throw new Error(this.lastScanError?.message ?? 'Analytics scan failed')
+    }
+  }
+
+  /** Drop parsed cost snapshots after pricing changes and rebuild them. */
+  invalidateCostCache(): void {
+    if (!this.initialized || !this.activeOpenClawPath) return
+    this.pricingRevision++
+    this.sessionCache.clear()
+    this.sessions.clear()
+    this.sessionFileKeys.clear()
+    this.dbSeqCheckpoints.clear()
+    this.markDirty()
+    this.scheduleBackgroundSessionRefresh(
       this.activeOpenClawPath,
       [...this.agents.values()],
       this.refreshGeneration
@@ -1452,10 +1532,15 @@ class AnalyticsService {
     await new Promise<void>((resolve) => setImmediate(resolve))
   }
 
-  private removeMissingSessionFiles(activeFileKeys: Set<string>): boolean {
+  private removeMissingSessionFiles(
+    activeFileKeys: Set<string>,
+    scopedAgentIds: Set<string>
+  ): boolean {
     let changed = false
 
     for (const [sessionId, cacheKey] of [...this.sessionFileKeys]) {
+      const session = this.sessions.get(sessionId)
+      if (!session || !scopedAgentIds.has(session.agentId)) continue
       if (!activeFileKeys.has(cacheKey)) {
         this.sessions.delete(sessionId)
         this.sessionFileKeys.delete(sessionId)
@@ -1464,6 +1549,8 @@ class AnalyticsService {
     }
 
     for (const cacheKey of [...this.sessionCache.keys()]) {
+      const entry = this.sessionCache.get(cacheKey)
+      if (!entry || !scopedAgentIds.has(entry.agentId)) continue
       if (!activeFileKeys.has(cacheKey)) {
         this.sessionCache.delete(cacheKey)
         changed = true
@@ -1567,7 +1654,7 @@ class AnalyticsService {
               }
             }
           } else if (
-            this.parseSessionFile(
+            await this.parseSessionFile(
               filePath,
               sessionId,
               agent.id,
@@ -1594,7 +1681,10 @@ class AnalyticsService {
         return
       }
 
-      const removed = this.removeMissingSessionFiles(activeFileKeys)
+      const removed = this.removeMissingSessionFiles(
+        activeFileKeys,
+        new Set(agents.map((agent) => agent.id))
+      )
       if (changed || removed) {
         this.markDirty()
         broadcastCostsUpdated()
@@ -1605,7 +1695,17 @@ class AnalyticsService {
           `Analytics session cache refreshed: ${parsed} parsed, ${restored} restored, ${removed ? 'stale entries removed' : 'no stale entries'}`
         )
       }
+
+      this.analyticsStatus = 'ready'
+      this.hasCompletedScan = true
+      this.lastScanCompletedAt = new Date().toISOString()
+      this.lastScanError = undefined
     } catch (error) {
+      this.analyticsStatus = 'error'
+      this.lastScanError = {
+        code: this.hasCompletedScan ? 'SCAN_FAILED' : 'INITIAL_SCAN_FAILED',
+        message: 'Analytics data scan failed',
+      }
       console.error(
         'Failed to refresh analytics sessions in background:',
         error
@@ -1613,31 +1713,35 @@ class AnalyticsService {
     }
   }
 
-  private parseSessionFile(
+  private async parseSessionFile(
     filePath: string,
     sessionId: string,
     agentId: string,
     projectPath: string,
     channel?: string,
     options: ParseSessionFileOptions = {}
-  ): boolean {
+  ): Promise<boolean> {
+    if (this.parsingFiles.has(filePath)) {
+      const agent = this.agents.get(agentId)
+      if (agent) {
+        this.scheduleBackgroundSessionRefresh(
+          this.activeOpenClawPath,
+          [agent],
+          this.refreshGeneration
+        )
+      }
+      return false
+    }
     if (!fs.existsSync(filePath)) {
       return false
     }
 
+    const initialStat = options.fileStat ?? this.safeStat(filePath)
+    if (!initialStat) return false
+    const pricingRevision = this.pricingRevision
+    this.parsingFiles.add(filePath)
+
     try {
-      let content
-      try {
-        content = fs.readFileSync(filePath, 'utf-8')
-      } catch (readError) {
-        if (!isProduction) {
-          console.error(`Error reading session file ${filePath}:`, readError)
-        }
-        return false
-      }
-
-      const lines = content.split('\n')
-
       const session: SessionData = {
         id: sessionId,
         agentId,
@@ -1654,7 +1758,11 @@ class AnalyticsService {
       }
 
       let parsingErrors = 0
-      for (const line of lines) {
+      const outboundCalls: OutboundCallInput[] = []
+      const input = fs.createReadStream(filePath, { encoding: 'utf8' })
+      const lines = readline.createInterface({ input, crlfDelay: Infinity })
+      let lineNumber = 0
+      for await (const line of lines) {
         if (!line.trim()) continue
 
         try {
@@ -1705,15 +1813,39 @@ class AnalyticsService {
             agentId,
             session
           )
-          if (calls.length > 0) {
-            try {
-              logOutboundCalls(calls)
-            } catch {
-              // Logging failures must not abort the parse.
-            }
-          }
+          outboundCalls.push(...calls)
         } catch {
           parsingErrors++
+        }
+
+        lineNumber++
+        if (lineNumber % PARSE_YIELD_LINES === 0) {
+          await this.yieldToEventLoop()
+        }
+      }
+
+      const finalStat = this.safeStat(filePath)
+      if (
+        !finalStat ||
+        finalStat.size !== initialStat.size ||
+        Math.abs(finalStat.mtimeMs - initialStat.mtimeMs) >= 1
+      ) {
+        const agent = this.agents.get(agentId)
+        if (agent) {
+          this.scheduleBackgroundSessionRefresh(
+            this.activeOpenClawPath,
+            [agent],
+            this.refreshGeneration
+          )
+        }
+        return false
+      }
+
+      if (outboundCalls.length > 0) {
+        try {
+          logOutboundCalls(outboundCalls)
+        } catch {
+          // Logging failures must not abort the analytics parse.
         }
       }
 
@@ -1747,7 +1879,8 @@ class AnalyticsService {
             projectPath,
             channel,
             stat,
-            session
+            session,
+            pricingRevision
           )
         }
       }
@@ -1758,6 +1891,8 @@ class AnalyticsService {
         console.error(`Error parsing session file ${filePath}:`, error)
       }
       return false
+    } finally {
+      this.parsingFiles.delete(filePath)
     }
   }
 
@@ -1824,6 +1959,7 @@ class AnalyticsService {
                 session_id: sessionId,
                 agent_id: agentId,
                 tool_name: pending.toolName,
+                tool_use_id: pending.toolUseId,
                 duration_ms: durationMs,
                 status: isError ? 'error' : 'success',
                 error: isError ? 'Tool execution failed' : null,
@@ -1858,7 +1994,6 @@ class AnalyticsService {
   }
 
   private markDirty(): void {
-    this.dirty = true
     this._dailyCosts = null
     this._modelUsage = null
     this._statsCache = null
@@ -1923,6 +2058,12 @@ class AnalyticsService {
     return this.formatLocalDate(d)
   }
 
+  /** Inclusive local-calendar start for a window containing today. */
+  private lastNDaysStart(days: number): string {
+    const normalized = Number.isFinite(days) ? Math.max(1, Math.floor(days)) : 1
+    return this.daysAgo(normalized - 1)
+  }
+
   private formatLocalDate(date: Date): string {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
       date.getDate()
@@ -1932,6 +2073,13 @@ class AnalyticsService {
   private startOfMonth(): string {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+  }
+
+  private startOfWeek(): string {
+    const d = new Date()
+    const daysSinceMonday = (d.getDay() + 6) % 7
+    d.setDate(d.getDate() - daysSinceMonday)
+    return this.formatLocalDate(d)
   }
 
   private lastMonthStr(): string {
@@ -2005,9 +2153,9 @@ class AnalyticsService {
     if (!this._dailyCosts) {
       this._dailyCosts = this.computeDailyCosts()
     }
-    const cutoff = this.daysAgo(days)
+    const cutoff = this.lastNDaysStart(days)
     return [...this._dailyCosts.values()]
-      .filter((day) => day.date >= cutoff)
+      .filter((day) => day.date >= cutoff && day.date <= this.today())
       .sort((a, b) => a.date.localeCompare(b.date))
   }
 
@@ -2058,8 +2206,7 @@ class AnalyticsService {
 
   private computeAggregatedStats(): AggregatedStats {
     const today = this.today()
-    const weekCutoff = this.daysAgo(7)
-    const monthCutoff = this.daysAgo(30)
+    const weekCutoff = this.startOfWeek()
     const monthStart = this.startOfMonth()
 
     const stats: AggregatedStats = {
@@ -2078,12 +2225,17 @@ class AnalyticsService {
     }
 
     for (const [, session] of this.sessions) {
-      if (session.lastActivity >= monthStart) {
+      if (
+        session.lastActivity >= monthStart &&
+        session.lastActivity <= new Date().toISOString()
+      ) {
         stats.activeThisMonth++
       }
 
       for (const req of session.requests) {
         const date = this.dateStr(req.timestamp)
+
+        if (date > today) continue
 
         stats.totalCost += req.cost
         stats.totalInput += req.inputTokens
@@ -2097,10 +2249,10 @@ class AnalyticsService {
           stats.todayInput += req.inputTokens
           stats.todayOutput += req.outputTokens
         }
-        if (date >= weekCutoff) {
+        if (date >= weekCutoff && date <= today) {
           stats.weekSpend += req.cost
         }
-        if (date >= monthCutoff) {
+        if (date >= monthStart && date <= today) {
           stats.monthSpend += req.cost
         }
       }
@@ -2141,11 +2293,11 @@ class AnalyticsService {
     if (!this._modelUsage) {
       this._modelUsage = this.computeModelUsageByDate()
     }
-    const cutoff = this.daysAgo(days)
+    const cutoff = this.lastNDaysStart(days)
     // Roll up per-day aggregates into per-model totals across the window.
     const modelMap = new Map<string, ModelUsage>()
     for (const [date, perModel] of this._modelUsage) {
-      if (date < cutoff) continue
+      if (date < cutoff || date > this.today()) continue
       for (const m of perModel.values()) {
         let acc = modelMap.get(`${m.provider}/${m.model}`)
         if (!acc) {
@@ -2170,10 +2322,7 @@ class AnalyticsService {
     return [...modelMap.values()].sort((a, b) => b.cost - a.cost)
   }
 
-  private computeModelUsageByDate(): Map<
-    string,
-    Map<string, ModelUsage>
-  > {
+  private computeModelUsageByDate(): Map<string, Map<string, ModelUsage>> {
     const byDate = new Map<string, Map<string, ModelUsage>>()
 
     for (const [, session] of this.sessions) {
@@ -2209,12 +2358,13 @@ class AnalyticsService {
   }
 
   getModelUsageWithCache(days = 30): ModelUsageWithCache[] {
-    const cutoff = this.daysAgo(days)
+    const cutoff = this.lastNDaysStart(days)
     const modelMap = new Map<string, ModelUsageWithCache>()
 
     for (const [, session] of this.sessions) {
       for (const req of session.requests) {
-        if (this.dateStr(req.timestamp) < cutoff) continue
+        const date = this.dateStr(req.timestamp)
+        if (date < cutoff || date > this.today()) continue
         const key = `${req.provider}/${req.model}`
         let m = modelMap.get(key)
         if (!m) {
@@ -2259,20 +2409,10 @@ class AnalyticsService {
 
   getEnhancedStats(): EnhancedStats {
     const stats = this.getStatsInternal()
-    let monthCost = 0
-
-    const monthCutoff = this.daysAgo(30)
-    for (const [, session] of this.sessions) {
-      for (const req of session.requests) {
-        if (this.dateStr(req.timestamp) >= monthCutoff) {
-          monthCost += req.cost
-        }
-      }
-    }
 
     return {
       totalCost: stats.totalCost,
-      monthCost,
+      monthCost: stats.monthSpend,
       totalTokens: {
         input: stats.totalInput,
         output: stats.totalOutput,
@@ -2285,7 +2425,8 @@ class AnalyticsService {
   }
 
   getTokenBreakdown(days?: number): TokenBreakdown & { total: number } {
-    const cutoff = days !== undefined ? this.daysAgo(days) : ''
+    const cutoff = days !== undefined ? this.lastNDaysStart(days) : ''
+    const today = this.today()
     let input = 0,
       output = 0,
       cacheRead = 0,
@@ -2293,7 +2434,8 @@ class AnalyticsService {
 
     for (const [, session] of this.sessions) {
       for (const req of session.requests) {
-        if (cutoff && this.dateStr(req.timestamp) < cutoff) continue
+        const date = this.dateStr(req.timestamp)
+        if (date > today || (cutoff && date < cutoff)) continue
         input += req.inputTokens
         output += req.outputTokens
         cacheRead += req.cacheReadTokens
@@ -2322,9 +2464,10 @@ class AnalyticsService {
 
     for (const [, session] of this.sessions) {
       for (const req of session.requests) {
+        const timestamp = new Date(req.timestamp).getTime()
+        if (Number.isFinite(timestamp) && timestamp > now) continue
         this.addRequestToTokenPeriod(lifetime, req)
 
-        const timestamp = new Date(req.timestamp).getTime()
         if (
           Number.isFinite(timestamp) &&
           timestamp >= fiveHoursCutoff &&
@@ -2435,6 +2578,7 @@ class AnalyticsService {
     for (const [, session] of this.sessions) {
       for (const req of session.requests) {
         const date = this.dateStr(req.timestamp)
+        if (date > today) continue
         const ym = date.substring(0, 7)
 
         // Lifetime
@@ -2447,7 +2591,7 @@ class AnalyticsService {
         lifetimeSessions.add(session.id)
 
         // This month
-        if (date >= monthStart) {
+        if (date >= monthStart && date <= today) {
           thisMonth.totalCost += req.cost
           thisMonth.inputTokens += req.inputTokens
           thisMonth.outputTokens += req.outputTokens
@@ -2490,7 +2634,8 @@ class AnalyticsService {
   }
 
   getCacheSavings(days?: number): CacheSavingsDetail {
-    const cutoff = days !== undefined ? this.daysAgo(days) : ''
+    const cutoff = days !== undefined ? this.lastNDaysStart(days) : ''
+    const today = this.today()
     let savings = 0,
       cacheRead = 0,
       cacheCreation = 0,
@@ -2498,7 +2643,8 @@ class AnalyticsService {
 
     for (const [, session] of this.sessions) {
       for (const req of session.requests) {
-        if (cutoff && this.dateStr(req.timestamp) < cutoff) continue
+        const date = this.dateStr(req.timestamp)
+        if (date > today || (cutoff && date < cutoff)) continue
         savings += req.cacheSavings
         cacheRead += req.cacheReadTokens
         cacheCreation += req.cacheCreationTokens
@@ -2573,13 +2719,13 @@ class AnalyticsService {
   }
 
   getModelDailyUsage(days = 30): ModelDailyUsage[] {
-    const cutoff = this.daysAgo(days)
+    const cutoff = this.lastNDaysStart(days)
     const dayModelMap = new Map<string, ModelDailyUsage>()
 
     for (const [, session] of this.sessions) {
       for (const req of session.requests) {
         const date = this.dateStr(req.timestamp)
-        if (date < cutoff) continue
+        if (date < cutoff || date > this.today()) continue
         const key = `${date}/${req.provider}/${req.model}`
         let m = dayModelMap.get(key)
         if (!m) {
@@ -2652,7 +2798,7 @@ class AnalyticsService {
     for (const [, session] of this.sessions) {
       for (const req of session.requests) {
         const date = this.dateStr(req.timestamp)
-        if (date >= thisWeekCutoff) {
+        if (date >= thisWeekCutoff && date <= this.today()) {
           twCost += req.cost
           twTokens += req.inputTokens + req.outputTokens
           twSessions.add(session.id)
@@ -2880,14 +3026,14 @@ class AnalyticsService {
   }
 
   getAgentDailyCosts(agentId: string, days = 30): AgentDailyCost[] {
-    const cutoff = this.daysAgo(days)
+    const cutoff = this.lastNDaysStart(days)
     const dayMap = new Map<string, AgentDailyCost>()
 
     for (const [, session] of this.sessions) {
       if (session.agentId !== agentId) continue
       for (const req of session.requests) {
         const date = this.dateStr(req.timestamp)
-        if (date < cutoff) continue
+        if (date < cutoff || date > this.today()) continue
         let d = dayMap.get(date)
         if (!d) {
           d = {
@@ -2915,13 +3061,13 @@ class AnalyticsService {
   }
 
   getAllAgentsDailyCosts(days = 30): AgentDailyCost[] {
-    const cutoff = this.daysAgo(days)
+    const cutoff = this.lastNDaysStart(days)
     const dayMap = new Map<string, AgentDailyCost>()
 
     for (const [, session] of this.sessions) {
       for (const req of session.requests) {
         const date = this.dateStr(req.timestamp)
-        if (date < cutoff) continue
+        if (date < cutoff || date > this.today()) continue
         const key = `${session.agentId}/${date}`
         let d = dayMap.get(key)
         if (!d) {
@@ -3010,14 +3156,14 @@ class AnalyticsService {
     days: number,
     channelId: number
   ): ChannelDailyCost[] {
-    const cutoff = this.daysAgo(days)
+    const cutoff = this.lastNDaysStart(days)
     const dayMap = new Map<string, ChannelDailyCost>()
 
     for (const [, session] of this.sessions) {
       if ((session.channel || 'default') !== channelName) continue
       for (const req of session.requests) {
         const date = this.dateStr(req.timestamp)
-        if (date < cutoff) continue
+        if (date < cutoff || date > this.today()) continue
         let d = dayMap.get(date)
         if (!d) {
           d = {
@@ -3082,9 +3228,9 @@ export function initializeAnalyticsService(
   return service
 }
 
-export function shutdownAnalyticsService(): void {
+export async function shutdownAnalyticsService(): Promise<void> {
   if (instance) {
-    instance.shutdown()
+    await instance.shutdown()
     instance = null
   }
 }

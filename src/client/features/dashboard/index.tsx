@@ -9,6 +9,7 @@ import {
   TrendingUp,
 } from 'lucide-react'
 import {
+  getAnalyticsStatus,
   getBudgetStatus,
   getDailyCosts,
   getEnhancedStats,
@@ -71,9 +72,40 @@ export function Dashboard() {
 
   const hasVisited = (tab: string) => visitedTabs.has(tab)
 
+  const {
+    data: analyticsStatus,
+    isLoading: analyticsStatusLoading,
+    isError: analyticsStatusError,
+  } = useQuery({
+    queryKey: ['analyticsStatus'],
+    queryFn: getAnalyticsStatus,
+    refetchInterval: (query) => {
+      if (document.hidden) return false
+      const status = query.state.data?.status
+      return !status || status === 'scanning' ? 1000 : 30000
+    },
+    refetchIntervalInBackground: false,
+  })
+  const analyticsDataReady =
+    Boolean(analyticsStatus?.hasData) ||
+    analyticsStatus?.status === 'ready' ||
+    Boolean(analyticsStatus?.lastScanCompletedAt)
+  const analyticsLoading =
+    analyticsStatusLoading ||
+    (!analyticsDataReady &&
+      !analyticsStatusError &&
+      analyticsStatus?.status !== 'error' &&
+      analyticsStatus?.status !== 'unavailable')
+  const analyticsUnavailable =
+    !analyticsDataReady &&
+    (analyticsStatusError ||
+      analyticsStatus?.status === 'error' ||
+      analyticsStatus?.status === 'unavailable')
+
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['enhancedStats'],
     queryFn: getEnhancedStats,
+    enabled: analyticsDataReady,
     refetchInterval: pollWhenVisible(5000),
     refetchIntervalInBackground: false,
   })
@@ -81,6 +113,7 @@ export function Dashboard() {
   const { data: dailyCosts, isLoading: dailyCostsLoading } = useQuery({
     queryKey: ['dailyCosts'],
     queryFn: () => getDailyCosts(30),
+    enabled: analyticsDataReady,
     refetchInterval: pollWhenVisible(15000),
     refetchIntervalInBackground: false,
   })
@@ -88,6 +121,7 @@ export function Dashboard() {
   const { data: modelUsage, isLoading: modelUsageLoading } = useQuery({
     queryKey: modelUsageQueryKey(30),
     queryFn: () => getModelUsage(30),
+    enabled: analyticsDataReady,
     refetchInterval: pollWhenVisible(20000),
     refetchIntervalInBackground: false,
   })
@@ -95,6 +129,7 @@ export function Dashboard() {
   const { data: tokenBreakdown, isLoading: tokenBreakdownLoading } = useQuery({
     queryKey: ['tokenBreakdown'],
     queryFn: () => getTokenBreakdown(30),
+    enabled: analyticsDataReady,
     refetchInterval: pollWhenVisible(25000),
     refetchIntervalInBackground: false,
   })
@@ -107,6 +142,7 @@ export function Dashboard() {
   } = useQuery({
     queryKey: ['tokenSummary'],
     queryFn: getTokenSummary,
+    enabled: analyticsDataReady,
     refetchInterval: pollWhenVisible(25000),
     refetchIntervalInBackground: false,
   })
@@ -114,6 +150,7 @@ export function Dashboard() {
   const { data: budgetStatus } = useQuery({
     queryKey: ['budgetStatus'],
     queryFn: getBudgetStatus,
+    enabled: analyticsDataReady,
     refetchInterval: pollWhenVisible(30000),
     refetchIntervalInBackground: false,
   })
@@ -158,9 +195,30 @@ export function Dashboard() {
             </p>
           </div>
           <div className='flex items-center gap-3'>
-            <div className='hidden items-center gap-2 text-xs font-medium text-muted-foreground sm:flex'>
-              <span className='h-2 w-2 rounded-full bg-success' />
-              {text('实时同步', 'Live sync')}
+            <div
+              className='hidden items-center gap-2 text-xs font-medium text-muted-foreground sm:flex'
+              role='status'
+              aria-live='polite'
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  analyticsStatusError || analyticsStatus?.status === 'error'
+                    ? 'bg-destructive'
+                    : analyticsStatus?.status === 'unavailable'
+                      ? 'bg-muted-foreground'
+                      : analyticsLoading ||
+                          analyticsStatus?.status === 'scanning'
+                        ? 'animate-pulse bg-warning'
+                        : 'bg-success'
+                }`}
+              />
+              {analyticsStatusError || analyticsStatus?.status === 'error'
+                ? text('分析数据扫描失败', 'Analytics scan failed')
+                : analyticsStatus?.status === 'unavailable'
+                  ? text('OpenClaw 数据源不可用', 'OpenClaw data unavailable')
+                  : analyticsLoading || analyticsStatus?.status === 'scanning'
+                    ? text('正在扫描 OpenClaw 数据…', 'Scanning OpenClaw data…')
+                    : text('分析数据已就绪', 'Analytics ready')}
             </div>
             <Button
               variant='outline'
@@ -175,6 +233,23 @@ export function Dashboard() {
           </div>
         </div>
 
+        {analyticsUnavailable && (
+          <div
+            className='mb-6 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-muted-foreground'
+            role='alert'
+          >
+            {analyticsStatusError || analyticsStatus?.status === 'error'
+              ? text(
+                  '分析数据扫描失败，请检查 OpenClaw 数据源后重试。',
+                  'Analytics scan failed. Check the OpenClaw data source and retry.'
+                )
+              : text(
+                  'OpenClaw 数据源不可用，暂时没有可展示的分析数据。',
+                  'The OpenClaw data source is unavailable; no analytics data is available yet.'
+                )}
+          </div>
+        )}
+
         <div className='mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
           <Card className='relative overflow-hidden border-border/70 bg-card/90 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-chart-1/70'>
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
@@ -186,7 +261,7 @@ export function Dashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              {statsLoading ? (
+              {analyticsLoading || statsLoading ? (
                 <>
                   <Skeleton className='mb-1 h-8 w-24' />
                   <Skeleton className='h-4 w-32' />
@@ -215,7 +290,7 @@ export function Dashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              {statsLoading ? (
+              {analyticsLoading || statsLoading ? (
                 <>
                   <Skeleton className='mb-1 h-8 w-24' />
                   <Skeleton className='h-4 w-32' />
@@ -289,7 +364,7 @@ export function Dashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              {statsLoading ? (
+              {analyticsLoading || statsLoading ? (
                 <>
                   <Skeleton className='mb-1 h-8 w-24' />
                   <Skeleton className='h-4 w-32' />
@@ -317,7 +392,7 @@ export function Dashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              {statsLoading ? (
+              {analyticsLoading || statsLoading ? (
                 <>
                   <Skeleton className='mb-1 h-8 w-16' />
                   <Skeleton className='h-4 w-24' />
@@ -336,7 +411,8 @@ export function Dashboard() {
           </Card>
         </div>
 
-        {budgetStatus &&
+        {!analyticsLoading &&
+          budgetStatus &&
           (budgetStatus.daily ||
             budgetStatus.weekly ||
             budgetStatus.monthly) && (
@@ -387,7 +463,7 @@ export function Dashboard() {
               </div>
             </CardHeader>
             <CardContent className='ps-2 pe-4'>
-              {dailyCostsLoading ? (
+              {analyticsLoading || dailyCostsLoading ? (
                 <Skeleton className='h-[300px] w-full' />
               ) : (
                 <DailyCostChart data={dailyCosts ?? []} />
@@ -398,8 +474,8 @@ export function Dashboard() {
           <TokenUsageCard
             data={dailyCosts ?? []}
             summary={tokenSummary}
-            chartLoading={dailyCostsLoading}
-            summaryLoading={tokenSummaryLoading}
+            chartLoading={analyticsLoading || dailyCostsLoading}
+            summaryLoading={analyticsLoading || tokenSummaryLoading}
             summaryError={tokenSummaryError}
             onRetry={() => {
               void refetchTokenSummary()
@@ -422,9 +498,9 @@ export function Dashboard() {
           <TabsContent value='overview'>
             <OverviewTab
               modelUsage={modelUsage}
-              modelUsageLoading={modelUsageLoading}
+              modelUsageLoading={analyticsLoading || modelUsageLoading}
               tokenBreakdown={tokenBreakdown}
-              tokenBreakdownLoading={tokenBreakdownLoading}
+              tokenBreakdownLoading={analyticsLoading || tokenBreakdownLoading}
               onSwitchTab={handleTabChange}
             />
           </TabsContent>

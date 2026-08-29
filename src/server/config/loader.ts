@@ -74,12 +74,6 @@ const LEGACY_DEFAULT_RATES: DefaultRates = {
   openrouter: {},
 }
 
-const LEGACY_ALERT_THRESHOLDS = {
-  dailyBudget: 10,
-  weeklyBudget: 50,
-  monthlyBudget: 200,
-} as const
-
 function getLegacyWindowsOpenClawPath(): string {
   return path.join(os.homedir(), 'AppData', 'Roaming', 'openclaw')
 }
@@ -328,20 +322,6 @@ function looksLikeLegacyUsdRates(rates?: Partial<DefaultRates>): boolean {
   return matches >= 5
 }
 
-function looksLikeLegacyUsdThresholds(
-  thresholds?: Partial<Config['alertThresholds']>
-): boolean {
-  if (!thresholds) {
-    return false
-  }
-
-  return (
-    thresholds.dailyBudget === LEGACY_ALERT_THRESHOLDS.dailyBudget &&
-    thresholds.weeklyBudget === LEGACY_ALERT_THRESHOLDS.weeklyBudget &&
-    thresholds.monthlyBudget === LEGACY_ALERT_THRESHOLDS.monthlyBudget
-  )
-}
-
 function stripLegacyDefaultOverrides(
   rates: Partial<DefaultRates>
 ): Partial<DefaultRates> {
@@ -418,6 +398,7 @@ export function ensureConfigDir(): void {
 
 interface CachedConfig {
   mtimeMs: number
+  size: number
   config: Config
 }
 
@@ -434,13 +415,18 @@ export function loadConfig(): Config {
     // will create the default file on first run.
   }
 
-  if (stat && cachedConfig && cachedConfig.mtimeMs === stat.mtimeMs) {
+  if (
+    stat &&
+    cachedConfig &&
+    cachedConfig.mtimeMs === stat.mtimeMs &&
+    cachedConfig.size === stat.size
+  ) {
     return cachedConfig.config
   }
 
   const config = loadConfigFromDisk()
   if (stat) {
-    cachedConfig = { mtimeMs: stat.mtimeMs, config }
+    cachedConfig = { mtimeMs: stat.mtimeMs, size: stat.size, config }
   }
   return config
 }
@@ -460,7 +446,11 @@ function loadConfigFromDisk(): Config {
   if (!fs.existsSync(CONFIG_FILE)) {
     // Create default config file
     saveConfig(defaultConfig)
-    cachedConfig = { mtimeMs: getConfigMtimeOrZero(), config: defaultConfig }
+    cachedConfig = {
+      mtimeMs: getConfigMtimeOrZero(),
+      size: getConfigSizeOrZero(),
+      config: defaultConfig,
+    }
     return defaultConfig
   }
 
@@ -474,11 +464,10 @@ function loadConfigFromDisk(): Config {
       wslConfig
     )
     const hasLegacyUsdRates = looksLikeLegacyUsdRates(userConfig.rates)
-    const hasLegacyUsdThresholds = looksLikeLegacyUsdThresholds(
-      userConfig.alertThresholds
-    )
+    // Threshold values such as 10/50/200 are valid user-configured CNY
+    // budgets and are not sufficient evidence of a legacy USD file.
     const shouldConvertLegacyCurrency =
-      hasLegacyUsdRates || hasLegacyUsdThresholds
+      userConfig.schemaVersion === undefined && hasLegacyUsdRates
 
     const normalizedUserRates = shouldConvertLegacyCurrency
       ? convertRatesToCny(stripLegacyDefaultOverrides(userConfig.rates || {}))
@@ -491,6 +480,8 @@ function loadConfigFromDisk(): Config {
     )
 
     const config: Config = {
+      schemaVersion: 2,
+      currency: 'CNY',
       rates: mergedRates,
       alertThresholds: {
         ...defaultConfig.alertThresholds,
@@ -535,6 +526,14 @@ function loadConfigFromDisk(): Config {
 function getConfigMtimeOrZero(): number {
   try {
     return fs.statSync(CONFIG_FILE).mtimeMs
+  } catch {
+    return 0
+  }
+}
+
+function getConfigSizeOrZero(): number {
+  try {
+    return fs.statSync(CONFIG_FILE).size
   } catch {
     return 0
   }

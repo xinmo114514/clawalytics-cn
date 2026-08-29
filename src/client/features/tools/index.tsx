@@ -20,6 +20,7 @@ import {
 } from 'recharts'
 import { getOutboundCalls, getToolStats } from '@/lib/api'
 import { formatRelativeTime } from '@/lib/i18n'
+import { pollWhenVisible } from '@/lib/polling'
 import { useLocale } from '@/context/locale-provider'
 import { useChartColors } from '@/hooks/use-chart-colors'
 import { Button } from '@/components/ui/button'
@@ -116,13 +117,13 @@ export function ToolsAnalytics() {
   const { data: toolCallsData, isLoading: callsLoading } = useQuery({
     queryKey: ['toolCalls', filters],
     queryFn: () => getOutboundCalls(filters),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
   })
 
   const { data: toolStats, isLoading: statsLoading } = useQuery({
     queryKey: ['toolStats'],
     queryFn: () => getToolStats(30),
-    refetchInterval: 30000,
+    refetchInterval: pollWhenVisible(30000),
   })
 
   const toolCalls = toolCallsData?.calls ?? []

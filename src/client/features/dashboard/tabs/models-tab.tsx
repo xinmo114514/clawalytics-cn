@@ -2,11 +2,13 @@ import { useQuery } from '@tanstack/react-query'
 import { Building2, Coins, DollarSign, Layers } from 'lucide-react'
 import {
   getModelDailyUsage,
-  getModels,
   getModelStats,
+  getModelUsage,
   getProviderSummary,
+  modelUsageQueryKey,
 } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
+import { pollWhenVisible } from '@/lib/polling'
 import { useCurrency } from '@/context/currency-provider'
 import { useLocale } from '@/context/locale-provider'
 import {
@@ -30,30 +32,30 @@ export function ModelsTab({ enabled }: ModelsTabProps) {
   const { formatCurrency } = useCurrency()
 
   const { data: models, isLoading: modelsLoading } = useQuery({
-    queryKey: ['models'],
-    queryFn: () => getModels(30),
-    refetchInterval: 10000,
+    queryKey: modelUsageQueryKey(30),
+    queryFn: () => getModelUsage(30),
+    refetchInterval: pollWhenVisible(10000),
     enabled,
   })
 
   const { data: modelStats, isLoading: statsLoading } = useQuery({
     queryKey: ['modelStats'],
     queryFn: () => getModelStats(30),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
     enabled,
   })
 
   const { data: providers, isLoading: providersLoading } = useQuery({
     queryKey: ['providers'],
     queryFn: () => getProviderSummary(30),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
     enabled,
   })
 
   const { data: dailyUsage, isLoading: dailyLoading } = useQuery({
     queryKey: ['modelDailyUsage'],
     queryFn: () => getModelDailyUsage(30),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
     enabled,
   })
 

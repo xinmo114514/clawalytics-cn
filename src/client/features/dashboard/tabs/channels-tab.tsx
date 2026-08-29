@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Coins, DollarSign, Mail, MessageSquare } from 'lucide-react'
 import { getChannelStats } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
+import { pollWhenVisible } from '@/lib/polling'
 import { useCurrency } from '@/context/currency-provider'
 import { useLocale } from '@/context/locale-provider'
 import {
@@ -26,7 +27,7 @@ export function ChannelsTab({ enabled }: ChannelsTabProps) {
   const { data: channelStats, isLoading } = useQuery({
     queryKey: ['channelStats'],
     queryFn: () => getChannelStats(50),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
     enabled,
   })
 

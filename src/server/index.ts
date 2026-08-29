@@ -70,7 +70,19 @@ app.use(express.json())
 
 // Serve static files in production (before API routes)
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(clientPath, { index: 'index.html' }))
+  // Hashed asset filenames under /assets/* never change content, so cache
+  // them aggressively. The SPA index.html, /images/*, and /fonts/* stay
+  // short-lived (default) so app updates roll out without manual clearing.
+  app.use(
+    express.static(clientPath, {
+      index: 'index.html',
+      setHeaders: (res, filePath) => {
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=2592000, immutable')
+        }
+      },
+    })
+  )
 }
 
 // API routes

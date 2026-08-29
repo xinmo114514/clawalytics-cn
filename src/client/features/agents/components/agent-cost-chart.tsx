@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import {
   Area,
   AreaChart,
@@ -22,40 +23,48 @@ export function AgentCostChart({ data }: AgentCostChartProps) {
   const colors = useChartColors()
   const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
 
-  const aggregatedByDate = data.reduce((acc, item) => {
-    const existing = acc.get(item.date)
-    if (existing) {
-      existing.total_cost += item.total_cost
-      existing.input_tokens += item.input_tokens
-      existing.output_tokens += item.output_tokens
-      existing.cache_read_tokens += item.cache_read_tokens
-      existing.cache_creation_tokens += item.cache_creation_tokens
-      existing.request_count += item.request_count
-    } else {
-      acc.set(item.date, { ...item })
-    }
-    return acc
-  }, new Map<string, AgentDailyCost>())
+  const aggregatedByDate = useMemo(
+    () =>
+      data.reduce((acc, item) => {
+        const existing = acc.get(item.date)
+        if (existing) {
+          existing.total_cost += item.total_cost
+          existing.input_tokens += item.input_tokens
+          existing.output_tokens += item.output_tokens
+          existing.cache_read_tokens += item.cache_read_tokens
+          existing.cache_creation_tokens += item.cache_creation_tokens
+          existing.request_count += item.request_count
+        } else {
+          acc.set(item.date, { ...item })
+        }
+        return acc
+      }, new Map<string, AgentDailyCost>()),
+    [data]
+  )
 
-  const chartData = Array.from(aggregatedByDate.values())
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .map((item) => ({
-      date: new Date(item.date).toLocaleDateString(dateLocale, {
-        month: 'short',
-        day: 'numeric',
-      }),
-      fullDate: new Date(item.date).toLocaleDateString(dateLocale, {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-      }),
-      cost: item.total_cost,
-      requests: item.request_count,
-      inputTokens: item.input_tokens,
-      outputTokens: item.output_tokens,
-      cacheReadTokens: item.cache_read_tokens,
-      cacheCreationTokens: item.cache_creation_tokens,
-    }))
+  const chartData = useMemo(
+    () =>
+      Array.from(aggregatedByDate.values())
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .map((item) => ({
+          date: new Date(item.date).toLocaleDateString(dateLocale, {
+            month: 'short',
+            day: 'numeric',
+          }),
+          fullDate: new Date(item.date).toLocaleDateString(dateLocale, {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+          }),
+          cost: item.total_cost,
+          requests: item.request_count,
+          inputTokens: item.input_tokens,
+          outputTokens: item.output_tokens,
+          cacheReadTokens: item.cache_read_tokens,
+          cacheCreationTokens: item.cache_creation_tokens,
+        })),
+    [aggregatedByDate, dateLocale]
+  )
 
   if (chartData.length === 0) {
     return (
@@ -160,6 +169,7 @@ export function AgentCostChart({ data }: AgentCostChartProps) {
           }}
         />
         <Area
+          isAnimationActive={false}
           type='monotone'
           dataKey='cost'
           stroke={chartColor}

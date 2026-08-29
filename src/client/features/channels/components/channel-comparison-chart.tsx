@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import {
   Bar,
   BarChart,
@@ -16,6 +17,15 @@ import { useChartColors } from '@/hooks/use-chart-colors'
 interface ChannelComparisonChartProps {
   channels: Channel[]
 }
+
+const DEFAULT_COLORS = [
+  'oklch(0.646 0.222 41.116)',
+  'oklch(0.6 0.118 184.704)',
+  'oklch(0.398 0.07 227.392)',
+  'oklch(0.828 0.189 84.429)',
+  'oklch(0.769 0.188 70.08)',
+  'oklch(0.488 0.243 264.376)',
+]
 
 interface CustomTickProps {
   x?: number | string
@@ -48,36 +58,36 @@ export function ChannelComparisonChart({
   const colors = useChartColors()
   const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
 
-  const defaultColors = [
-    'oklch(0.646 0.222 41.116)',
-    'oklch(0.6 0.118 184.704)',
-    'oklch(0.398 0.07 227.392)',
-    'oklch(0.828 0.189 84.429)',
-    'oklch(0.769 0.188 70.08)',
-    'oklch(0.488 0.243 264.376)',
-  ]
-
-  const chartColors = [
-    colors.chart1 || defaultColors[0],
-    colors.chart2 || defaultColors[1],
-    colors.chart3 || defaultColors[2],
-    colors.chart4 || defaultColors[3],
-    colors.chart5 || defaultColors[4],
-    colors.primary || defaultColors[5],
-  ]
+  const chartColors = useMemo(
+    () => [
+      colors.chart1 || DEFAULT_COLORS[0],
+      colors.chart2 || DEFAULT_COLORS[1],
+      colors.chart3 || DEFAULT_COLORS[2],
+      colors.chart4 || DEFAULT_COLORS[3],
+      colors.chart5 || DEFAULT_COLORS[4],
+      colors.primary || DEFAULT_COLORS[5],
+    ],
+    [colors]
+  )
 
   const getBarColor = (index: number) => chartColors[index % chartColors.length]
 
-  const chartData = channels
-    .filter((channel) => channel.total_cost > 0 || channel.message_count > 0)
-    .sort((a, b) => b.total_cost - a.total_cost)
-    .map((channel) => ({
-      name: channel.name.toUpperCase(),
-      cost: channel.total_cost,
-      messages: channel.message_count,
-      inputTokens: channel.total_input_tokens,
-      outputTokens: channel.total_output_tokens,
-    }))
+  const chartData = useMemo(
+    () =>
+      channels
+        .filter(
+          (channel) => channel.total_cost > 0 || channel.message_count > 0
+        )
+        .sort((a, b) => b.total_cost - a.total_cost)
+        .map((channel) => ({
+          name: channel.name.toUpperCase(),
+          cost: channel.total_cost,
+          messages: channel.message_count,
+          inputTokens: channel.total_input_tokens,
+          outputTokens: channel.total_output_tokens,
+        })),
+    [channels]
+  )
 
   if (chartData.length === 0) {
     return (
@@ -165,7 +175,12 @@ export function ChannelComparisonChart({
             return null
           }}
         />
-        <Bar dataKey='cost' radius={[0, 4, 4, 0]} maxBarSize={22}>
+        <Bar
+          isAnimationActive={false}
+          dataKey='cost'
+          radius={[0, 4, 4, 0]}
+          maxBarSize={22}
+        >
           {chartData.map((_, index) => (
             <Cell key={`cell-${index}`} fill={getBarColor(index)} />
           ))}

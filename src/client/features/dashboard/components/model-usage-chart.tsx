@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { ResponsiveContainer, Tooltip, Treemap } from 'recharts'
 import type { ModelUsage } from '@/lib/api'
 import { useCurrency } from '@/context/currency-provider'
@@ -22,6 +23,15 @@ function getModelShortName(model: string): string {
   const lastSegment = model.split('/').pop() || model
   return lastSegment.length > 12 ? lastSegment.substring(0, 12) : lastSegment
 }
+
+const DEFAULT_COLORS = [
+  'oklch(0.646 0.222 41.116)',
+  'oklch(0.6 0.118 184.704)',
+  'oklch(0.398 0.07 227.392)',
+  'oklch(0.828 0.189 84.429)',
+  'oklch(0.769 0.188 70.08)',
+  'oklch(0.488 0.243 264.376)',
+]
 
 interface TreemapContentProps {
   x: number
@@ -92,39 +102,40 @@ export function ModelUsageChart({ data }: ModelUsageChartProps) {
   const { text } = useLocale()
   const { formatCurrencyPrecise } = useCurrency()
   const colors = useChartColors()
-  const totalCost = data.reduce((acc, item) => acc + item.cost, 0)
+  const totalCost = useMemo(
+    () => data.reduce((acc, item) => acc + item.cost, 0),
+    [data]
+  )
 
-  const defaultColors = [
-    'oklch(0.646 0.222 41.116)',
-    'oklch(0.6 0.118 184.704)',
-    'oklch(0.398 0.07 227.392)',
-    'oklch(0.828 0.189 84.429)',
-    'oklch(0.769 0.188 70.08)',
-    'oklch(0.488 0.243 264.376)',
-  ]
+  const chartColors = useMemo(
+    () => [
+      colors.chart1 || DEFAULT_COLORS[0],
+      colors.chart2 || DEFAULT_COLORS[1],
+      colors.chart3 || DEFAULT_COLORS[2],
+      colors.chart4 || DEFAULT_COLORS[3],
+      colors.chart5 || DEFAULT_COLORS[4],
+      colors.primary || DEFAULT_COLORS[5],
+    ],
+    [colors]
+  )
 
-  const chartColors = [
-    colors.chart1 || defaultColors[0],
-    colors.chart2 || defaultColors[1],
-    colors.chart3 || defaultColors[2],
-    colors.chart4 || defaultColors[3],
-    colors.chart5 || defaultColors[4],
-    colors.primary || defaultColors[5],
-  ]
-
-  const chartData = data
-    .filter((item) => item.cost > 0)
-    .slice(0, 8)
-    .map((item, idx) => ({
-      name: getModelShortName(item.model),
-      fullName: `${item.provider}/${item.model}`,
-      size: item.cost,
-      percentage: totalCost > 0 ? (item.cost / totalCost) * 100 : 0,
-      fill: chartColors[idx % chartColors.length],
-      requests: item.request_count,
-      inputTokens: item.input_tokens,
-      outputTokens: item.output_tokens,
-    }))
+  const chartData = useMemo(
+    () =>
+      data
+        .filter((item) => item.cost > 0)
+        .slice(0, 8)
+        .map((item, idx) => ({
+          name: getModelShortName(item.model),
+          fullName: `${item.provider}/${item.model}`,
+          size: item.cost,
+          percentage: totalCost > 0 ? (item.cost / totalCost) * 100 : 0,
+          fill: chartColors[idx % chartColors.length],
+          requests: item.requestCount,
+          inputTokens: item.inputTokens,
+          outputTokens: item.outputTokens,
+        })),
+    [data, totalCost, chartColors]
+  )
 
   if (chartData.length === 0) {
     return (
@@ -140,6 +151,7 @@ export function ModelUsageChart({ data }: ModelUsageChartProps) {
   return (
     <ResponsiveContainer width='100%' height={300}>
       <Treemap
+        isAnimationActive={false}
         data={chartData}
         dataKey='size'
         aspectRatio={4 / 3}

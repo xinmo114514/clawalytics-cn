@@ -83,13 +83,20 @@ export interface DailyCost {
   request_count: number
 }
 
+/**
+ * Canonical model-usage shape. `GET /api/models/with-cache` is the single
+ * source for model analytics on the client; its payload is camelCase and
+ * includes the cache-token breakdown.
+ */
 export interface ModelUsage {
   provider: string
   model: string
-  input_tokens: number
-  output_tokens: number
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
   cost: number
-  request_count: number
+  requestCount: number
 }
 
 export interface Config {
@@ -283,8 +290,14 @@ export async function getDailyCosts(days = 30): Promise<DailyCost[]> {
   return data
 }
 
+/**
+ * Shared query key so the dashboard overview and the Models tab dedupe into a
+ * single request/cache entry instead of fetching the same payload twice.
+ */
+export const modelUsageQueryKey = (days = 30) => ['modelUsage', days] as const
+
 export async function getModelUsage(days = 30): Promise<ModelUsage[]> {
-  const { data } = await api.get<ModelUsage[]>('/costs/by-model', {
+  const { data } = await api.get<ModelUsage[]>('/models/with-cache', {
     params: { days },
   })
   return data
@@ -757,15 +770,6 @@ export async function getRecentAuditLog(hours?: number): Promise<AuditEntry[]> {
 // Models API
 // ============================================
 
-export interface ModelUsageItem {
-  provider: string
-  model: string
-  inputTokens: number
-  outputTokens: number
-  cost: number
-  requestCount: number
-}
-
 export interface ModelStats {
   totalModels: number
   totalProviders: number
@@ -799,13 +803,6 @@ export interface PricingData {
   >
   fetchedAt: string
   source: string
-}
-
-export async function getModels(days = 30): Promise<ModelUsageItem[]> {
-  const { data } = await api.get<ModelUsageItem[]>('/models', {
-    params: { days },
-  })
-  return data
 }
 
 export async function getModelStats(days = 30): Promise<ModelStats> {

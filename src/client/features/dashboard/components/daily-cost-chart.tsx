@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import {
   Area,
   AreaChart,
@@ -22,21 +23,25 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
   const colors = useChartColors()
   const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
 
-  const chartData = data.map((item) => ({
-    date: new Date(item.date).toLocaleDateString(dateLocale, {
-      month: 'short',
-      day: 'numeric',
-    }),
-    fullDate: new Date(item.date).toLocaleDateString(dateLocale, {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    }),
-    cost: item.total_cost,
-    requests: item.request_count,
-    sessions: item.session_count,
-    cacheSavings: item.cache_savings,
-  }))
+  const chartData = useMemo(
+    () =>
+      data.map((item) => ({
+        date: new Date(item.date).toLocaleDateString(dateLocale, {
+          month: 'short',
+          day: 'numeric',
+        }),
+        fullDate: new Date(item.date).toLocaleDateString(dateLocale, {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+        }),
+        cost: item.total_cost,
+        requests: item.request_count,
+        sessions: item.session_count,
+        cacheSavings: item.cache_savings,
+      })),
+    [data, dateLocale]
+  )
 
   if (chartData.length === 0) {
     return (
@@ -164,6 +169,7 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
           }}
         />
         <Area
+          isAnimationActive={false}
           type='step'
           dataKey='cost'
           stroke={chartColor}
@@ -172,6 +178,7 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
           fill='url(#colorCostGradient)'
         />
         <Area
+          isAnimationActive={false}
           type='step'
           dataKey='cacheSavings'
           stroke={comparisonColor}

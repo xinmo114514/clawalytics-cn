@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { X } from 'lucide-react'
 import {
   Bar,
@@ -20,6 +21,15 @@ interface ProjectCostChartProps {
   activeProject: string | undefined
   onProjectClick: (project: string) => void
 }
+
+const DEFAULT_COLORS = [
+  'oklch(0.646 0.222 41.116)',
+  'oklch(0.6 0.118 184.704)',
+  'oklch(0.398 0.07 227.392)',
+  'oklch(0.828 0.189 84.429)',
+  'oklch(0.769 0.188 70.08)',
+  'oklch(0.488 0.243 264.376)',
+]
 
 function formatProjectName(path: string | undefined, fallback: string): string {
   const value = path?.trim()
@@ -63,36 +73,34 @@ export function ProjectCostChart({
   const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
   const unknownProjectLabel = text('未知项目', 'Unknown Project')
 
-  const defaultColors = [
-    'oklch(0.646 0.222 41.116)',
-    'oklch(0.6 0.118 184.704)',
-    'oklch(0.398 0.07 227.392)',
-    'oklch(0.828 0.189 84.429)',
-    'oklch(0.769 0.188 70.08)',
-    'oklch(0.488 0.243 264.376)',
-  ]
-
-  const chartColors = [
-    colors.chart1 || defaultColors[0],
-    colors.chart2 || defaultColors[1],
-    colors.chart3 || defaultColors[2],
-    colors.chart4 || defaultColors[3],
-    colors.chart5 || defaultColors[4],
-    colors.primary || defaultColors[5],
-  ]
+  const chartColors = useMemo(
+    () => [
+      colors.chart1 || DEFAULT_COLORS[0],
+      colors.chart2 || DEFAULT_COLORS[1],
+      colors.chart3 || DEFAULT_COLORS[2],
+      colors.chart4 || DEFAULT_COLORS[3],
+      colors.chart5 || DEFAULT_COLORS[4],
+      colors.primary || DEFAULT_COLORS[5],
+    ],
+    [colors]
+  )
 
   const getBarColor = (index: number) => chartColors[index % chartColors.length]
 
-  const chartData = data
-    .filter((item) => item.totalCost > 0 || item.sessionCount > 0)
-    .map((item) => ({
-      name: formatProjectName(item.project, unknownProjectLabel),
-      project: item.project,
-      cost: item.totalCost,
-      sessions: item.sessionCount,
-      inputTokens: item.totalInputTokens,
-      outputTokens: item.totalOutputTokens,
-    }))
+  const chartData = useMemo(
+    () =>
+      data
+        .filter((item) => item.totalCost > 0 || item.sessionCount > 0)
+        .map((item) => ({
+          name: formatProjectName(item.project, unknownProjectLabel),
+          project: item.project,
+          cost: item.totalCost,
+          sessions: item.sessionCount,
+          inputTokens: item.totalInputTokens,
+          outputTokens: item.totalOutputTokens,
+        })),
+    [data, unknownProjectLabel]
+  )
 
   if (chartData.length === 0) {
     return (
@@ -196,6 +204,7 @@ export function ProjectCostChart({
             }}
           />
           <Bar
+            isAnimationActive={false}
             dataKey='cost'
             radius={[0, 4, 4, 0]}
             maxBarSize={22}

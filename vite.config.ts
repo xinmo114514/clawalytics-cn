@@ -24,6 +24,14 @@ export default defineConfig({
   root: '.',
   build: {
     outDir: 'dist/client',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', '@tanstack/react-router'],
+          'vendor-charts': ['recharts'],
+        },
+      },
+    },
   },
   server: {
     proxy: {

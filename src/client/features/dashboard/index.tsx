@@ -15,9 +15,11 @@ import {
   getModelUsage,
   getTokenBreakdown,
   getTokenSummary,
+  modelUsageQueryKey,
   type BudgetPeriod,
 } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
+import { pollWhenVisible } from '@/lib/polling'
 import { useCurrency } from '@/context/currency-provider'
 import { useLocale } from '@/context/locale-provider'
 import { Button } from '@/components/ui/button'
@@ -72,28 +74,28 @@ export function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['enhancedStats'],
     queryFn: getEnhancedStats,
-    refetchInterval: 5000,
+    refetchInterval: pollWhenVisible(5000),
     refetchIntervalInBackground: false,
   })
 
   const { data: dailyCosts, isLoading: dailyCostsLoading } = useQuery({
     queryKey: ['dailyCosts'],
     queryFn: () => getDailyCosts(30),
-    refetchInterval: 15000,
+    refetchInterval: pollWhenVisible(15000),
     refetchIntervalInBackground: false,
   })
 
   const { data: modelUsage, isLoading: modelUsageLoading } = useQuery({
-    queryKey: ['modelUsage'],
+    queryKey: modelUsageQueryKey(30),
     queryFn: () => getModelUsage(30),
-    refetchInterval: 20000,
+    refetchInterval: pollWhenVisible(20000),
     refetchIntervalInBackground: false,
   })
 
   const { data: tokenBreakdown, isLoading: tokenBreakdownLoading } = useQuery({
     queryKey: ['tokenBreakdown'],
     queryFn: () => getTokenBreakdown(30),
-    refetchInterval: 25000,
+    refetchInterval: pollWhenVisible(25000),
     refetchIntervalInBackground: false,
   })
 
@@ -105,14 +107,14 @@ export function Dashboard() {
   } = useQuery({
     queryKey: ['tokenSummary'],
     queryFn: getTokenSummary,
-    refetchInterval: 25000,
+    refetchInterval: pollWhenVisible(25000),
     refetchIntervalInBackground: false,
   })
 
   const { data: budgetStatus } = useQuery({
     queryKey: ['budgetStatus'],
     queryFn: getBudgetStatus,
-    refetchInterval: 30000,
+    refetchInterval: pollWhenVisible(30000),
     refetchIntervalInBackground: false,
   })
 

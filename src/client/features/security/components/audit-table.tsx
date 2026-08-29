@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, memo, useCallback, useState } from 'react'
 import {
   Activity,
   ChevronDown,
@@ -100,15 +100,15 @@ function translateEntity(type: string | null, locale: 'zh' | 'en'): string {
 }
 
 export function AuditTable({ entries, isLoading }: AuditTableProps) {
-  const { locale, text } = useLocale()
+  const { text } = useLocale()
   const [expandedRows, setExpandedRows] = useState<ExpandedRows>({})
 
-  const toggleRow = (id: number) => {
+  const toggleRow = useCallback((id: number) => {
     setExpandedRows((prev) => ({
       ...prev,
       [id]: !prev[id],
     }))
-  }
+  }, [])
 
   if (isLoading) {
     return (
@@ -181,116 +181,131 @@ export function AuditTable({ entries, isLoading }: AuditTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {entries.map((entry) => {
-            const config = actionConfig[entry.action] ?? defaultActionConfig
-            const isExpanded = expandedRows[entry.id]
-            const hasDetails = entry.details !== null && entry.details !== ''
-
-            return (
-              <Fragment key={entry.id}>
-                <TableRow
-                  className={hasDetails ? 'cursor-pointer' : ''}
-                  onClick={() => hasDetails && toggleRow(entry.id)}
-                >
-                  <TableCell>
-                    {hasDetails ? (
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        className='h-6 w-6 p-0'
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleRow(entry.id)
-                        }}
-                      >
-                        {isExpanded ? (
-                          <ChevronDown className='h-4 w-4' />
-                        ) : (
-                          <ChevronRight className='h-4 w-4' />
-                        )}
-                      </Button>
-                    ) : (
-                      <Activity className='h-4 w-4 text-muted-foreground' />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={config.className}>
-                      {locale === 'zh' ? config.zh : config.en}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {entry.entity_type ? (
-                      <div className='flex flex-col'>
-                        <span className='text-sm font-medium'>
-                          {translateEntity(entry.entity_type, locale)}
-                        </span>
-                        {entry.entity_id && (
-                          <span className='font-mono text-xs text-muted-foreground'>
-                            {entry.entity_id.length > 12
-                              ? `${entry.entity_id.slice(0, 12)}...`
-                              : entry.entity_id}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className='text-sm text-muted-foreground'>-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {entry.actor ? (
-                      <div className='flex items-center gap-2'>
-                        <User className='h-4 w-4 text-muted-foreground' />
-                        <span className='text-sm'>{entry.actor}</span>
-                      </div>
-                    ) : (
-                      <span className='text-sm text-muted-foreground'>
-                        {text('系统', 'System')}
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <span className='text-sm'>
-                      {formatDate(
-                        entry.timestamp,
-                        locale === 'zh'
-                          ? 'yyyy/MM/dd HH:mm:ss'
-                          : 'MM/dd/yyyy HH:mm:ss',
-                        locale
-                      )}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    {entry.ip_address ? (
-                      <div className='flex items-center gap-2'>
-                        <Globe className='h-4 w-4 text-muted-foreground' />
-                        <span className='font-mono text-sm'>
-                          {entry.ip_address}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className='text-sm text-muted-foreground'>-</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-                {isExpanded && hasDetails && (
-                  <TableRow>
-                    <TableCell colSpan={6} className='bg-muted/50'>
-                      <div className='px-4 py-3'>
-                        <p className='mb-1 text-xs font-medium text-muted-foreground'>
-                          {text('详情', 'Details')}
-                        </p>
-                        <pre className='rounded-md border bg-background p-3 font-mono text-sm whitespace-pre-wrap'>
-                          {entry.details}
-                        </pre>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </Fragment>
-            )
-          })}
+          {entries.map((entry) => (
+            <AuditRow
+              key={entry.id}
+              entry={entry}
+              isExpanded={expandedRows[entry.id]}
+              onToggle={toggleRow}
+            />
+          ))}
         </TableBody>
       </Table>
     </div>
   )
 }
+
+const AuditRow = memo(function AuditRow({
+  entry,
+  isExpanded,
+  onToggle,
+}: {
+  entry: AuditEntry
+  isExpanded: boolean
+  onToggle: (id: number) => void
+}) {
+  const { locale, text } = useLocale()
+  const config = actionConfig[entry.action] ?? defaultActionConfig
+  const hasDetails = entry.details !== null && entry.details !== ''
+
+  return (
+    <Fragment>
+      <TableRow
+        className={hasDetails ? 'cursor-pointer' : ''}
+        onClick={() => hasDetails && onToggle(entry.id)}
+      >
+        <TableCell>
+          {hasDetails ? (
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-6 w-6 p-0'
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggle(entry.id)
+              }}
+            >
+              {isExpanded ? (
+                <ChevronDown className='h-4 w-4' />
+              ) : (
+                <ChevronRight className='h-4 w-4' />
+              )}
+            </Button>
+          ) : (
+            <Activity className='h-4 w-4 text-muted-foreground' />
+          )}
+        </TableCell>
+        <TableCell>
+          <Badge className={config.className}>
+            {locale === 'zh' ? config.zh : config.en}
+          </Badge>
+        </TableCell>
+        <TableCell>
+          {entry.entity_type ? (
+            <div className='flex flex-col'>
+              <span className='text-sm font-medium'>
+                {translateEntity(entry.entity_type, locale)}
+              </span>
+              {entry.entity_id && (
+                <span className='font-mono text-xs text-muted-foreground'>
+                  {entry.entity_id.length > 12
+                    ? `${entry.entity_id.slice(0, 12)}...`
+                    : entry.entity_id}
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className='text-sm text-muted-foreground'>-</span>
+          )}
+        </TableCell>
+        <TableCell>
+          {entry.actor ? (
+            <div className='flex items-center gap-2'>
+              <User className='h-4 w-4 text-muted-foreground' />
+              <span className='text-sm'>{entry.actor}</span>
+            </div>
+          ) : (
+            <span className='text-sm text-muted-foreground'>
+              {text('系统', 'System')}
+            </span>
+          )}
+        </TableCell>
+        <TableCell>
+          <span className='text-sm'>
+            {formatDate(
+              entry.timestamp,
+              locale === 'zh'
+                ? 'yyyy/MM/dd HH:mm:ss'
+                : 'MM/dd/yyyy HH:mm:ss',
+              locale
+            )}
+          </span>
+        </TableCell>
+        <TableCell>
+          {entry.ip_address ? (
+            <div className='flex items-center gap-2'>
+              <Globe className='h-4 w-4 text-muted-foreground' />
+              <span className='font-mono text-sm'>{entry.ip_address}</span>
+            </div>
+          ) : (
+            <span className='text-sm text-muted-foreground'>-</span>
+          )}
+        </TableCell>
+      </TableRow>
+      {isExpanded && hasDetails && (
+        <TableRow>
+          <TableCell colSpan={6} className='bg-muted/50'>
+            <div className='px-4 py-3'>
+              <p className='mb-1 text-xs font-medium text-muted-foreground'>
+                {text('详情', 'Details')}
+              </p>
+              <pre className='rounded-md border bg-background p-3 font-mono text-sm whitespace-pre-wrap'>
+                {entry.details}
+              </pre>
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </Fragment>
+  )
+})

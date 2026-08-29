@@ -4,6 +4,10 @@ import {
 } from '../services/pricing-service.js'
 
 const warnedModels = new Set<string>()
+// The warning set must not grow without bound (unknown models can be
+// arbitrary attacker/provider supplied strings); cap it and drop the oldest
+// entries once the cap is reached.
+const WARNED_MODELS_LIMIT = 500
 
 export interface TokenUsage {
   inputTokens: number
@@ -47,6 +51,12 @@ export function calculateCost(
   if (!pricing) {
     const key = `${provider}/${model}`
     if (!options.suppressMissingPricingWarning && !warnedModels.has(key)) {
+      if (warnedModels.size >= WARNED_MODELS_LIMIT) {
+        const oldest = warnedModels.values().next().value
+        if (oldest !== undefined) {
+          warnedModels.delete(oldest)
+        }
+      }
       warnedModels.add(key)
       console.warn(`No pricing found for ${key}, using zero cost`)
     }

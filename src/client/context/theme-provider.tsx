@@ -1,4 +1,11 @@
-import { createContext, useContext, useEffect, useState, useMemo } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { getCookie, setCookie, removeCookie } from '@/lib/cookies'
 
 export type ColorTheme =
@@ -149,37 +156,53 @@ export function ThemeProvider({
     }
   }, [colorTheme, resolvedTheme, windowsAccentColor])
 
-  const setTheme = (theme: Theme) => {
-    setCookie(storageKey, theme, THEME_COOKIE_MAX_AGE)
-    _setTheme(theme)
-  }
+  const setTheme = useCallback(
+    (theme: Theme) => {
+      setCookie(storageKey, theme, THEME_COOKIE_MAX_AGE)
+      _setTheme(theme)
+    },
+    [storageKey]
+  )
 
-  const resetTheme = () => {
+  const resetTheme = useCallback(() => {
     removeCookie(storageKey)
     _setTheme(DEFAULT_THEME)
-  }
+  }, [storageKey])
 
-  const setColorTheme = (colorTheme: ColorTheme) => {
+  const setColorTheme = useCallback((colorTheme: ColorTheme) => {
     setCookie(COLOR_THEME_COOKIE_NAME, colorTheme, THEME_COOKIE_MAX_AGE)
     _setColorTheme(colorTheme)
-  }
+  }, [])
 
-  const resetColorTheme = () => {
+  const resetColorTheme = useCallback(() => {
     removeCookie(COLOR_THEME_COOKIE_NAME)
     _setColorTheme(DEFAULT_COLOR_THEME)
-  }
+  }, [])
 
-  const contextValue = {
-    defaultTheme,
-    defaultColorTheme,
-    resolvedTheme,
-    resetTheme,
-    theme,
-    setTheme,
-    colorTheme,
-    setColorTheme,
-    resetColorTheme,
-  }
+  const contextValue = useMemo(
+    () => ({
+      defaultTheme,
+      defaultColorTheme,
+      resolvedTheme,
+      resetTheme,
+      theme,
+      setTheme,
+      colorTheme,
+      setColorTheme,
+      resetColorTheme,
+    }),
+    [
+      defaultTheme,
+      defaultColorTheme,
+      resolvedTheme,
+      resetTheme,
+      theme,
+      setTheme,
+      colorTheme,
+      setColorTheme,
+      resetColorTheme,
+    ]
+  )
 
   return (
     <ThemeContext value={contextValue} {...props}>

@@ -8,6 +8,7 @@ import {
   getProjectBreakdown,
   getSessionFilters,
 } from '@/lib/api'
+import { pollWhenVisible } from '@/lib/polling'
 import { useLocale } from '@/context/locale-provider'
 import { Button } from '@/components/ui/button'
 import {
@@ -57,19 +58,19 @@ export function Sessions() {
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['sessionStats'],
     queryFn: getSessionStats,
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
   })
 
   const { data: projectBreakdown, isLoading: chartLoading } = useQuery({
     queryKey: ['projectBreakdown'],
     queryFn: () => getProjectBreakdown(10),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
   })
 
   const { data: filters } = useQuery({
     queryKey: ['sessionFilters'],
     queryFn: getSessionFilters,
-    refetchInterval: 30000,
+    refetchInterval: pollWhenVisible(30000),
   })
 
   const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
@@ -93,7 +94,7 @@ export function Sessions() {
         model: modelFilter,
         search: searchQuery || undefined,
       }),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
   })
 
   const totalPages = sessionsData?.total

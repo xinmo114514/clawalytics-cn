@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import {
   Cell,
   Legend,
@@ -28,26 +29,32 @@ export function ProviderDistributionChart({
 }: ProviderDistributionChartProps) {
   const { text } = useLocale()
   const { formatCurrencyPrecise } = useCurrency()
-  const totalCost = providers.reduce(
-    (acc, provider) => acc + provider.totalCost,
-    0
+  const totalCost = useMemo(
+    () => providers.reduce((acc, provider) => acc + provider.totalCost, 0),
+    [providers]
   )
 
-  const chartData = providers
-    .filter((provider) => provider.totalCost > 0)
-    .sort((a, b) => b.totalCost - a.totalCost)
-    .slice(0, 6)
-    .map((provider, idx) => ({
-      name:
-        provider.provider.charAt(0).toUpperCase() + provider.provider.slice(1),
-      value: provider.totalCost,
-      percentage: totalCost > 0 ? (provider.totalCost / totalCost) * 100 : 0,
-      fill: COLORS[idx % COLORS.length],
-      modelCount: provider.modelCount,
-      requestCount: provider.requestCount,
-      inputTokens: provider.totalInputTokens,
-      outputTokens: provider.totalOutputTokens,
-    }))
+  const chartData = useMemo(
+    () =>
+      providers
+        .filter((provider) => provider.totalCost > 0)
+        .sort((a, b) => b.totalCost - a.totalCost)
+        .slice(0, 6)
+        .map((provider, idx) => ({
+          name:
+            provider.provider.charAt(0).toUpperCase() +
+            provider.provider.slice(1),
+          value: provider.totalCost,
+          percentage:
+            totalCost > 0 ? (provider.totalCost / totalCost) * 100 : 0,
+          fill: COLORS[idx % COLORS.length],
+          modelCount: provider.modelCount,
+          requestCount: provider.requestCount,
+          inputTokens: provider.totalInputTokens,
+          outputTokens: provider.totalOutputTokens,
+        })),
+    [providers, totalCost]
+  )
 
   if (chartData.length === 0) {
     return (
@@ -64,6 +71,7 @@ export function ProviderDistributionChart({
     <ResponsiveContainer width='100%' height={300}>
       <PieChart>
         <Pie
+          isAnimationActive={false}
           data={chartData}
           cx='50%'
           cy='45%'

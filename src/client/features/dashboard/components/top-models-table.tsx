@@ -87,7 +87,7 @@ export function TopModelsTable({ models }: TopModelsTableProps) {
               </Badge>
             </TableCell>
             <TableCell className='text-right text-muted-foreground tabular-nums'>
-              {formatNumber(model.input_tokens + model.output_tokens)}
+              {formatNumber(model.inputTokens + model.outputTokens)}
             </TableCell>
             <TableCell className='text-right font-medium text-primary tabular-nums'>
               {formatCurrency(model.cost)}

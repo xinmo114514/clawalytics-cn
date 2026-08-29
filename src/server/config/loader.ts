@@ -416,9 +416,40 @@ export function ensureConfigDir(): void {
   }
 }
 
+interface CachedConfig {
+  mtimeMs: number
+  config: Config
+}
+
+let cachedConfig: CachedConfig | null = null
+
 export function loadConfig(): Config {
   ensureConfigDir()
 
+  let stat: fs.Stats | null = null
+  try {
+    stat = fs.statSync(CONFIG_FILE)
+  } catch {
+    // File missing or unreadable; fall through to the uncached path which
+    // will create the default file on first run.
+  }
+
+  if (stat && cachedConfig && cachedConfig.mtimeMs === stat.mtimeMs) {
+    return cachedConfig.config
+  }
+
+  const config = loadConfigFromDisk()
+  if (stat) {
+    cachedConfig = { mtimeMs: stat.mtimeMs, config }
+  }
+  return config
+}
+
+export function invalidateConfigCache(): void {
+  cachedConfig = null
+}
+
+function loadConfigFromDisk(): Config {
   const defaultConfig: Config = {
     ...DEFAULT_CONFIG,
     wsl: normalizeWslConfig(DEFAULT_CONFIG.wsl),
@@ -429,6 +460,7 @@ export function loadConfig(): Config {
   if (!fs.existsSync(CONFIG_FILE)) {
     // Create default config file
     saveConfig(defaultConfig)
+    cachedConfig = { mtimeMs: getConfigMtimeOrZero(), config: defaultConfig }
     return defaultConfig
   }
 
@@ -500,10 +532,19 @@ export function loadConfig(): Config {
   }
 }
 
+function getConfigMtimeOrZero(): number {
+  try {
+    return fs.statSync(CONFIG_FILE).mtimeMs
+  } catch {
+    return 0
+  }
+}
+
 export function saveConfig(config: Config): void {
   ensureConfigDir()
   const yamlContent = yaml.stringify(config, { indent: 2 })
   fs.writeFileSync(CONFIG_FILE, yamlContent, 'utf-8')
+  cachedConfig = null
 }
 
 export function getConfigPath(): string {

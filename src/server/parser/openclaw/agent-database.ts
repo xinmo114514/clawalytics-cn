@@ -22,6 +22,41 @@ export interface OpenClawDatabaseReadResult {
   warning?: string
 }
 
+export interface OpenClawDatabaseSessionMeta {
+  channel?: string
+  createdAt?: string
+  startedAt?: string
+  lastActivity?: string
+}
+
+export interface OpenClawDatabaseEventRow {
+  seq: number
+  line: string
+}
+
+export interface OpenClawDatabaseEventPage {
+  rows: OpenClawDatabaseEventRow[]
+}
+
+/**
+ * Incremental reader over one OpenClaw agent SQLite store. The database stays
+ * open so callers can page through per-session events (`WHERE seq > ?`)
+ * between event-loop yields instead of parsing everything in one blocking
+ * pass. `maxSeqBySession` lets callers detect stale checkpoints (lastSeq
+ * beyond the current max) and fall back to a full per-session reload.
+ */
+export interface OpenClawAgentDatabaseReader {
+  databasePath: string
+  sessionMeta: Map<string, OpenClawDatabaseSessionMeta>
+  maxSeqBySession: Map<string, number>
+  readEvents(
+    sessionId: string,
+    afterSeq: number,
+    limit: number
+  ): OpenClawDatabaseEventPage
+  close(): void
+}
+
 export function getOpenClawAgentDatabasePath(agentPath: string): string {
   return path.join(agentPath, 'agent', 'openclaw-agent.sqlite')
 }
@@ -237,5 +272,168 @@ export function readOpenClawAgentDatabase(
     }
   } finally {
     database?.close()
+  }
+}
+
+/**
+ * Open an incremental reader for the OpenClaw per-agent SQLite store.
+ * Returns null when the database file does not exist yet; throws when the
+ * file exists but cannot be read (caller maps that to a warning).
+ */
+export function openAgentDatabaseReader(
+  agentPath: string
+): OpenClawAgentDatabaseReader | null {
+  const databasePath = getOpenClawAgentDatabasePath(agentPath)
+  if (!fs.existsSync(databasePath)) {
+    return null
+  }
+
+  const database = new Database(databasePath, {
+    readonly: true,
+    fileMustExist: true,
+    timeout: 2000,
+  })
+
+  try {
+    const sessionMeta = new Map<string, OpenClawDatabaseSessionMeta>()
+
+    if (tableExists(database, 'session_windows')) {
+      const hasSessionNodes = tableExists(database, 'session_nodes')
+      const sessionWindowColumns = tableColumns(database, 'session_windows')
+      const sessionNodeColumns = hasSessionNodes
+        ? tableColumns(database, 'session_nodes')
+        : new Set<string>()
+      const createdAtExpression = sessionWindowColumns.has('created_at')
+        ? 'sw.created_at'
+        : 'NULL'
+      const lastActivityExpression =
+        hasSessionNodes && sessionNodeColumns.has('last_interaction_at')
+          ? '(SELECT MAX(sn.last_interaction_at) FROM session_nodes AS sn WHERE sn.current_session_id = sw.session_id)'
+          : sessionWindowColumns.has('updated_at')
+            ? 'sw.updated_at'
+            : 'NULL'
+      const rows = database
+        .prepare(
+          `
+            SELECT
+              sw.session_id AS session_id,
+              sw.channel AS channel,
+              sw.started_at AS started_at,
+              ${createdAtExpression} AS created_at,
+              ${lastActivityExpression} AS last_activity
+            FROM session_windows AS sw
+          `
+        )
+        .all() as Array<Record<string, unknown>>
+
+      for (const row of rows) {
+        if (typeof row.session_id !== 'string' || !row.session_id) continue
+        sessionMeta.set(row.session_id, {
+          channel: typeof row.channel === 'string' ? row.channel : undefined,
+          createdAt: epochToIso(row.created_at),
+          startedAt: epochToIso(row.started_at),
+          lastActivity: epochToIso(row.last_activity),
+        })
+      }
+    } else if (tableExists(database, 'sessions')) {
+      // Compatibility with the short-lived pre-session_windows schema.
+      const sessionColumns = tableColumns(database, 'sessions')
+      const channelExpression = sessionColumns.has('channel')
+        ? 'channel'
+        : 'NULL'
+      const createdAtExpression = sessionColumns.has('created_at')
+        ? 'created_at'
+        : 'NULL'
+      const startedAtExpression = sessionColumns.has('started_at')
+        ? 'started_at'
+        : 'NULL'
+      const updatedAtExpression = sessionColumns.has('updated_at')
+        ? 'updated_at'
+        : 'NULL'
+      const rows = database
+        .prepare(
+          `SELECT
+             session_id,
+             ${channelExpression} AS channel,
+             ${startedAtExpression} AS started_at,
+             ${createdAtExpression} AS created_at,
+             ${updatedAtExpression} AS updated_at
+           FROM sessions`
+        )
+        .all() as Array<Record<string, unknown>>
+      for (const row of rows) {
+        if (typeof row.session_id !== 'string' || !row.session_id) continue
+        sessionMeta.set(row.session_id, {
+          channel: typeof row.channel === 'string' ? row.channel : undefined,
+          createdAt: epochToIso(row.created_at),
+          startedAt: epochToIso(row.started_at),
+          lastActivity: epochToIso(row.updated_at),
+        })
+      }
+    }
+
+    const maxSeqBySession = new Map<string, number>()
+    const maxSeqRows = database
+      .prepare(
+        'SELECT session_id, MAX(seq) AS max_seq FROM transcript_events GROUP BY session_id'
+      )
+      .all() as Array<{ session_id?: unknown; max_seq?: unknown }>
+    for (const row of maxSeqRows) {
+      if (typeof row.session_id !== 'string' || !row.session_id) continue
+      const maxSeq =
+        typeof row.max_seq === 'number'
+          ? row.max_seq
+          : Number(row.max_seq ?? Number.NaN)
+      if (Number.isFinite(maxSeq)) {
+        maxSeqBySession.set(row.session_id, maxSeq)
+      }
+    }
+
+    // Sessions that only exist as transcript events (no metadata row) still
+    // need to be surfaced to callers.
+    for (const sessionId of maxSeqBySession.keys()) {
+      if (!sessionMeta.has(sessionId)) {
+        sessionMeta.set(sessionId, {})
+      }
+    }
+
+    const eventsStatement = database.prepare(
+      'SELECT seq, event_json FROM transcript_events WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ?'
+    )
+
+    const reader: OpenClawAgentDatabaseReader = {
+      databasePath,
+      sessionMeta,
+      maxSeqBySession,
+      readEvents(sessionId, afterSeq, limit) {
+        const rows = eventsStatement.all(
+          sessionId,
+          afterSeq,
+          limit
+        ) as Array<{ seq?: unknown; event_json?: unknown }>
+        const result: OpenClawDatabaseEventRow[] = []
+        for (const row of rows) {
+          const seq =
+            typeof row.seq === 'number'
+              ? row.seq
+              : Number(row.seq ?? Number.NaN)
+          result.push({
+            seq: Number.isFinite(seq) ? seq : 0,
+            // Rows with unparsable payloads are kept (as empty lines) so the
+            // caller's page-size based pagination stays in sync with seq.
+            line: eventJsonToLine(row.event_json) ?? '',
+          })
+        }
+        return { rows: result }
+      },
+      close() {
+        database.close()
+      },
+    }
+
+    return reader
+  } catch (error) {
+    database.close()
+    throw error
   }
 }

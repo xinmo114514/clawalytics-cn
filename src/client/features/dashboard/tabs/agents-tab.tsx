@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Activity, Bot, Coins, DollarSign, TrendingUp } from 'lucide-react'
 import { getAgentStats, getAllAgentsDailyCosts } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
+import { pollWhenVisible } from '@/lib/polling'
 import { useCurrency } from '@/context/currency-provider'
 import { useLocale } from '@/context/locale-provider'
 import {
@@ -27,14 +28,14 @@ export function AgentsTab({ enabled }: AgentsTabProps) {
   const { data: agentStats, isLoading: statsLoading } = useQuery({
     queryKey: ['agentStats'],
     queryFn: () => getAgentStats(50),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
     enabled,
   })
 
   const { data: dailyCosts, isLoading: dailyCostsLoading } = useQuery({
     queryKey: ['agentDailyCosts'],
     queryFn: () => getAllAgentsDailyCosts(30),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
     enabled,
   })
 

@@ -25,6 +25,12 @@ function cloneProviderRates(rates: ProviderRates): ProviderRates {
 }
 
 const MINIMAX_PAYG_RATES: ProviderRates = {
+  'MiniMax-M3': {
+    input: 2.1,
+    output: 8.4,
+    cacheRead: 0.42,
+    cacheWrite: 2.625,
+  },
   'MiniMax-M2.7': {
     input: 2.1,
     output: 8.4,
@@ -66,6 +72,24 @@ const MINIMAX_PAYG_RATES: ProviderRates = {
     output: 8.4,
     cacheRead: 0.21,
     cacheWrite: 2.625,
+  },
+}
+
+// Source: https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go (updated 2026-08-06)
+// cacheWrite is 0 because MiMo bills cache writes as free for a limited time;
+// it must be stated explicitly or the `input * 1.25` fallback would overcharge.
+const XIAOMI_PAYG_RATES: ProviderRates = {
+  'mimo-v2.5': {
+    input: 1,
+    output: 2,
+    cacheRead: 0.02,
+    cacheWrite: 0,
+  },
+  'mimo-v2.5-pro': {
+    input: 3,
+    output: 6,
+    cacheRead: 0.025,
+    cacheWrite: 0,
   },
 }
 
@@ -264,6 +288,7 @@ export const DEFAULT_RATES: DefaultRates = {
   bigmodel: cloneProviderRates(ZHIPU_PAYG_RATES),
   tencent: cloneProviderRates(TENCENT_PAYG_RATES),
   hunyuan: cloneProviderRates(TENCENT_PAYG_RATES),
+  xiaomi: cloneProviderRates(XIAOMI_PAYG_RATES),
   // OpenClaw's qwen-portal provider currently uses an OAuth/free-tier path
   // rather than a direct paid token-billed API.
   'qwen-portal': {

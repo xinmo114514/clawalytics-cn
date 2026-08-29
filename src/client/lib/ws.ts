@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 type WsEventType =
   | 'costs:updated'
@@ -16,6 +16,7 @@ interface WsMessage {
 
 const RECONNECT_DELAY = 3000
 const MAX_RECONNECT_DELAY = 30000
+const INVALIDATE_DEBOUNCE_MS = 2000
 export const DESKTOP_CLOSE_REQUESTED_EVENT =
   'clawalytics:desktop-close-requested'
 
@@ -79,38 +80,63 @@ export function useWebSocket() {
   }, [queryClient])
 }
 
-function handleMessage(
-  message: WsMessage,
-  queryClient: ReturnType<typeof useQueryClient>
-) {
+// 模块级防抖定时器：同类型事件在 2s 窗口内合并为一次 invalidate，
+// 窗口期内后续事件直接丢弃；定时器触发后自清理，无需在组件卸载时统一清理。
+const pendingInvalidations = new Map<
+  WsEventType,
+  ReturnType<typeof setTimeout>
+>()
+
+function debounceInvalidate(type: WsEventType, invalidate: () => void) {
+  if (pendingInvalidations.has(type)) return
+
+  pendingInvalidations.set(
+    type,
+    setTimeout(() => {
+      pendingInvalidations.delete(type)
+      invalidate()
+    }, INVALIDATE_DEBOUNCE_MS)
+  )
+}
+
+function handleMessage(message: WsMessage, queryClient: QueryClient) {
   switch (message.type) {
     case 'costs:updated':
-      queryClient.invalidateQueries({ queryKey: ['enhancedStats'] })
-      queryClient.invalidateQueries({ queryKey: ['dailyCosts'] })
-      queryClient.invalidateQueries({ queryKey: ['modelUsage'] })
-      queryClient.invalidateQueries({ queryKey: ['tokenBreakdown'] })
-      queryClient.invalidateQueries({ queryKey: ['tokenSummary'] })
-      queryClient.invalidateQueries({ queryKey: ['budgetStatus'] })
-      queryClient.invalidateQueries({ queryKey: ['sessionStats'] })
-      queryClient.invalidateQueries({ queryKey: ['projectBreakdown'] })
+      debounceInvalidate(message.type, () => {
+        queryClient.invalidateQueries({ queryKey: ['enhancedStats'] })
+        queryClient.invalidateQueries({ queryKey: ['dailyCosts'] })
+        queryClient.invalidateQueries({ queryKey: ['modelUsage'] })
+        queryClient.invalidateQueries({ queryKey: ['tokenBreakdown'] })
+        queryClient.invalidateQueries({ queryKey: ['tokenSummary'] })
+        queryClient.invalidateQueries({ queryKey: ['budgetStatus'] })
+        queryClient.invalidateQueries({ queryKey: ['sessionStats'] })
+        queryClient.invalidateQueries({ queryKey: ['projectBreakdown'] })
+      })
       break
 
     case 'session:new':
-      queryClient.invalidateQueries({ queryKey: ['sessions'] })
-      queryClient.invalidateQueries({ queryKey: ['enhancedStats'] })
-      queryClient.invalidateQueries({ queryKey: ['sessionStats'] })
-      queryClient.invalidateQueries({ queryKey: ['projectBreakdown'] })
-      queryClient.invalidateQueries({ queryKey: ['sessionFilters'] })
+      debounceInvalidate(message.type, () => {
+        queryClient.invalidateQueries({ queryKey: ['sessions'] })
+        queryClient.invalidateQueries({ queryKey: ['enhancedStats'] })
+        queryClient.invalidateQueries({ queryKey: ['sessionStats'] })
+        queryClient.invalidateQueries({ queryKey: ['projectBreakdown'] })
+        queryClient.invalidateQueries({ queryKey: ['sessionFilters'] })
+      })
       break
 
     case 'alert:new':
-      queryClient.invalidateQueries({ queryKey: ['alerts'] })
-      queryClient.invalidateQueries({ queryKey: ['securityDashboard'] })
+      debounceInvalidate(message.type, () => {
+        queryClient.invalidateQueries({ queryKey: ['securityAlerts'] })
+        queryClient.invalidateQueries({ queryKey: ['recentConnections'] })
+        queryClient.invalidateQueries({ queryKey: ['securityDashboard'] })
+      })
       break
 
     case 'device:changed':
-      queryClient.invalidateQueries({ queryKey: ['devices'] })
-      queryClient.invalidateQueries({ queryKey: ['securityDashboard'] })
+      debounceInvalidate(message.type, () => {
+        queryClient.invalidateQueries({ queryKey: ['devices'] })
+        queryClient.invalidateQueries({ queryKey: ['securityDashboard'] })
+      })
       break
 
     case 'desktop:close-requested':

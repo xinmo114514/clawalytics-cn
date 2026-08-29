@@ -3,6 +3,11 @@ import { WebSocketServer, WebSocket } from 'ws'
 
 const isProduction = process.env.NODE_ENV === 'production'
 
+const WS_HEARTBEAT_INTERVAL_MS = 30000
+// Clients only ever send handshake/control frames here; keep the payload cap
+// small so a rogue client cannot pressure the main process with huge frames.
+const WS_MAX_PAYLOAD_BYTES = 64 * 1024
+
 export type WsEventType =
   | 'costs:updated'
   | 'session:new'
@@ -17,6 +22,9 @@ export interface WsEvent {
 }
 
 let wss: WebSocketServer | null = null
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+// Track liveness per connected client for the ping/pong heartbeat.
+const aliveClients = new WeakSet<WebSocket>()
 
 function sanitizeError(err: Error): string {
   if (isProduction) {
@@ -25,10 +33,48 @@ function sanitizeError(err: Error): string {
   return err.message
 }
 
+function startHeartbeat(): void {
+  stopHeartbeat()
+  heartbeatTimer = setInterval(() => {
+    if (!wss) return
+    for (const client of wss.clients) {
+      if (!aliveClients.has(client)) {
+        // No pong since the last ping - the connection is dead.
+        client.terminate()
+        continue
+      }
+      aliveClients.delete(client)
+      client.ping()
+    }
+  }, WS_HEARTBEAT_INTERVAL_MS)
+  heartbeatTimer.unref?.()
+}
+
+function stopHeartbeat(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+  }
+}
+
 export function initWebSocket(server: Server): WebSocketServer {
-  wss = new WebSocketServer({ server, path: '/ws' })
+  wss = new WebSocketServer({
+    server,
+    path: '/ws',
+    maxPayload: WS_MAX_PAYLOAD_BYTES,
+  })
 
   wss.on('connection', (ws) => {
+    aliveClients.add(ws)
+
+    ws.on('pong', () => {
+      aliveClients.add(ws)
+    })
+
+    ws.on('close', () => {
+      aliveClients.delete(ws)
+    })
+
     ws.on('error', (err) => {
       if (!isProduction) {
         console.error('WebSocket client error:', sanitizeError(err))
@@ -39,6 +85,8 @@ export function initWebSocket(server: Server): WebSocketServer {
       JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })
     )
   })
+
+  startHeartbeat()
 
   console.log('WebSocket server initialized at /ws')
   return wss
@@ -107,7 +155,11 @@ function broadcastRaw(message: string): void {
 }
 
 export function closeWebSocket(): void {
+  stopHeartbeat()
   if (wss) {
+    for (const client of wss.clients) {
+      client.terminate()
+    }
     wss.close()
     wss = null
   }

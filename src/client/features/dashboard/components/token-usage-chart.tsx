@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import {
   Area,
   AreaChart,
@@ -24,28 +25,35 @@ export function TokenUsageChart({ data }: TokenUsageChartProps) {
   const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
   const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
 
-  const chartData = data.map((item) => ({
-    date: new Date(`${item.date}T00:00:00`).toLocaleDateString(dateLocale, {
-      month: 'short',
-      day: 'numeric',
-    }),
-    fullDate: new Date(`${item.date}T00:00:00`).toLocaleDateString(dateLocale, {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    }),
-    totalTokens:
-      item.total_input_tokens +
-      item.total_output_tokens +
-      item.cache_read_tokens +
-      item.cache_creation_tokens,
-    inputTokens: item.total_input_tokens,
-    outputTokens: item.total_output_tokens,
-    cacheReadTokens: item.cache_read_tokens,
-    cacheCreationTokens: item.cache_creation_tokens,
-    cost: item.total_cost,
-    requests: item.request_count,
-  }))
+  const chartData = useMemo(
+    () =>
+      data.map((item) => ({
+        date: new Date(`${item.date}T00:00:00`).toLocaleDateString(dateLocale, {
+          month: 'short',
+          day: 'numeric',
+        }),
+        fullDate: new Date(`${item.date}T00:00:00`).toLocaleDateString(
+          dateLocale,
+          {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+          }
+        ),
+        totalTokens:
+          item.total_input_tokens +
+          item.total_output_tokens +
+          item.cache_read_tokens +
+          item.cache_creation_tokens,
+        inputTokens: item.total_input_tokens,
+        outputTokens: item.total_output_tokens,
+        cacheReadTokens: item.cache_read_tokens,
+        cacheCreationTokens: item.cache_creation_tokens,
+        cost: item.total_cost,
+        requests: item.request_count,
+      })),
+    [data, dateLocale]
+  )
 
   if (chartData.length === 0) {
     return (
@@ -161,6 +169,7 @@ export function TokenUsageChart({ data }: TokenUsageChartProps) {
             }}
           />
           <Area
+            isAnimationActive={false}
             type='monotone'
             dataKey='totalTokens'
             stroke={chartColor}

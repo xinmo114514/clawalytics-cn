@@ -1,4 +1,35 @@
+import type Database from 'better-sqlite3'
 import { getDatabase } from './schema.js'
+
+// ============================================
+// Prepared statement cache
+// ============================================
+//
+// Every query in this module used to call db.prepare() on each invocation.
+// better-sqlite3 compiles SQL synchronously, so hot paths (tool-call logging
+// during parsing, security dashboards polled every few seconds) paid that
+// cost repeatedly. Statements are cached per database instance - the WeakMap
+// invalidates automatically if the module-level singleton is ever reopened.
+
+const statementCache = new WeakMap<
+  Database.Database,
+  Map<string, Database.Statement>
+>()
+
+function prepareCached(sql: string): Database.Statement {
+  const db = getDatabase()
+  let cache = statementCache.get(db)
+  if (!cache) {
+    cache = new Map()
+    statementCache.set(db, cache)
+  }
+  let statement = cache.get(sql)
+  if (!statement) {
+    statement = db.prepare(sql)
+    cache.set(sql, statement)
+  }
+  return statement
+}
 
 // ============================================
 // Device Interfaces
@@ -149,8 +180,7 @@ export interface AuditFilters {
 // ============================================
 
 export function upsertDevice(device: DeviceInput): void {
-  const db = getDatabase()
-  const stmt = db.prepare(`
+  const stmt = prepareCached(`
     INSERT INTO devices (id, name, type, status)
     VALUES (?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
@@ -167,40 +197,32 @@ export function upsertDevice(device: DeviceInput): void {
 }
 
 export function getDevices(): Device[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM devices
     ORDER BY last_seen DESC NULLS LAST, paired_at DESC
   `
-    )
-    .all() as Device[]
+  ).all() as Device[]
 }
 
 export function getDevice(id: string): Device | undefined {
-  const db = getDatabase()
-  return db.prepare('SELECT * FROM devices WHERE id = ?').get(id) as
+  return prepareCached('SELECT * FROM devices WHERE id = ?').get(id) as
     | Device
     | undefined
 }
 
 export function getActiveDevices(): Device[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM devices
     WHERE status = 'active'
     ORDER BY last_seen DESC NULLS LAST
   `
-    )
-    .all() as Device[]
+  ).all() as Device[]
 }
 
 export function updateDeviceLastSeen(id: string): void {
-  const db = getDatabase()
-  const stmt = db.prepare(`
+  const stmt = prepareCached(`
     UPDATE devices SET
       last_seen = datetime('now'),
       connection_count = connection_count + 1
@@ -210,15 +232,11 @@ export function updateDeviceLastSeen(id: string): void {
 }
 
 export function updateDeviceStatus(id: string, status: string): void {
-  const db = getDatabase()
-  const stmt = db.prepare('UPDATE devices SET status = ? WHERE id = ?')
-  stmt.run(status, id)
+  prepareCached('UPDATE devices SET status = ? WHERE id = ?').run(status, id)
 }
 
 export function deleteDevice(id: string): void {
-  const db = getDatabase()
-  const stmt = db.prepare('DELETE FROM devices WHERE id = ?')
-  stmt.run(id)
+  prepareCached('DELETE FROM devices WHERE id = ?').run(id)
 }
 
 // ============================================
@@ -226,8 +244,7 @@ export function deleteDevice(id: string): void {
 // ============================================
 
 export function createPairingRequest(request: PairingRequestInput): number {
-  const db = getDatabase()
-  const stmt = db.prepare(`
+  const stmt = prepareCached(`
     INSERT INTO pairing_requests (device_id, device_name)
     VALUES (?, ?)
   `)
@@ -236,36 +253,29 @@ export function createPairingRequest(request: PairingRequestInput): number {
 }
 
 export function getPendingRequests(): PairingRequest[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM pairing_requests
     WHERE status = 'pending'
     ORDER BY requested_at DESC
   `
-    )
-    .all() as PairingRequest[]
+  ).all() as PairingRequest[]
 }
 
 export function getPairingRequests(limit = 100): PairingRequest[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM pairing_requests
     ORDER BY requested_at DESC
     LIMIT ?
   `
-    )
-    .all(limit) as PairingRequest[]
+  ).all(limit) as PairingRequest[]
 }
 
 export function getPairingRequest(id: number): PairingRequest | undefined {
-  const db = getDatabase()
-  return db.prepare('SELECT * FROM pairing_requests WHERE id = ?').get(id) as
-    | PairingRequest
-    | undefined
+  return prepareCached('SELECT * FROM pairing_requests WHERE id = ?').get(
+    id
+  ) as PairingRequest | undefined
 }
 
 export function respondToPairingRequest(
@@ -273,8 +283,7 @@ export function respondToPairingRequest(
   status: string,
   response: string
 ): void {
-  const db = getDatabase()
-  const stmt = db.prepare(`
+  const stmt = prepareCached(`
     UPDATE pairing_requests SET
       status = ?,
       response = ?,
@@ -289,8 +298,7 @@ export function respondToPairingRequest(
 // ============================================
 
 export function logConnectionEvent(event: ConnectionEventInput): number {
-  const db = getDatabase()
-  const stmt = db.prepare(`
+  const stmt = prepareCached(`
     INSERT INTO connection_events (device_id, event_type, ip_address, details)
     VALUES (?, ?, ?, ?)
   `)
@@ -307,60 +315,48 @@ export function getConnectionEvents(
   limit = 100,
   deviceId?: string
 ): ConnectionEvent[] {
-  const db = getDatabase()
-
   if (deviceId) {
-    return db
-      .prepare(
-        `
+    return prepareCached(
+      `
       SELECT * FROM connection_events
       WHERE device_id = ?
       ORDER BY timestamp DESC
       LIMIT ?
     `
-      )
-      .all(deviceId, limit) as ConnectionEvent[]
+    ).all(deviceId, limit) as ConnectionEvent[]
   }
 
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM connection_events
     ORDER BY timestamp DESC
     LIMIT ?
   `
-    )
-    .all(limit) as ConnectionEvent[]
+  ).all(limit) as ConnectionEvent[]
 }
 
 export function getConnectionEventsByType(
   eventType: string,
   limit = 100
 ): ConnectionEvent[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM connection_events
     WHERE event_type = ?
     ORDER BY timestamp DESC
     LIMIT ?
   `
-    )
-    .all(eventType, limit) as ConnectionEvent[]
+  ).all(eventType, limit) as ConnectionEvent[]
 }
 
 export function getRecentConnectionEvents(hours = 24): ConnectionEvent[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM connection_events
     WHERE timestamp >= datetime('now', '-' || ? || ' hours')
     ORDER BY timestamp DESC
   `
-    )
-    .all(hours) as ConnectionEvent[]
+  ).all(hours) as ConnectionEvent[]
 }
 
 // ============================================
@@ -368,8 +364,7 @@ export function getRecentConnectionEvents(hours = 24): ConnectionEvent[] {
 // ============================================
 
 export function logOutboundCall(call: OutboundCallInput): number {
-  const db = getDatabase()
-  const stmt = db.prepare(`
+  const stmt = prepareCached(`
     INSERT INTO outbound_calls (session_id, agent_id, tool_name, duration_ms, status, error)
     VALUES (?, ?, ?, ?, ?, ?)
   `)
@@ -382,6 +377,33 @@ export function logOutboundCall(call: OutboundCallInput): number {
     call.error ?? null
   )
   return result.lastInsertRowid as number
+}
+
+/**
+ * Batch-insert outbound calls in a single transaction. Used when parsing
+ * historical transcripts replays many completed tool calls at once - one
+ * transaction avoids per-row fsyncs and keeps the event loop responsive.
+ */
+export function logOutboundCalls(calls: OutboundCallInput[]): void {
+  if (calls.length === 0) return
+
+  const stmt = prepareCached(`
+    INSERT INTO outbound_calls (session_id, agent_id, tool_name, duration_ms, status, error)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `)
+  const db = getDatabase()
+  db.transaction((rows: OutboundCallInput[]) => {
+    for (const call of rows) {
+      stmt.run(
+        call.session_id ?? null,
+        call.agent_id ?? null,
+        call.tool_name,
+        call.duration_ms ?? null,
+        call.status ?? null,
+        call.error ?? null
+      )
+    }
+  })(calls)
 }
 
 export interface OutboundCallFilters {
@@ -401,36 +423,29 @@ export function getOutboundCalls(
   limit = 100,
   agentId?: string
 ): OutboundCall[] {
-  const db = getDatabase()
-
   if (agentId) {
-    return db
-      .prepare(
-        `
+    return prepareCached(
+      `
       SELECT * FROM outbound_calls
       WHERE agent_id = ?
       ORDER BY timestamp DESC
       LIMIT ?
     `
-      )
-      .all(agentId, limit) as OutboundCall[]
+    ).all(agentId, limit) as OutboundCall[]
   }
 
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM outbound_calls
     ORDER BY timestamp DESC
     LIMIT ?
   `
-    )
-    .all(limit) as OutboundCall[]
+  ).all(limit) as OutboundCall[]
 }
 
 export function getOutboundCallsWithCount(
   filters: OutboundCallFilters = {}
 ): OutboundCallsResult {
-  const db = getDatabase()
   const conditions: string[] = []
   const params: (string | number)[] = []
 
@@ -451,60 +466,50 @@ export function getOutboundCallsWithCount(
     conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
   // Get count first
-  const countRow = db
-    .prepare(
-      `
+  const countRow = prepareCached(
+    `
     SELECT COUNT(*) as total FROM outbound_calls ${whereClause}
   `
-    )
-    .get(...params) as { total: number }
+  ).get(...params) as { total: number }
 
   const limit = filters.limit ?? 50
   const offset = filters.offset ?? 0
   params.push(limit, offset)
 
-  const calls = db
-    .prepare(
-      `
+  const calls = prepareCached(
+    `
     SELECT * FROM outbound_calls
     ${whereClause}
     ORDER BY timestamp DESC
     LIMIT ? OFFSET ?
   `
-    )
-    .all(...params) as OutboundCall[]
+  ).all(...params) as OutboundCall[]
 
   return { calls, total: countRow.total }
 }
 
 export function getOutboundCallsBySession(sessionId: string): OutboundCall[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM outbound_calls
     WHERE session_id = ?
     ORDER BY timestamp DESC
   `
-    )
-    .all(sessionId) as OutboundCall[]
+  ).all(sessionId) as OutboundCall[]
 }
 
 export function getOutboundCallsByTool(
   toolName: string,
   limit = 100
 ): OutboundCall[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM outbound_calls
     WHERE tool_name = ?
     ORDER BY timestamp DESC
     LIMIT ?
   `
-    )
-    .all(toolName, limit) as OutboundCall[]
+  ).all(toolName, limit) as OutboundCall[]
 }
 
 export interface OutboundCallStats {
@@ -521,11 +526,8 @@ export interface OutboundCallStats {
 }
 
 export function getOutboundCallStats(days = 30): OutboundCallStats {
-  const db = getDatabase()
-
-  const totalsRow = db
-    .prepare(
-      `
+  const totalsRow = prepareCached(
+    `
     SELECT
       COUNT(*) as total_calls,
       COUNT(DISTINCT tool_name) as unique_tools,
@@ -534,17 +536,15 @@ export function getOutboundCallStats(days = 30): OutboundCallStats {
     FROM outbound_calls
     WHERE timestamp >= datetime('now', '-' || ? || ' days')
   `
-    )
-    .get(days) as {
+  ).get(days) as {
     total_calls: number
     unique_tools: number
     avg_duration_ms: number | null
     error_count: number
   }
 
-  const topTools = db
-    .prepare(
-      `
+  const topTools = prepareCached(
+    `
     SELECT
       tool_name,
       COUNT(*) as call_count,
@@ -556,8 +556,7 @@ export function getOutboundCallStats(days = 30): OutboundCallStats {
     ORDER BY call_count DESC
     LIMIT 10
   `
-    )
-    .all(days) as Array<{
+  ).all(days) as Array<{
     tool_name: string
     call_count: number
     avg_duration_ms: number | null
@@ -583,8 +582,7 @@ export function getOutboundCallStats(days = 30): OutboundCallStats {
 // ============================================
 
 export function createAlert(alert: AlertInput): number {
-  const db = getDatabase()
-  const stmt = db.prepare(`
+  const stmt = prepareCached(`
     INSERT INTO security_alerts (type, severity, message, details)
     VALUES (?, ?, ?, ?)
   `)
@@ -601,44 +599,35 @@ export function getAlerts(
   acknowledged?: boolean,
   limit = 100
 ): SecurityAlert[] {
-  const db = getDatabase()
-
   if (acknowledged === undefined) {
-    return db
-      .prepare(
-        `
+    return prepareCached(
+      `
       SELECT * FROM security_alerts
       ORDER BY timestamp DESC
       LIMIT ?
     `
-      )
-      .all(limit) as SecurityAlert[]
+    ).all(limit) as SecurityAlert[]
   }
 
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM security_alerts
     WHERE acknowledged = ?
     ORDER BY timestamp DESC
     LIMIT ?
   `
-    )
-    .all(acknowledged ? 1 : 0, limit) as SecurityAlert[]
+  ).all(acknowledged ? 1 : 0, limit) as SecurityAlert[]
 }
 
 export function getAlert(id: number): SecurityAlert | undefined {
-  const db = getDatabase()
-  return db.prepare('SELECT * FROM security_alerts WHERE id = ?').get(id) as
-    | SecurityAlert
-    | undefined
+  return prepareCached('SELECT * FROM security_alerts WHERE id = ?').get(
+    id
+  ) as SecurityAlert | undefined
 }
 
 export function getUnacknowledgedAlerts(): SecurityAlert[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM security_alerts
     WHERE acknowledged = 0
     ORDER BY
@@ -651,44 +640,36 @@ export function getUnacknowledgedAlerts(): SecurityAlert[] {
       END,
       timestamp DESC
   `
-    )
-    .all() as SecurityAlert[]
+  ).all() as SecurityAlert[]
 }
 
 export function getAlertsBySeverity(
   severity: string,
   limit = 100
 ): SecurityAlert[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM security_alerts
     WHERE severity = ?
     ORDER BY timestamp DESC
     LIMIT ?
   `
-    )
-    .all(severity, limit) as SecurityAlert[]
+  ).all(severity, limit) as SecurityAlert[]
 }
 
 export function getAlertsByType(type: string, limit = 100): SecurityAlert[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM security_alerts
     WHERE type = ?
     ORDER BY timestamp DESC
     LIMIT ?
   `
-    )
-    .all(type, limit) as SecurityAlert[]
+  ).all(type, limit) as SecurityAlert[]
 }
 
 export function acknowledgeAlert(id: number): void {
-  const db = getDatabase()
-  const stmt = db.prepare(`
+  const stmt = prepareCached(`
     UPDATE security_alerts SET
       acknowledged = 1,
       acknowledged_at = datetime('now')
@@ -698,8 +679,7 @@ export function acknowledgeAlert(id: number): void {
 }
 
 export function acknowledgeAllAlerts(): number {
-  const db = getDatabase()
-  const stmt = db.prepare(`
+  const stmt = prepareCached(`
     UPDATE security_alerts SET
       acknowledged = 1,
       acknowledged_at = datetime('now')
@@ -718,48 +698,38 @@ export interface AlertStats {
 }
 
 export function getAlertStats(recentHours = 24): AlertStats {
-  const db = getDatabase()
-
-  const countRow = db
-    .prepare(
-      `
+  const countRow = prepareCached(
+    `
     SELECT
       COUNT(*) as total,
       SUM(CASE WHEN acknowledged = 0 THEN 1 ELSE 0 END) as unacknowledged
     FROM security_alerts
   `
-    )
-    .get() as { total: number; unacknowledged: number }
+  ).get() as { total: number; unacknowledged: number }
 
-  const severityRows = db
-    .prepare(
-      `
+  const severityRows = prepareCached(
+    `
     SELECT severity, COUNT(*) as count
     FROM security_alerts
     GROUP BY severity
   `
-    )
-    .all() as Array<{ severity: string; count: number }>
+  ).all() as Array<{ severity: string; count: number }>
 
-  const typeRows = db
-    .prepare(
-      `
+  const typeRows = prepareCached(
+    `
     SELECT type, COUNT(*) as count
     FROM security_alerts
     GROUP BY type
   `
-    )
-    .all() as Array<{ type: string; count: number }>
+  ).all() as Array<{ type: string; count: number }>
 
-  const recentRow = db
-    .prepare(
-      `
+  const recentRow = prepareCached(
+    `
     SELECT COUNT(*) as count
     FROM security_alerts
     WHERE timestamp >= datetime('now', '-' || ? || ' hours')
   `
-    )
-    .get(recentHours) as { count: number }
+  ).get(recentHours) as { count: number }
 
   const bySeverity: Record<string, number> = {}
   for (const row of severityRows) {
@@ -785,8 +755,7 @@ export function getAlertStats(recentHours = 24): AlertStats {
 // ============================================
 
 export function logAudit(entry: AuditInput): number {
-  const db = getDatabase()
-  const stmt = db.prepare(`
+  const stmt = prepareCached(`
     INSERT INTO audit_log (action, entity_type, entity_id, actor, details, ip_address)
     VALUES (?, ?, ?, ?, ?, ?)
   `)
@@ -807,7 +776,6 @@ export interface AuditLogResult {
 }
 
 export function getAuditLog(filters: AuditFilters = {}): AuditEntry[] {
-  const db = getDatabase()
   const conditions: string[] = []
   const params: (string | number)[] = []
 
@@ -843,22 +811,19 @@ export function getAuditLog(filters: AuditFilters = {}): AuditEntry[] {
 
   params.push(limit, offset)
 
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM audit_log
     ${whereClause}
     ORDER BY timestamp DESC
     LIMIT ? OFFSET ?
   `
-    )
-    .all(...params) as AuditEntry[]
+  ).all(...params) as AuditEntry[]
 }
 
 export function getAuditLogWithCount(
   filters: AuditFilters = {}
 ): AuditLogResult {
-  const db = getDatabase()
   const conditions: string[] = []
   const params: (string | number)[] = []
 
@@ -895,35 +860,30 @@ export function getAuditLogWithCount(
     conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
   // Get count first
-  const countRow = db
-    .prepare(
-      `
+  const countRow = prepareCached(
+    `
     SELECT COUNT(*) as total FROM audit_log ${whereClause}
   `
-    )
-    .get(...params) as { total: number }
+  ).get(...params) as { total: number }
 
   const limit = filters.limit ?? 100
   const offset = filters.offset ?? 0
   params.push(limit, offset)
 
-  const entries = db
-    .prepare(
-      `
+  const entries = prepareCached(
+    `
     SELECT * FROM audit_log
     ${whereClause}
     ORDER BY timestamp DESC
     LIMIT ? OFFSET ?
   `
-    )
-    .all(...params) as AuditEntry[]
+  ).all(...params) as AuditEntry[]
 
   return { entries, total: countRow.total }
 }
 
 export function getAuditEntry(id: number): AuditEntry | undefined {
-  const db = getDatabase()
-  return db.prepare('SELECT * FROM audit_log WHERE id = ?').get(id) as
+  return prepareCached('SELECT * FROM audit_log WHERE id = ?').get(id) as
     | AuditEntry
     | undefined
 }
@@ -932,43 +892,34 @@ export function getAuditLogByEntity(
   entityType: string,
   entityId: string
 ): AuditEntry[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM audit_log
     WHERE entity_type = ? AND entity_id = ?
     ORDER BY timestamp DESC
   `
-    )
-    .all(entityType, entityId) as AuditEntry[]
+  ).all(entityType, entityId) as AuditEntry[]
 }
 
 export function getAuditLogByActor(actor: string, limit = 100): AuditEntry[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM audit_log
     WHERE actor = ?
     ORDER BY timestamp DESC
     LIMIT ?
   `
-    )
-    .all(actor, limit) as AuditEntry[]
+  ).all(actor, limit) as AuditEntry[]
 }
 
 export function getRecentAuditLog(hours = 24): AuditEntry[] {
-  const db = getDatabase()
-  return db
-    .prepare(
-      `
+  return prepareCached(
+    `
     SELECT * FROM audit_log
     WHERE timestamp >= datetime('now', '-' || ? || ' hours')
     ORDER BY timestamp DESC
   `
-    )
-    .all(hours) as AuditEntry[]
+  ).all(hours) as AuditEntry[]
 }
 
 export interface AuditStats {
@@ -980,51 +931,41 @@ export interface AuditStats {
 }
 
 export function getAuditStats(recentHours = 24): AuditStats {
-  const db = getDatabase()
-
-  const totalsRow = db
-    .prepare(
-      `
+  const totalsRow = prepareCached(
+    `
     SELECT
       COUNT(*) as total_entries,
       COUNT(DISTINCT actor) as unique_actors
     FROM audit_log
   `
-    )
-    .get() as { total_entries: number; unique_actors: number }
+  ).get() as { total_entries: number; unique_actors: number }
 
-  const actionRows = db
-    .prepare(
-      `
+  const actionRows = prepareCached(
+    `
     SELECT action, COUNT(*) as count
     FROM audit_log
     GROUP BY action
     ORDER BY count DESC
   `
-    )
-    .all() as Array<{ action: string; count: number }>
+  ).all() as Array<{ action: string; count: number }>
 
-  const entityRows = db
-    .prepare(
-      `
+  const entityRows = prepareCached(
+    `
     SELECT entity_type, COUNT(*) as count
     FROM audit_log
     WHERE entity_type IS NOT NULL
     GROUP BY entity_type
     ORDER BY count DESC
   `
-    )
-    .all() as Array<{ entity_type: string; count: number }>
+  ).all() as Array<{ entity_type: string; count: number }>
 
-  const recentRow = db
-    .prepare(
-      `
+  const recentRow = prepareCached(
+    `
     SELECT COUNT(*) as count
     FROM audit_log
     WHERE timestamp >= datetime('now', '-' || ? || ' hours')
   `
-    )
-    .get(recentHours) as { count: number }
+  ).get(recentHours) as { count: number }
 
   const actionCounts: Record<string, number> = {}
   for (const row of actionRows) {
@@ -1072,34 +1013,27 @@ export interface SecurityDashboardStats {
 }
 
 export function getSecurityDashboardStats(): SecurityDashboardStats {
-  const db = getDatabase()
-
   // Device stats
-  const deviceRow = db
-    .prepare(
-      `
+  const deviceRow = prepareCached(
+    `
     SELECT
       COUNT(*) as total,
       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active
     FROM devices
   `
-    )
-    .get() as { total: number; active: number }
+  ).get() as { total: number; active: number }
 
-  const recentConnectionsRow = db
-    .prepare(
-      `
+  const recentConnectionsRow = prepareCached(
+    `
     SELECT COUNT(*) as count
     FROM connection_events
     WHERE timestamp >= datetime('now', '-24 hours')
   `
-    )
-    .get() as { count: number }
+  ).get() as { count: number }
 
   // Alert stats
-  const alertRow = db
-    .prepare(
-      `
+  const alertRow = prepareCached(
+    `
     SELECT
       COUNT(*) as total,
       SUM(CASE WHEN acknowledged = 0 THEN 1 ELSE 0 END) as unacknowledged,
@@ -1107,8 +1041,7 @@ export function getSecurityDashboardStats(): SecurityDashboardStats {
       SUM(CASE WHEN severity = 'high' AND acknowledged = 0 THEN 1 ELSE 0 END) as high
     FROM security_alerts
   `
-    )
-    .get() as {
+  ).get() as {
     total: number
     unacknowledged: number
     critical: number
@@ -1116,29 +1049,25 @@ export function getSecurityDashboardStats(): SecurityDashboardStats {
   }
 
   // Pairing stats
-  const pairingRow = db
-    .prepare(
-      `
+  const pairingRow = prepareCached(
+    `
     SELECT
       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
       COUNT(*) as total
     FROM pairing_requests
   `
-    )
-    .get() as { pending: number; total: number }
+  ).get() as { pending: number; total: number }
 
   // Audit stats
-  const auditRow = db
-    .prepare(
-      `
+  const auditRow = prepareCached(
+    `
     SELECT
       COUNT(*) as recent_entries,
       COUNT(DISTINCT actor) as unique_actors
     FROM audit_log
     WHERE timestamp >= datetime('now', '-24 hours')
   `
-    )
-    .get() as { recent_entries: number; unique_actors: number }
+  ).get() as { recent_entries: number; unique_actors: number }
 
   return {
     devices: {

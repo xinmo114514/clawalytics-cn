@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import {
   Cell,
   Legend,
@@ -28,21 +29,28 @@ export function AgentDistributionChart({
 }: AgentDistributionChartProps) {
   const { text } = useLocale()
   const { formatCurrencyPrecise } = useCurrency()
-  const totalCost = agents.reduce((acc, agent) => acc + agent.total_cost, 0)
+  const totalCost = useMemo(
+    () => agents.reduce((acc, agent) => acc + agent.total_cost, 0),
+    [agents]
+  )
 
-  const chartData = agents
-    .filter((agent) => agent.total_cost > 0)
-    .sort((a, b) => b.total_cost - a.total_cost)
-    .slice(0, 6)
-    .map((agent, idx) => ({
-      name: agent.name,
-      value: agent.total_cost,
-      percentage: totalCost > 0 ? (agent.total_cost / totalCost) * 100 : 0,
-      fill: COLORS[idx % COLORS.length],
-      sessions: agent.session_count,
-      inputTokens: agent.total_input_tokens,
-      outputTokens: agent.total_output_tokens,
-    }))
+  const chartData = useMemo(
+    () =>
+      agents
+        .filter((agent) => agent.total_cost > 0)
+        .sort((a, b) => b.total_cost - a.total_cost)
+        .slice(0, 6)
+        .map((agent, idx) => ({
+          name: agent.name,
+          value: agent.total_cost,
+          percentage: totalCost > 0 ? (agent.total_cost / totalCost) * 100 : 0,
+          fill: COLORS[idx % COLORS.length],
+          sessions: agent.session_count,
+          inputTokens: agent.total_input_tokens,
+          outputTokens: agent.total_output_tokens,
+        })),
+    [agents, totalCost]
+  )
 
   if (chartData.length === 0) {
     return (
@@ -59,6 +67,7 @@ export function AgentDistributionChart({
     <ResponsiveContainer width='100%' height={300}>
       <PieChart>
         <Pie
+          isAnimationActive={false}
           data={chartData}
           cx='50%'
           cy='45%'

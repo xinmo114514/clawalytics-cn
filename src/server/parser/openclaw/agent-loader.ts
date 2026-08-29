@@ -175,6 +175,7 @@ export function watchAgentConfig(
     ignoreInitial: true,
     usePolling: shouldUsePollingWatcher(configPath),
     interval: 1000,
+    awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 50 },
   })
 
   watcher.on('change', () => {

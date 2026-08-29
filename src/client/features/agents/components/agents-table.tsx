@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { ArrowUpDown, ExternalLink } from 'lucide-react'
 import type { Agent } from '@/lib/api'
@@ -23,14 +23,13 @@ interface AgentsTableProps {
 type SortField = 'name' | 'total_cost' | 'session_count' | 'created_at'
 type SortDirection = 'asc' | 'desc'
 
+const formatNumber = (value: number): string =>
+  new Intl.NumberFormat('en-US').format(value)
+
 export function AgentsTable({ agents }: AgentsTableProps) {
-  const { locale, text } = useLocale()
-  const { formatCurrency } = useCurrency()
+  const { text } = useLocale()
   const [sortField, setSortField] = useState<SortField>('total_cost')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-
-  const formatNumber = (value: number): string =>
-    new Intl.NumberFormat('en-US').format(value)
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -41,25 +40,30 @@ export function AgentsTable({ agents }: AgentsTableProps) {
     }
   }
 
-  const sortedAgents = [...agents].sort((a, b) => {
-    const multiplier = sortDirection === 'asc' ? 1 : -1
+  const sortedAgents = useMemo(
+    () =>
+      [...agents].sort((a, b) => {
+        const multiplier = sortDirection === 'asc' ? 1 : -1
 
-    switch (sortField) {
-      case 'name':
-        return multiplier * a.name.localeCompare(b.name)
-      case 'total_cost':
-        return multiplier * (a.total_cost - b.total_cost)
-      case 'session_count':
-        return multiplier * (a.session_count - b.session_count)
-      case 'created_at':
-        return (
-          multiplier *
-          (new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-        )
-      default:
-        return 0
-    }
-  })
+        switch (sortField) {
+          case 'name':
+            return multiplier * a.name.localeCompare(b.name)
+          case 'total_cost':
+            return multiplier * (a.total_cost - b.total_cost)
+          case 'session_count':
+            return multiplier * (a.session_count - b.session_count)
+          case 'created_at':
+            return (
+              multiplier *
+              (new Date(a.created_at).getTime() -
+                new Date(b.created_at).getTime())
+            )
+          default:
+            return 0
+        }
+      }),
+    [agents, sortField, sortDirection]
+  )
 
   if (agents.length === 0) {
     return (
@@ -133,52 +137,59 @@ export function AgentsTable({ agents }: AgentsTableProps) {
         </TableHeader>
         <TableBody>
           {sortedAgents.map((agent) => (
-            <TableRow key={agent.id}>
-              <TableCell className='font-medium'>{agent.name}</TableCell>
-              <TableCell>
-                {agent.workspace ? (
-                  <Badge variant='secondary' className='font-normal'>
-                    {agent.workspace}
-                  </Badge>
-                ) : (
-                  <span className='text-muted-foreground'>-</span>
-                )}
-              </TableCell>
-              <TableCell className='text-right font-mono'>
-                {formatCurrency(agent.total_cost)}
-              </TableCell>
-              <TableCell className='text-right font-mono text-muted-foreground'>
-                {formatNumber(agent.total_input_tokens)}
-              </TableCell>
-              <TableCell className='text-right font-mono text-muted-foreground'>
-                {formatNumber(agent.total_output_tokens)}
-              </TableCell>
-              <TableCell className='text-right'>
-                <Badge variant='outline'>{agent.session_count}</Badge>
-              </TableCell>
-              <TableCell className='text-muted-foreground'>
-                {formatRelativeTime(agent.created_at, locale)}
-              </TableCell>
-              <TableCell>
-                <Link
-                  to='/agents/$agentId'
-                  params={{ agentId: agent.id }}
-                  className='inline-flex'
-                >
-                  <Button variant='ghost' size='icon' className='h-8 w-8'>
-                    <ExternalLink className='h-4 w-4' />
-                    <span className='sr-only'>
-                      {text('查看详情', 'View details')}
-                    </span>
-                  </Button>
-                </Link>
-              </TableCell>
-            </TableRow>
+            <AgentRow key={agent.id} agent={agent} />
           ))}
         </TableBody>
       </Table>
     </div>
   )
 }
+
+const AgentRow = memo(function AgentRow({ agent }: { agent: Agent }) {
+  const { locale, text } = useLocale()
+  const { formatCurrency } = useCurrency()
+
+  return (
+    <TableRow>
+      <TableCell className='font-medium'>{agent.name}</TableCell>
+      <TableCell>
+        {agent.workspace ? (
+          <Badge variant='secondary' className='font-normal'>
+            {agent.workspace}
+          </Badge>
+        ) : (
+          <span className='text-muted-foreground'>-</span>
+        )}
+      </TableCell>
+      <TableCell className='text-right font-mono'>
+        {formatCurrency(agent.total_cost)}
+      </TableCell>
+      <TableCell className='text-right font-mono text-muted-foreground'>
+        {formatNumber(agent.total_input_tokens)}
+      </TableCell>
+      <TableCell className='text-right font-mono text-muted-foreground'>
+        {formatNumber(agent.total_output_tokens)}
+      </TableCell>
+      <TableCell className='text-right'>
+        <Badge variant='outline'>{agent.session_count}</Badge>
+      </TableCell>
+      <TableCell className='text-muted-foreground'>
+        {formatRelativeTime(agent.created_at, locale)}
+      </TableCell>
+      <TableCell>
+        <Link
+          to='/agents/$agentId'
+          params={{ agentId: agent.id }}
+          className='inline-flex'
+        >
+          <Button variant='ghost' size='icon' className='h-8 w-8'>
+            <ExternalLink className='h-4 w-4' />
+            <span className='sr-only'>{text('查看详情', 'View details')}</span>
+          </Button>
+        </Link>
+      </TableCell>
+    </TableRow>
+  )
+})
 
 AgentsTable.displayName = 'AgentsTable'

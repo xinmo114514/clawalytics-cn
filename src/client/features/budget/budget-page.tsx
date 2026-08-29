@@ -9,6 +9,7 @@ import {
   type BudgetPeriod,
   type Config,
 } from '@/lib/api'
+import { pollWhenVisible } from '@/lib/polling'
 import { useCurrency } from '@/context/currency-provider'
 import { useLocale } from '@/context/locale-provider'
 import { Button } from '@/components/ui/button'
@@ -66,7 +67,7 @@ export function BudgetPage() {
   const { data: budgetStatus, isLoading: budgetLoading } = useQuery({
     queryKey: ['budgetStatus'],
     queryFn: getBudgetStatus,
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
   })
 
   const [budgetDraft, setBudgetDraft] = useState<Partial<BudgetFormState>>({})

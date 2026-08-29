@@ -9,6 +9,7 @@ import {
   shell,
   systemPreferences,
   Tray,
+  utilityProcess,
 } from 'electron';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
@@ -23,7 +24,9 @@ const isWindows = process.platform === 'win32';
 const APP_ID = 'com.clawalytics.desktop';
 const COSTS_WS_RECONNECT_MS = 5000;
 const FORCE_QUIT_TIMEOUT_MS = 5000;
-const STARTUP_SYNC_REPAIR_DELAY_MS = 2000;
+const BACKEND_READY_TIMEOUT_MS = 15000;
+const BACKEND_STOP_TIMEOUT_MS = 2000;
+const BACKEND_KILL_GRACE_MS = 1000;
 const TITLE_BAR_HEIGHT = 48;
 const DESKTOP_PREFERENCES_FILE = 'desktop-preferences.json';
 const CLOSE_ACTION_ASK = 'ask';
@@ -45,8 +48,54 @@ const WINDOWS_STARTUP_SHORTCUT_FILE = `${STARTUP_REGISTRY_VALUE_NAME}.lnk`;
 const CURRENCY_CNY = 'CNY';
 const CURRENCY_USD = 'USD';
 const USD_TO_CNY_RATE = 7;
+const LOADING_PAGE_HTML = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: #0f172a;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      .brand {
+        color: #e2e8f0;
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        animation: pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.45;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="brand">Clawalytics</div>
+  </body>
+</html>`;
+const LOADING_PAGE_URL = `data:text/html;charset=utf-8,${encodeURIComponent(
+  LOADING_PAGE_HTML
+)}`;
 
 let backendModule = null;
+let backendChild = null;
+let backendStartPromise = null;
 let backendPort = null;
 let desktopIntegrationsPort = null;
 let isQuitting = false;
@@ -63,6 +112,7 @@ let isRefreshingCostStats = false;
 let hasQueuedCostRefresh = false;
 let isHandlingCloseChoice = false;
 let forceQuitTimer = null;
+let desktopPreferencesLoaded = false;
 let desktopPreferences = {
   locale: 'en',
   closeAction: CLOSE_ACTION_ASK,
@@ -133,19 +183,16 @@ function setupWindowsAccentColorListener() {
     return;
   }
 
-  let lastAccentColor = getWindowsAccentColor();
+  // The accent-color-changed event is Windows-only (matching the guard above)
+  // and replaces the previous 1s getAccentColor polling loop, which kept the
+  // main process busy even when idle.
+  systemPreferences.on('accent-color-changed', () => {
+    const accentColor = getWindowsAccentColor();
 
-  setInterval(() => {
-    const currentAccentColor = getWindowsAccentColor();
-
-    if (currentAccentColor && currentAccentColor !== lastAccentColor) {
-      lastAccentColor = currentAccentColor;
-
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('windows-accent-color-changed', currentAccentColor);
-      }
+    if (accentColor && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('windows-accent-color-changed', accentColor);
     }
-  }, 1000);
+  });
 }
 
 function getAppAssetPath(...segments) {
@@ -353,7 +400,16 @@ function getCloseActionLabel(action) {
   }
 }
 
-function loadDesktopPreferences() {
+// Preferences are read from disk once and kept in memory; every write goes
+// through the cache first and then hits the file (write-through), so tray
+// menus and notifications never block the main process on synchronous I/O.
+function loadDesktopPreferences(forceRead = false) {
+  if (desktopPreferencesLoaded && !forceRead) {
+    return;
+  }
+
+  desktopPreferencesLoaded = true;
+
   try {
     const filePath = getDesktopPreferencesPath();
 
@@ -901,7 +957,6 @@ function updateTrayMenu() {
     return;
   }
 
-  loadDesktopPreferences();
   const savedCloseAction = getSavedCloseAction();
 
   tray.setContextMenu(Menu.buildFromTemplate([
@@ -993,7 +1048,7 @@ async function syncDesktopPreferences(nextPreferences) {
   if (nextPreferences) {
     desktopPreferences = normalizeDesktopPreferences(nextPreferences);
   } else {
-    loadDesktopPreferences();
+    loadDesktopPreferences(true);
   }
 
   const notificationPreferencesChanged = (
@@ -1034,6 +1089,11 @@ async function handleDesktopCloseChoice(action) {
 }
 
 function requestDesktopCloseChoice() {
+  if (backendChild) {
+    backendChild.postMessage({ type: 'requestCloseChoice' });
+    return;
+  }
+
   if (!backendModule || typeof backendModule.requestDesktopCloseChoice !== 'function') {
     isHandlingCloseChoice = false;
     hideWindowToTray();
@@ -1316,12 +1376,10 @@ function findFreePort() {
   });
 }
 
-async function startBackend() {
-  if (backendModule && backendPort) {
-    return backendPort;
-  }
-
-  const port = await findFreePort();
+// Emergency fallback: run the backend inside the main process exactly like
+// the pre-utilityProcess architecture did. Enable with
+// CLAWALYTICS_IN_PROCESS=1 only; it freezes the window under load.
+async function startBackendInProcess(port) {
   const serverEntry = pathToFileURL(
     getAppAssetPath('dist', 'server', 'index.js')
   ).href;
@@ -1343,9 +1401,139 @@ async function startBackend() {
       syncPreferences: (preferences) => syncDesktopPreferences(preferences),
     });
   }
+}
 
-  backendPort = port;
-  return port;
+function startBackendChild(port) {
+  const child = utilityProcess.fork(
+    getAppAssetPath('dist', 'server', 'electron-child.js'),
+    [],
+    {
+      serviceName: 'clawalytics-backend',
+      env: {
+        ...process.env,
+        NODE_ENV: 'production',
+        ELECTRON: 'true',
+        PORT: String(port),
+      },
+    }
+  );
+
+  backendChild = child;
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let readyTimeout = null;
+
+    const clearReadyTimeout = () => {
+      if (readyTimeout) {
+        clearTimeout(readyTimeout);
+        readyTimeout = null;
+      }
+    };
+
+    const onMessage = (message) => {
+      if (!message || typeof message !== 'object') {
+        return;
+      }
+
+      if (message.type === 'ready') {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearReadyTimeout();
+        resolve(port);
+        return;
+      }
+
+      if (message.type === 'handleCloseChoice') {
+        void handleDesktopCloseChoice(message.action);
+        return;
+      }
+
+      if (message.type === 'syncPreferences') {
+        void syncDesktopPreferences(message.preferences);
+      }
+    };
+
+    const onExit = (code) => {
+      if (!settled) {
+        settled = true;
+        clearReadyTimeout();
+        reject(
+          new Error(
+            `Backend child process exited (code ${code}) before signaling ready.`
+          )
+        );
+        return;
+      }
+
+      if (backendChild === child) {
+        backendChild = null;
+        backendPort = null;
+        desktopIntegrationsPort = null;
+        console.error(
+          `Backend child process exited unexpectedly (code ${code}).`
+        );
+      }
+    };
+
+    child.on('message', onMessage);
+    child.on('exit', onExit);
+
+    readyTimeout = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      child.off('message', onMessage);
+      child.off('exit', onExit);
+      backendChild = null;
+      child.kill();
+      reject(
+        new Error(
+          `Backend child process did not signal ready within ${
+            BACKEND_READY_TIMEOUT_MS / 1000
+          }s.`
+        )
+      );
+    }, BACKEND_READY_TIMEOUT_MS);
+  });
+}
+
+async function startBackend() {
+  if (backendPort && (backendModule || backendChild)) {
+    return backendPort;
+  }
+
+  if (backendStartPromise) {
+    return backendStartPromise;
+  }
+
+  backendStartPromise = (async () => {
+    const port = await findFreePort();
+
+    try {
+      if (process.env.CLAWALYTICS_IN_PROCESS === '1') {
+        await startBackendInProcess(port);
+      } else {
+        await startBackendChild(port);
+      }
+
+      backendPort = port;
+      return port;
+    } catch (error) {
+      backendModule = null;
+      backendChild = null;
+      throw error;
+    } finally {
+      backendStartPromise = null;
+    }
+  })();
+
+  return backendStartPromise;
 }
 
 async function stopBackend() {
@@ -1358,6 +1546,41 @@ async function stopBackend() {
   if (tray) {
     tray.destroy();
     tray = null;
+  }
+
+  if (backendChild) {
+    const child = backendChild;
+    backendChild = null;
+    backendPort = null;
+    desktopIntegrationsPort = null;
+
+    await new Promise((resolve) => {
+      let settled = false;
+      let killTimer = null;
+
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        if (killTimer) {
+          clearTimeout(killTimer);
+        }
+        resolve();
+      };
+
+      child.once('exit', finish);
+
+      killTimer = setTimeout(() => {
+        child.kill();
+        setTimeout(finish, BACKEND_KILL_GRACE_MS);
+      }, BACKEND_STOP_TIMEOUT_MS);
+
+      child.postMessage({ type: 'stop' });
+    });
+
+    return;
   }
 
   if (backendModule && typeof backendModule.clearDesktopBridge === 'function') {
@@ -1382,8 +1605,13 @@ async function stopBackend() {
 
 async function createMainWindow(options = {}) {
   const { forceShow = false } = options;
-  const port = await startBackend();
   const startHidden = !forceShow && shouldStartHidden();
+
+  // Fork the backend child process without waiting for it to become ready so
+  // the window can appear immediately. The analysis engine no longer runs in
+  // the UI process, so even its heaviest startup work cannot freeze the
+  // window; a themed loading page covers the time until the port is known.
+  const backendReadyPromise = startBackend();
 
   const preloadPath = getAppAssetPath('electron', 'preload.mjs');
 
@@ -1425,7 +1653,7 @@ async function createMainWindow(options = {}) {
   window.setMenuBarVisibility(false);
 
   window.once('ready-to-show', () => {
-    if (!startHidden) {
+    if (!startHidden && !window.isDestroyed()) {
       window.show();
       if (forceShow) {
         window.focus();
@@ -1456,6 +1684,26 @@ async function createMainWindow(options = {}) {
       color: '#00000000',
       height: TITLE_BAR_HEIGHT,
     });
+  }
+
+  // Show the themed loading page first, then swap in the real dashboard once
+  // the backend child reports its port.
+  await window.loadURL(LOADING_PAGE_URL);
+
+  let port = null;
+  try {
+    port = await backendReadyPromise;
+  } catch (error) {
+    if (window.isDestroyed()) {
+      return window;
+    }
+
+    window.destroy();
+    throw error;
+  }
+
+  if (window.isDestroyed()) {
+    return window;
   }
 
   await window.loadURL(`http://127.0.0.1:${port}`);
@@ -1492,22 +1740,6 @@ function ensureMainWindow(options = {}) {
   return mainWindowCreationPromise;
 }
 
-function scheduleLaunchOnStartupRepair() {
-  if (!app.isPackaged) {
-    return;
-  }
-
-  const timer = setTimeout(() => {
-    void syncLaunchOnStartupSettings().catch((error) => {
-      console.error('Failed to repair launch on startup settings:', error);
-    });
-  }, STARTUP_SYNC_REPAIR_DELAY_MS);
-
-  if (typeof timer.unref === 'function') {
-    timer.unref();
-  }
-}
-
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -1525,10 +1757,9 @@ if (!app.requestSingleInstanceLock()) {
     loadDesktopPreferences();
     Menu.setApplicationMenu(null);
     createTray();
-    // Repair entries on every launch so updates and portable-app moves do not
-    // leave Windows pointing at an old executable path.
+    // Sync entries once on every launch so updates and portable-app moves do
+    // not leave Windows pointing at an old executable path.
     await syncLaunchOnStartupSettings();
-    scheduleLaunchOnStartupRepair();
 
     ipcMain.handle('get-windows-accent-color', () => {
       return getWindowsAccentColor();

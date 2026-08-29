@@ -31,7 +31,7 @@ const queryClient = new QueryClient({
           [401, 403].includes(_error.response?.status ?? 0)
         )
       },
-      refetchOnWindowFocus: import.meta.env.PROD,
+      refetchOnWindowFocus: false, // 刷新由 WebSocket + 轮询覆盖
       staleTime: 10 * 1000, // 10s
     },
     mutations: {

@@ -17,6 +17,7 @@ import {
   getSecurityDashboard,
   type AuditFilters,
 } from '@/lib/api'
+import { pollWhenVisible } from '@/lib/polling'
 import { useLocale } from '@/context/locale-provider'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -95,25 +96,25 @@ export function SecurityPage() {
   const { data: dashboardStats, isLoading: statsLoading } = useQuery({
     queryKey: ['securityDashboard'],
     queryFn: getSecurityDashboard,
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
   })
 
   const { data: alerts, isLoading: alertsLoading } = useQuery({
     queryKey: ['securityAlerts'],
     queryFn: () => getAlerts(false, 10),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
   })
 
   const { data: connections, isLoading: connectionsLoading } = useQuery({
     queryKey: ['recentConnections'],
     queryFn: () => getRecentConnections(24),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
   })
 
   const { data: devices, isLoading: devicesLoading } = useQuery({
     queryKey: ['devices'],
     queryFn: getDevices,
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
     enabled: hasVisited('devices'),
   })
 
@@ -131,7 +132,7 @@ export function SecurityPage() {
   const { data: auditData, isLoading: auditLoading } = useQuery({
     queryKey: ['auditLog', activeFilters],
     queryFn: () => getAuditLog(activeFilters),
-    refetchInterval: 30000,
+    refetchInterval: pollWhenVisible(30000),
     enabled: hasVisited('audit'),
   })
 

@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react'
 import { differenceInHours, differenceInMinutes } from 'date-fns'
 import {
   ArrowDown,
@@ -141,7 +142,10 @@ export function SessionsTable({
   onToggleExpand,
 }: SessionsTableProps) {
   const { locale, text } = useLocale()
-  const maxCost = sessions.reduce((max, s) => Math.max(max, s.total_cost), 0)
+  const maxCost = useMemo(
+    () => sessions.reduce((max, s) => Math.max(max, s.total_cost), 0),
+    [sessions]
+  )
 
   if (sessions.length === 0) {
     return (
@@ -216,7 +220,7 @@ export function SessionsTable({
                 maxCost={maxCost}
                 locale={locale}
                 text={text}
-                onToggle={() => onToggleExpand(session.id)}
+                onToggleExpand={onToggleExpand}
               />
             )
           })}
@@ -226,20 +230,20 @@ export function SessionsTable({
   )
 }
 
-function SessionTableRow({
+const SessionTableRow = memo(function SessionTableRow({
   session,
   isExpanded,
   maxCost,
   locale,
   text,
-  onToggle,
+  onToggleExpand,
 }: {
   session: EnhancedSession
   isExpanded: boolean
   maxCost: number
   locale: AppLocale
   text: (zh: string, en: string) => string
-  onToggle: () => void
+  onToggleExpand: (sessionId: string) => void
 }) {
   const { formatCurrency } = useCurrency()
   const cost = Number.isFinite(session.total_cost) ? session.total_cost : 0
@@ -253,7 +257,10 @@ function SessionTableRow({
 
   return (
     <>
-      <TableRow className='cursor-pointer hover:bg-muted/50' onClick={onToggle}>
+      <TableRow
+        className='cursor-pointer hover:bg-muted/50'
+        onClick={() => onToggleExpand(session.id)}
+      >
         <TableCell className='w-8 py-2'>
           <ChevronIcon className='h-4 w-4 text-muted-foreground' />
         </TableCell>
@@ -330,4 +337,4 @@ function SessionTableRow({
       )}
     </>
   )
-}
+})

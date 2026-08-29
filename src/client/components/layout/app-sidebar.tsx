@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useLayout } from '@/context/layout-provider'
 import { useLocale } from '@/context/locale-provider'
 import {
@@ -14,7 +15,7 @@ import { TeamSwitcher } from './team-switcher'
 export function AppSidebar() {
   const { collapsible, variant } = useLayout()
   const { text } = useLocale()
-  const sidebarData = getSidebarData(text)
+  const sidebarData = useMemo(() => getSidebarData(text), [text])
   return (
     <Sidebar collapsible={collapsible} variant={variant}>
       <SidebarHeader>

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { getAgent, getAgentDailyCosts } from '@/lib/api'
 import { formatDate, formatRelativeTime } from '@/lib/i18n'
+import { pollWhenVisible } from '@/lib/polling'
 import { useCurrency } from '@/context/currency-provider'
 import { useLocale } from '@/context/locale-provider'
 import { Badge } from '@/components/ui/badge'
@@ -39,13 +40,13 @@ export function AgentDetail({ agentId }: AgentDetailProps) {
   const { data: agent, isLoading: agentLoading } = useQuery({
     queryKey: ['agent', agentId],
     queryFn: () => getAgent(agentId),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
   })
 
   const { data: dailyCosts, isLoading: dailyCostsLoading } = useQuery({
     queryKey: ['agentDailyCosts', agentId],
     queryFn: () => getAgentDailyCosts(agentId, 30),
-    refetchInterval: 10000,
+    refetchInterval: pollWhenVisible(10000),
   })
 
   const formatNumber = (value: number): string =>

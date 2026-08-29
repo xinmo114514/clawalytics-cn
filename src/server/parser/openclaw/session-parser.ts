@@ -151,6 +151,19 @@ export function parseOpenClawLine(
     return null
   }
 
+  return parseOpenClawEntry(entry, sessionId, agentId)
+}
+
+/**
+ * Parse an already-deserialized OpenClaw log entry. Callers that parse the
+ * JSON line themselves (e.g. to reuse the object for tool-call extraction)
+ * should use this to avoid parsing the same line twice.
+ */
+export function parseOpenClawEntry(
+  entry: OpenClawLogEntry,
+  sessionId: string,
+  agentId: string
+): ParsedOpenClawResult | null {
   // Only process message entries with assistant role that have usage
   if (entry.type !== 'message') return null
   if (!entry.message?.usage) return null
@@ -197,6 +210,13 @@ export function parseOpenClawLine(
       ? convertUsdToCny(rawProviderReportedCost)
       : undefined
 
+  // OpenClaw writes `usage.cost.total: 0` both for genuinely free responses and
+  // for models/providers whose price it does not know. Only a strictly positive
+  // reported value is trustworthy, so zero is treated as "unknown" rather than
+  // "free" and we fall back to local pricing.
+  const useProviderReportedCost =
+    providerReportedCost !== undefined && providerReportedCost > 0
+
   // Calculate cost from our pricing data
   const costResult = calculateCost(
     provider,
@@ -208,16 +228,13 @@ export function parseOpenClawLine(
       cacheReadTokens,
     },
     {
-      suppressMissingPricingWarning: Boolean(
-        providerReportedCost !== undefined
-      ),
+      suppressMissingPricingWarning: useProviderReportedCost,
     }
   )
 
-  // OpenClaw persists the authoritative per-response estimate in
-  // usage.cost.total. Local pricing is only a fallback for older records that
-  // did not persist a cost (including zero-cost/free-tier models).
-  const cost = providerReportedCost ?? costResult.totalCost
+  const cost = useProviderReportedCost
+    ? providerReportedCost
+    : costResult.totalCost
   const cacheSavings = costResult.cacheSavings
 
   const timestamp = normalizeTimestamp(

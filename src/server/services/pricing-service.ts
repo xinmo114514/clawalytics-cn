@@ -242,6 +242,36 @@ export async function initPricingService(
   }
 }
 
+// Prefix-variant index over the current pricing table. Rebuilding it scans
+// every catalog entry, so memoize it against the current cache object and
+// rebuild only when the pricing data is replaced (refresh / config reload).
+interface PricingVariantIndex {
+  source: PricingData
+  variants: Array<{ key: string; pricing: ModelPricing }>
+}
+
+let variantIndex: PricingVariantIndex | null = null
+
+function getVariantIndex(): PricingVariantIndex {
+  if (variantIndex && memoryCache && variantIndex.source === memoryCache) {
+    return variantIndex
+  }
+
+  const variants = Object.entries(memoryCache?.models ?? {})
+    .map(([key, pricing]) => ({
+      key: key.toLowerCase().split('/').pop() || '',
+      pricing,
+    }))
+    .filter(({ key }) => key !== '')
+    .sort((left, right) => right.key.length - left.key.length)
+
+  variantIndex = {
+    source: memoryCache as PricingData,
+    variants,
+  }
+  return variantIndex
+}
+
 /**
  * Get pricing for a specific model
  * Returns null if model not found
@@ -269,22 +299,16 @@ export function getModelPricing(
   // `includes` fallback could map `gpt-4o` to a `gpt-4` price simply because
   // the shorter name appeared first in the catalog.
   const modelLower = model.toLowerCase()
-  const variantMatches = Object.entries(memoryCache.models)
-    .map(([key, pricing]) => ({
-      key: key.toLowerCase().split('/').pop() || '',
-      pricing,
-    }))
-    .filter(
-      ({ key }) =>
-        key &&
-        (modelLower.startsWith(`${key}-`) ||
-          modelLower.startsWith(`${key}:`) ||
-          modelLower.startsWith(`${key}.`))
-    )
-    .sort((left, right) => right.key.length - left.key.length)
-
-  if (variantMatches.length > 0) {
-    return variantMatches[0].pricing
+  for (const { key, pricing } of getVariantIndex().variants) {
+    if (
+      modelLower.startsWith(`${key}-`) ||
+      modelLower.startsWith(`${key}:`) ||
+      modelLower.startsWith(`${key}.`)
+    ) {
+      // Variants are sorted by key length desc, so the first hit is the
+      // longest (most specific) match.
+      return pricing
+    }
   }
 
   return null

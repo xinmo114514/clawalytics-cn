@@ -60,15 +60,41 @@ export function useChartColors() {
 
     updateColors()
 
+    let rafId: number | null = null
+    const scheduleUpdate = () => {
+      if (rafId !== null) return
+      if (typeof requestAnimationFrame === 'function') {
+        rafId = requestAnimationFrame(() => {
+          rafId = null
+          updateColors()
+        })
+      } else {
+        rafId = window.setTimeout(() => {
+          rafId = null
+          updateColors()
+        }, 100)
+      }
+    }
+    const cancelScheduledUpdate = () => {
+      if (rafId === null) return
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(rafId)
+      } else {
+        window.clearTimeout(rafId)
+      }
+      rafId = null
+    }
+
     const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
+      for (const mutation of mutations) {
         if (
           mutation.attributeName === 'class' ||
           mutation.attributeName === 'style'
         ) {
-          updateColors()
+          scheduleUpdate()
+          break
         }
-      })
+      }
     })
 
     observer.observe(document.documentElement, {
@@ -76,7 +102,10 @@ export function useChartColors() {
       attributeFilter: ['class', 'style'],
     })
 
-    return () => observer.disconnect()
+    return () => {
+      cancelScheduledUpdate()
+      observer.disconnect()
+    }
   }, [])
 
   return colors
@@ -103,15 +132,41 @@ export function useColor(varName: string) {
 
     updateColor()
 
+    let rafId: number | null = null
+    const scheduleUpdate = () => {
+      if (rafId !== null) return
+      if (typeof requestAnimationFrame === 'function') {
+        rafId = requestAnimationFrame(() => {
+          rafId = null
+          updateColor()
+        })
+      } else {
+        rafId = window.setTimeout(() => {
+          rafId = null
+          updateColor()
+        }, 100)
+      }
+    }
+    const cancelScheduledUpdate = () => {
+      if (rafId === null) return
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(rafId)
+      } else {
+        window.clearTimeout(rafId)
+      }
+      rafId = null
+    }
+
     const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
+      for (const mutation of mutations) {
         if (
           mutation.attributeName === 'class' ||
           mutation.attributeName === 'style'
         ) {
-          updateColor()
+          scheduleUpdate()
+          break
         }
-      })
+      }
     })
 
     observer.observe(document.documentElement, {
@@ -119,7 +174,10 @@ export function useColor(varName: string) {
       attributeFilter: ['class', 'style'],
     })
 
-    return () => observer.disconnect()
+    return () => {
+      cancelScheduledUpdate()
+      observer.disconnect()
+    }
   }, [varName])
 
   return color

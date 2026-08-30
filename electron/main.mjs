@@ -24,7 +24,11 @@ const isWindows = process.platform === 'win32';
 const APP_ID = 'com.clawalytics.desktop';
 const COSTS_WS_RECONNECT_MS = 5000;
 const FORCE_QUIT_TIMEOUT_MS = 5000;
-const BACKEND_READY_TIMEOUT_MS = 15000;
+// The backend serves from a cold cache within a couple of seconds, but the
+// first scan of a large OpenClaw history (thousands of transcripts, often on
+// a WSL/UNC path) can take far longer than that. Failing the launch outright
+// is worse than a slow first paint, so allow a generous window.
+const BACKEND_READY_TIMEOUT_MS = 60000;
 const BACKEND_STOP_TIMEOUT_MS = 2000;
 const BACKEND_KILL_GRACE_MS = 1000;
 const TITLE_BAR_HEIGHT = 48;
@@ -1415,10 +1419,35 @@ function startBackendChild(port) {
         ELECTRON: 'true',
         PORT: String(port),
       },
+      // Capture the child's stderr so startup failures aren't silently
+      // dropped — the parent process has no other way to see them when the
+      // child crashes before it can post a startError IPC message.
+      stdio: 'pipe',
     }
   );
 
   backendChild = child;
+
+  let childStderr = '';
+  let childStdout = '';
+  if (child.stderr) {
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => {
+      childStderr += chunk;
+      if (childStderr.length > 32 * 1024) {
+        childStderr = childStderr.slice(-32 * 1024);
+      }
+    });
+  }
+  if (child.stdout) {
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      childStdout += chunk;
+      if (childStdout.length > 32 * 1024) {
+        childStdout = childStdout.slice(-32 * 1024);
+      }
+    });
+  }
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -1429,6 +1458,16 @@ function startBackendChild(port) {
         clearTimeout(readyTimeout);
         readyTimeout = null;
       }
+    };
+
+    const summarizeChildOutput = () => {
+      const trimmed = `${childStdout}\n${childStderr}`.trim();
+      if (!trimmed) {
+        return '';
+      }
+      const lines = trimmed.split(/\r?\n/);
+      const tail = lines.slice(-40).join('\n');
+      return `\n\nBackend child process output:\n${tail}`;
     };
 
     const onMessage = (message) => {
@@ -1444,6 +1483,28 @@ function startBackendChild(port) {
         settled = true;
         clearReadyTimeout();
         resolve(port);
+        return;
+      }
+
+      if (message.type === 'startError') {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearReadyTimeout();
+        const reason =
+          typeof message.reason === 'string' && message.reason.length > 0
+            ? message.reason
+            : 'Unknown backend startup error';
+        const detail = typeof message.stack === 'string' ? message.stack : undefined;
+        const wrapped = new Error(
+          detail
+            ? `Backend child process failed to start: ${reason}\n\n${detail}${summarizeChildOutput()}`
+            : `Backend child process failed to start: ${reason}${summarizeChildOutput()}`
+        );
+        backendChild = null;
+        reject(wrapped);
         return;
       }
 
@@ -1463,7 +1524,7 @@ function startBackendChild(port) {
         clearReadyTimeout();
         reject(
           new Error(
-            `Backend child process exited (code ${code}) before signaling ready.`
+            `Backend child process exited (code ${code}) before signaling ready.${summarizeChildOutput()}`
           )
         );
         return;
@@ -1496,7 +1557,7 @@ function startBackendChild(port) {
         new Error(
           `Backend child process did not signal ready within ${
             BACKEND_READY_TIMEOUT_MS / 1000
-          }s.`
+          }s. This usually means the database, analytics index, or another startup step is taking unusually long.${summarizeChildOutput()}`
         )
       );
     }, BACKEND_READY_TIMEOUT_MS);

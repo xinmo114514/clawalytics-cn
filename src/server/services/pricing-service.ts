@@ -5,6 +5,7 @@
  * Falls back to default rates when endpoint is unavailable.
  */
 import path from 'path'
+import { createHash } from 'crypto'
 import fs from 'fs'
 import { DEFAULT_RATES, type DefaultRates } from '../config/defaults.js'
 import { getConfigDir } from '../config/loader.js'
@@ -322,6 +323,33 @@ export function getAllPricing(): PricingData {
     memoryCache = getDefaultPricingData()
   }
   return memoryCache
+}
+
+/** Stable identity for the effective rate table, independent of fetch time. */
+export function createPricingFingerprint(
+  models: Record<string, ModelPricing>
+): string {
+  const normalized = Object.keys(models)
+    .sort()
+    .map((model) => {
+      const rates = models[model]
+      return [
+        model,
+        rates.input,
+        rates.output,
+        rates.cacheRead ?? null,
+        rates.cacheWrite ?? null,
+      ]
+    })
+
+  return createHash('sha256')
+    .update(JSON.stringify(normalized))
+    .digest('hex')
+    .slice(0, 16)
+}
+
+export function getPricingFingerprint(): string {
+  return createPricingFingerprint(getAllPricing().models)
 }
 
 /**

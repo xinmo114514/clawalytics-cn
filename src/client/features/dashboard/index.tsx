@@ -43,6 +43,7 @@ import { LanguageSwitch } from '@/components/language-switch'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { deriveAnalyticsViewState } from './analytics-view-state'
 import { DailyCostChart } from './components/daily-cost-chart'
 import { TokenUsageCard } from './components/token-usage-card'
 import { AgentsTab } from './tabs/agents-tab'
@@ -86,21 +87,22 @@ export function Dashboard() {
     },
     refetchIntervalInBackground: false,
   })
-  const analyticsDataReady =
-    Boolean(analyticsStatus?.hasData) ||
-    analyticsStatus?.status === 'ready' ||
-    Boolean(analyticsStatus?.lastScanCompletedAt)
-  const analyticsLoading =
-    analyticsStatusLoading ||
-    (!analyticsDataReady &&
-      !analyticsStatusError &&
-      analyticsStatus?.status !== 'error' &&
-      analyticsStatus?.status !== 'unavailable')
-  const analyticsUnavailable =
+  const analyticsView = deriveAnalyticsViewState(
+    analyticsStatus,
+    analyticsStatusLoading,
+    analyticsStatusError
+  )
+  const analyticsDataReady = analyticsView.canQuery
+  const analyticsLoading = analyticsView.showSkeleton
+  const analyticsUnavailable = analyticsView.showUnavailable
+  const analyticsFailed =
     !analyticsDataReady &&
-    (analyticsStatusError ||
-      analyticsStatus?.status === 'error' ||
-      analyticsStatus?.status === 'unavailable')
+    (analyticsStatusError || analyticsStatus?.status === 'error')
+  const lastSuccessfulScanLabel = analyticsStatus?.lastSuccessfulScanAt
+    ? new Date(analyticsStatus.lastSuccessfulScanAt).toLocaleString(
+        numberLocale
+      )
+    : null
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['enhancedStats'],
@@ -202,23 +204,31 @@ export function Dashboard() {
             >
               <span
                 className={`h-2 w-2 rounded-full ${
-                  analyticsStatusError || analyticsStatus?.status === 'error'
+                  analyticsFailed
                     ? 'bg-destructive'
                     : analyticsStatus?.status === 'unavailable'
                       ? 'bg-muted-foreground'
-                      : analyticsLoading ||
-                          analyticsStatus?.status === 'scanning'
+                      : analyticsView.isStale ||
+                          analyticsLoading ||
+                          analyticsView.isRefreshing
                         ? 'animate-pulse bg-warning'
                         : 'bg-success'
                 }`}
               />
-              {analyticsStatusError || analyticsStatus?.status === 'error'
+              {analyticsFailed
                 ? text('分析数据扫描失败', 'Analytics scan failed')
                 : analyticsStatus?.status === 'unavailable'
                   ? text('OpenClaw 数据源不可用', 'OpenClaw data unavailable')
-                  : analyticsLoading || analyticsStatus?.status === 'scanning'
-                    ? text('正在扫描 OpenClaw 数据…', 'Scanning OpenClaw data…')
-                    : text('分析数据已就绪', 'Analytics ready')}
+                  : analyticsView.isStale
+                    ? text('显示上次数据', 'Showing previous data')
+                    : analyticsView.isCached
+                      ? text('正在校验缓存数据…', 'Verifying cached data…')
+                      : analyticsLoading || analyticsView.isRefreshing
+                        ? text(
+                            '正在扫描 OpenClaw 数据…',
+                            'Scanning OpenClaw data…'
+                          )
+                        : text('分析数据已就绪', 'Analytics ready')}
             </div>
             <Button
               variant='outline'
@@ -249,6 +259,40 @@ export function Dashboard() {
                 )}
           </div>
         )}
+
+        {!analyticsUnavailable &&
+          (analyticsView.isCached ||
+            analyticsView.isStale ||
+            analyticsView.isRefreshing) && (
+            <div
+              className='mb-6 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-muted-foreground'
+              role='status'
+              aria-live='polite'
+            >
+              {analyticsView.isStale
+                ? text(
+                    '最新刷新失败，当前显示上次成功的数据。',
+                    'The latest refresh failed; the last successful data is still displayed.'
+                  )
+                : analyticsView.isCached
+                  ? text(
+                      '正在校验启动缓存，校验完成前数据可能不是最新。',
+                      'Verifying the startup cache; values may be outdated until verification completes.'
+                    )
+                  : text(
+                      '正在后台刷新，当前继续显示上次成功的数据。',
+                      'Refreshing in the background while the last successful data remains visible.'
+                    )}
+              {lastSuccessfulScanLabel && (
+                <span className='ms-1'>
+                  {text(
+                    `上次成功：${lastSuccessfulScanLabel}`,
+                    `Last successful: ${lastSuccessfulScanLabel}`
+                  )}
+                </span>
+              )}
+            </div>
+          )}
 
         <div className='mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
           <Card className='relative overflow-hidden border-border/70 bg-card/90 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-chart-1/70'>

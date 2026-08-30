@@ -10,6 +10,7 @@ const WS_MAX_PAYLOAD_BYTES = 64 * 1024
 
 export type WsEventType =
   | 'costs:updated'
+  | 'analytics:status'
   | 'session:new'
   | 'alert:new'
   | 'device:changed'
@@ -107,6 +108,11 @@ export function broadcastCostsUpdated(): void {
   const timestamp = new Date().toISOString()
   const message = JSON.stringify({ type: 'costs:updated', timestamp })
   broadcastRaw(message)
+}
+
+export function broadcastAnalyticsStatus(): void {
+  const timestamp = new Date().toISOString()
+  broadcastRaw(JSON.stringify({ type: 'analytics:status', timestamp }))
 }
 
 export function broadcastNewSession(sessionId: string): void {

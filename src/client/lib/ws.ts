@@ -3,6 +3,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 type WsEventType =
   | 'costs:updated'
+  | 'analytics:status'
   | 'session:new'
   | 'alert:new'
   | 'device:changed'
@@ -101,6 +102,12 @@ function debounceInvalidate(type: WsEventType, invalidate: () => void) {
 
 function handleMessage(message: WsMessage, queryClient: QueryClient) {
   switch (message.type) {
+    case 'analytics:status':
+      debounceInvalidate(message.type, () => {
+        queryClient.invalidateQueries({ queryKey: ['analyticsStatus'] })
+      })
+      break
+
     case 'costs:updated':
       debounceInvalidate(message.type, () => {
         queryClient.invalidateQueries({ queryKey: ['analyticsStatus'] })

@@ -1,4 +1,20 @@
 import axios from 'axios'
+import type {
+  AnalyticsStatusResponse,
+  EnhancedStats,
+  TokenBreakdown,
+  TokenSummary,
+} from '../../shared/analytics-contracts'
+
+export type {
+  AnalyticsSnapshotState,
+  AnalyticsStatus,
+  AnalyticsStatusResponse,
+  EnhancedStats,
+  TokenBreakdown,
+  TokenPeriodSummary,
+  TokenSummary,
+} from '../../shared/analytics-contracts'
 
 const api = axios.create({
   baseURL: '/api',
@@ -14,56 +30,6 @@ export interface Stats {
     input: number
     output: number
   }
-}
-
-export interface EnhancedStats {
-  totalCost: number
-  monthCost: number
-  totalTokens: {
-    input: number
-    output: number
-    cacheRead: number
-    cacheCreation: number
-  }
-  cacheSavings: number
-  activeSessionsThisMonth: number
-}
-
-export type AnalyticsStatus = 'scanning' | 'ready' | 'unavailable' | 'error'
-
-export interface AnalyticsStatusResponse {
-  status: AnalyticsStatus
-  hasData: boolean
-  timestamp: string
-  lastScanStartedAt?: string
-  lastScanCompletedAt?: string
-  lastScanError?: {
-    code: 'INITIAL_SCAN_FAILED' | 'SCAN_FAILED'
-    message: string
-  }
-}
-
-export interface TokenBreakdown {
-  input: number
-  output: number
-  cacheRead: number
-  cacheCreation: number
-}
-
-export interface TokenPeriodSummary {
-  total: number
-  input: number
-  output: number
-  cacheRead: number
-  cacheCreation: number
-  cost: number
-}
-
-export interface TokenSummary {
-  lifetime: TokenPeriodSummary
-  last5Hours: TokenPeriodSummary
-  last7Days: TokenPeriodSummary
-  last30Days: TokenPeriodSummary
 }
 
 export interface Session {

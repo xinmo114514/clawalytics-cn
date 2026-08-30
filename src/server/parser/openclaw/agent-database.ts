@@ -54,6 +54,7 @@ export interface OpenClawAgentDatabaseReader {
     afterSeq: number,
     limit: number
   ): OpenClawDatabaseEventPage
+  readEventAtSeq(sessionId: string, seq: number): string | null
   close(): void
 }
 
@@ -400,17 +401,19 @@ export function openAgentDatabaseReader(
     const eventsStatement = database.prepare(
       'SELECT seq, event_json FROM transcript_events WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ?'
     )
+    const eventAtSeqStatement = database.prepare(
+      'SELECT event_json FROM transcript_events WHERE session_id = ? AND seq = ? LIMIT 1'
+    )
 
     const reader: OpenClawAgentDatabaseReader = {
       databasePath,
       sessionMeta,
       maxSeqBySession,
       readEvents(sessionId, afterSeq, limit) {
-        const rows = eventsStatement.all(
-          sessionId,
-          afterSeq,
-          limit
-        ) as Array<{ seq?: unknown; event_json?: unknown }>
+        const rows = eventsStatement.all(sessionId, afterSeq, limit) as Array<{
+          seq?: unknown
+          event_json?: unknown
+        }>
         const result: OpenClawDatabaseEventRow[] = []
         for (const row of rows) {
           const seq =
@@ -425,6 +428,12 @@ export function openAgentDatabaseReader(
           })
         }
         return { rows: result }
+      },
+      readEventAtSeq(sessionId, seq) {
+        const row = eventAtSeqStatement.get(sessionId, seq) as
+          | { event_json?: unknown }
+          | undefined
+        return eventJsonToLine(row?.event_json) ?? null
       },
       close() {
         database.close()

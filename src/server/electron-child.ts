@@ -77,5 +77,26 @@ async function runBackendChild(): Promise<void> {
 
 void runBackendChild().catch((error) => {
   console.error('Failed to start the backend child process:', error)
-  process.exit(1)
+
+  const parentPort = getParentPort()
+  if (parentPort) {
+    const reason =
+      error instanceof Error
+        ? `${error.name}: ${error.message}`
+        : String(error)
+    const stack = error instanceof Error ? error.stack : undefined
+    try {
+      parentPort.postMessage({ type: 'startError', reason, stack })
+    } catch (postError) {
+      console.error('Failed to forward startup error to main:', postError)
+    }
+  }
+
+  // Give the parent port a moment to flush the startError message before
+  // exiting. The Electron main process listens on both 'message' and 'exit';
+  // if we exit immediately, the parent may resolve via 'exit' first and
+  // discard the queued message.
+  setImmediate(() => {
+    setTimeout(() => process.exit(1), 250)
+  })
 })

@@ -1,8 +1,35 @@
 import path from 'path'
+import { AsyncLocalStorage } from 'async_hooks'
 import chokidar, { type FSWatcher } from 'chokidar'
+import { createHash } from 'crypto'
 import fs, { type Stats as FsStats } from 'fs'
 import os from 'os'
 import readline from 'readline'
+import type {
+  AnalyticsSnapshotState,
+  AnalyticsStatus,
+  AnalyticsStatusResponse,
+} from '../../shared/analytics-contracts.js'
+import {
+  buildAnalyticsIndex,
+  formatLocalDate,
+  localDateFromIso,
+  localWindowStart,
+  type AnalyticsIndex,
+} from '../analytics/analytics-index.js'
+import type {
+  AggregatedStats,
+  ParsedRequest,
+  SessionData,
+} from '../analytics/domain.js'
+import {
+  LEGACY_SESSION_CACHE_VERSION,
+  normalizeCachedEntry,
+  SESSION_CACHE_VERSION,
+  type CachedSessionEntry,
+  type SerializedSessionData,
+  type SessionCacheFile,
+} from '../analytics/session-cache.js'
 import { getConfigDir, normalizeOpenClawPath } from '../config/loader.js'
 import type {
   Agent,
@@ -63,18 +90,27 @@ import {
   type OpenClawLogEntry,
   type ParsedOpenClawResult,
 } from '../parser/openclaw/session-parser.js'
-import { broadcastCostsUpdated, broadcastNewSession } from '../ws/index.js'
+import {
+  broadcastAnalyticsStatus,
+  broadcastCostsUpdated,
+  broadcastNewSession,
+} from '../ws/index.js'
+import { getPricingFingerprint } from './pricing-service.js'
 
 const isProduction = process.env.NODE_ENV === 'production'
 
-// Bumped to 2: per-request costs are now derived differently (a reported
-// `usage.cost.total` of 0 no longer overrides local pricing) and the built-in
-// pricing table gained entries that were previously unpriced. Cached entries
-// hold already-parsed records and are only invalidated by mtime/size, so the
-// old cache has to be discarded wholesale to avoid stale costs.
+// Version 2 changed per-request cost derivation and added previously unpriced
+// models. A present provider-reported cost, including zero, is authoritative;
+// only a missing cost uses local pricing. Cached entries hold parsed costs, so
+// parser or pricing changes must invalidate them.
+// Bumped to 3: v0.7.3 moved rate configuration to schemaVersion 2 (CNY) and
+// added `pricingRevision` invalidation, so cached costs written by earlier
+// builds were derived from a different pricing table.
+// Version 4 stores a stable pricing fingerprint plus a SQLite checkpoint-event
+// fingerprint. Version 3 is accepted only as an unverified startup snapshot;
+// the first successful scan rewrites it in the current format.
 // Bump this whenever the parser's cost/token output or the default pricing
 // table changes, otherwise historical files keep their cached values forever.
-const SESSION_CACHE_VERSION = 2
 const SESSION_CACHE_FILE = 'analytics-session-cache-v1.json'
 // Trailing-edge debounce for watcher-triggered refreshes. 2s merges bursts of
 // SQLite/JSONL writes (agent turns write many events in quick succession)
@@ -82,6 +118,19 @@ const SESSION_CACHE_FILE = 'analytics-session-cache-v1.json'
 const BACKGROUND_SESSION_REFRESH_DELAY_MS = 2000
 const BACKGROUND_SESSION_REFRESH_YIELD_EVERY = 10
 const CACHE_SAVE_DEBOUNCE_MS = 1000
+// chokidar's polling mode calls fs.watchFile() once per watched file, so a
+// sessions directory with thousands of transcripts produces thousands of
+// stat() calls per interval. On a network path (WSL/UNC) a single stat costs
+// ~8ms, which saturates the libuv threadpool and slows every other file
+// operation in the process down by orders of magnitude (measured: reading 100
+// transcripts went from 5.7s to >20 minutes). These constants spread a full
+// polling cycle over enough wall time that it only uses a fraction of the
+// default 4-thread pool, trading change-detection latency for throughput.
+const POLL_STAT_COST_MS = 8
+const POLL_THREADPOOL_SIZE = 4
+const POLL_TARGET_UTILIZATION = 0.25
+const POLL_INTERVAL_MIN_MS = 1000
+const POLL_INTERVAL_MAX_MS = 60000
 // Incremental SQLite reads page through transcript_events so the event loop
 // can breathe between chunks instead of blocking on one huge query.
 const DB_EVENTS_PAGE_SIZE = 500
@@ -134,45 +183,6 @@ export type {
 // Internal data structures
 // ============================================
 
-interface ParsedRequest {
-  timestamp: string
-  provider: string
-  model: string
-  inputTokens: number
-  outputTokens: number
-  cacheCreationTokens: number
-  cacheReadTokens: number
-  cost: number
-  cacheSavings: number
-  messageType: string
-}
-
-interface SessionData {
-  id: string
-  agentId: string
-  projectPath: string
-  startedAt: string
-  lastActivity: string
-  channel?: string
-  requests: ParsedRequest[]
-  totalCost: number
-  totalInputTokens: number
-  totalOutputTokens: number
-  modelsUsed: Set<string>
-  toolCalls: ToolCallData[]
-}
-
-interface ToolCallData {
-  sessionId: string
-  agentId: string
-  toolName: string
-  toolUseId: string
-  timestamp: string
-  durationMs: number | null
-  status: string | null
-  error: string | null
-}
-
 interface PendingToolCall {
   sessionId: string
   agentId: string
@@ -180,45 +190,6 @@ interface PendingToolCall {
   toolUseId: string
   timestamp: string
   startTime: number
-}
-
-interface SerializedSessionData {
-  id: string
-  agentId: string
-  projectPath: string
-  startedAt: string
-  lastActivity: string
-  channel?: string
-  requests: ParsedRequest[]
-  totalCost: number
-  totalInputTokens: number
-  totalOutputTokens: number
-  modelsUsed: string[]
-  toolCalls: ToolCallData[]
-}
-
-interface CachedSessionEntry {
-  filePath: string
-  sessionId: string
-  agentId: string
-  projectPath: string
-  channel?: string
-  size: number
-  mtimeMs: number
-  parsedAt: string
-  pricingRevision?: number
-  session: SerializedSessionData
-  // Only set for canonical SQLite-backed sessions: the highest transcript
-  // event seq already reflected in `session`. Persisted so a restart can
-  // resume from the incremental checkpoint instead of re-reading the whole
-  // database. JSONL-backed entries leave it undefined.
-  lastSeq?: number
-}
-
-interface SessionCacheFile {
-  version: number
-  openClawPath: string
-  entries: CachedSessionEntry[]
 }
 
 interface ParseSessionFileOptions {
@@ -230,40 +201,62 @@ interface ParseSessionFileOptions {
 // AnalyticsService
 // ============================================
 
-interface AggregatedStats {
-  todaySpend: number
-  todayInput: number
-  todayOutput: number
-  weekSpend: number
-  monthSpend: number
-  totalCost: number
-  totalInput: number
-  totalOutput: number
-  totalCacheRead: number
-  totalCacheCreation: number
-  totalCacheSavings: number
-  activeThisMonth: number
+interface AnalyticsMutableState {
+  sessions: Map<string, SessionData>
+  sessionCache: Map<string, CachedSessionEntry>
+  sessionFileKeys: Map<string, string>
+  dbSeqCheckpoints: Map<string, number>
+  outboundCalls: OutboundCallInput[]
+  cacheDirty: boolean
 }
 
-export type AnalyticsStatus = 'scanning' | 'ready' | 'unavailable' | 'error'
+type AnalyticsScanOutcome =
+  | { status: 'success' }
+  | { status: 'cancelled' }
+  | { status: 'error'; error: unknown }
 
-export interface AnalyticsStatusResponse {
-  status: AnalyticsStatus
-  hasData: boolean
-  timestamp: string
-  lastScanStartedAt?: string
-  lastScanCompletedAt?: string
-  lastScanError?: {
-    code: 'INITIAL_SCAN_FAILED' | 'SCAN_FAILED'
-    message: string
-  }
-}
+export type {
+  AnalyticsSnapshotState,
+  AnalyticsStatus,
+  AnalyticsStatusResponse,
+} from '../../shared/analytics-contracts.js'
 
 class AnalyticsService {
-  private sessions = new Map<string, SessionData>()
+  private publishedState: AnalyticsMutableState = {
+    sessions: new Map(),
+    sessionCache: new Map(),
+    sessionFileKeys: new Map(),
+    dbSeqCheckpoints: new Map(),
+    outboundCalls: [],
+    cacheDirty: false,
+  }
+  private readonly scanContext = new AsyncLocalStorage<AnalyticsMutableState>()
   private agents = new Map<string, OpenClawAgent>()
-  private sessionCache = new Map<string, CachedSessionEntry>()
-  private sessionFileKeys = new Map<string, string>()
+
+  private get sessions(): Map<string, SessionData> {
+    return this.scanContext.getStore()?.sessions ?? this.publishedState.sessions
+  }
+
+  private get sessionCache(): Map<string, CachedSessionEntry> {
+    return (
+      this.scanContext.getStore()?.sessionCache ??
+      this.publishedState.sessionCache
+    )
+  }
+
+  private get sessionFileKeys(): Map<string, string> {
+    return (
+      this.scanContext.getStore()?.sessionFileKeys ??
+      this.publishedState.sessionFileKeys
+    )
+  }
+
+  private get dbSeqCheckpoints(): Map<string, number> {
+    return (
+      this.scanContext.getStore()?.dbSeqCheckpoints ??
+      this.publishedState.dbSeqCheckpoints
+    )
+  }
   private watchers: FSWatcher[] = []
   private budgetCheckTimeout: ReturnType<typeof setTimeout> | null = null
   private backgroundRefreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -286,22 +279,21 @@ class AnalyticsService {
   private hasCompletedScan = false
   // Incremental read checkpoints for canonical SQLite sessions.
   // Key: getDatabaseSessionKey(databasePath, sessionId) -> last consumed seq.
-  private dbSeqCheckpoints = new Map<string, number>()
   // Files currently being parsed asynchronously; prevents concurrent parses
   // of the same transcript now that parseSessionFile yields between chunks.
   private parsingFiles = new Set<string>()
 
   // Cached aggregates
-  private _dailyCosts: Map<string, DailyCost> | null = null
-  private _modelUsage: Map<string, Map<string, ModelUsage>> | null = null
-  private _statsCache: AggregatedStats | null = null
-  private _statsCacheDate: string = ''
+  private _analyticsIndex: AnalyticsIndex | null = null
   // Cache-file persistence state (async, deduplicated writes)
   private lastCachePayload: string | null = null
   private cacheSaveInFlight = false
   private cacheSavePending = false
   private cacheSaveCompletion: Promise<void> = Promise.resolve()
-  private pricingRevision = 0
+  private pricingRevision = ''
+  private snapshotState: AnalyticsSnapshotState = 'none'
+  private lastSuccessfulScanAt: string | undefined
+  private loadedCacheSnapshotAt: string | undefined
 
   initialize(openClawPath?: string): void {
     const agentConfigPath =
@@ -309,17 +301,23 @@ class AnalyticsService {
       path.join(os.homedir(), '.openclaw')
 
     if (this.initialized) {
-      void this.shutdown()
+      throw new Error(
+        'AnalyticsService is already initialized; await shutdown before reinitializing'
+      )
     }
 
     this.refreshGeneration++
     const generation = this.refreshGeneration
     this.activeOpenClawPath = agentConfigPath
+    this.pricingRevision = getPricingFingerprint()
     this.analyticsStatus = 'scanning'
     this.lastScanStartedAt = new Date().toISOString()
     this.lastScanCompletedAt = undefined
     this.lastScanError = undefined
     this.hasCompletedScan = false
+    this.snapshotState = 'none'
+    this.lastSuccessfulScanAt = undefined
+    this.loadedCacheSnapshotAt = undefined
 
     if (!fs.existsSync(agentConfigPath)) {
       this.analyticsStatus = 'unavailable'
@@ -336,27 +334,30 @@ class AnalyticsService {
       this.loadCachedAgentSessions(agentConfigPath, agent)
     }
 
+    if (this.loadedCacheSnapshotAt) {
+      this.snapshotState = 'cached'
+      this.lastSuccessfulScanAt = this.loadedCacheSnapshotAt
+    }
+
     // Watch agent config
     const configWatcher = watchAgentConfig(agentConfigPath, (updatedAgents) => {
-      const activeAgentIds = new Set(updatedAgents.map((agent) => agent.id))
-      for (const [sessionId, session] of this.sessions) {
-        if (!activeAgentIds.has(session.agentId)) {
-          this.sessions.delete(sessionId)
-          this.sessionFileKeys.delete(sessionId)
-        }
-      }
-      for (const [cacheKey, entry] of this.sessionCache) {
-        if (!activeAgentIds.has(entry.agentId)) {
-          this.sessionCache.delete(cacheKey)
-        }
-      }
+      const previousAgentIds = new Set(this.agents.keys())
       this.agents.clear()
       for (const agent of updatedAgents) {
         this.agents.set(agent.id, agent)
-        this.loadCachedAgentSessions(agentConfigPath, agent)
       }
-      this.markDirty()
-      this.scheduleSessionCacheSave()
+
+      // Existing watcher callbacks self-disable when their agent disappears.
+      // Only register watchers for newly added agents; their cache restoration
+      // runs in a disposable state so published data remains atomic.
+      const watcherState = this.createScanState()
+      this.scanContext.run(watcherState, () => {
+        for (const agent of updatedAgents) {
+          if (!previousAgentIds.has(agent.id)) {
+            this.loadCachedAgentSessions(agentConfigPath, agent)
+          }
+        }
+      })
       this.scheduleBackgroundSessionRefresh(
         agentConfigPath,
         updatedAgents,
@@ -377,7 +378,7 @@ class AnalyticsService {
     this.scheduleBackgroundSessionRefresh(agentConfigPath, agents, generation)
   }
 
-  shutdown(): Promise<void> {
+  async shutdown(): Promise<void> {
     this.refreshGeneration++
 
     for (const watcher of this.watchers) {
@@ -396,7 +397,8 @@ class AnalyticsService {
       clearInterval(this.toolCleanupInterval)
       this.toolCleanupInterval = null
     }
-    const cacheFlush = this.flushSessionCache()
+    await this.flushSessionCache()
+    await this.cacheSaveCompletion
     this.sessions.clear()
     this.agents.clear()
     this.sessionCache.clear()
@@ -412,8 +414,10 @@ class AnalyticsService {
     this.lastScanCompletedAt = undefined
     this.lastScanError = undefined
     this.hasCompletedScan = false
+    this.snapshotState = 'none'
+    this.lastSuccessfulScanAt = undefined
+    this.loadedCacheSnapshotAt = undefined
     this.initialized = false
-    return Promise.all([cacheFlush, this.cacheSaveCompletion]).then(() => {})
   }
 
   getStatus(): AnalyticsStatusResponse {
@@ -423,12 +427,16 @@ class AnalyticsService {
       // initial scan is running. A metadata-only session still represents an
       // available OpenClaw data source and is safe to expose as a snapshot.
       hasData: this.sessions.size > 0,
+      snapshotState: this.snapshotState,
       timestamp: new Date().toISOString(),
       ...(this.lastScanStartedAt
         ? { lastScanStartedAt: this.lastScanStartedAt }
         : {}),
       ...(this.lastScanCompletedAt
         ? { lastScanCompletedAt: this.lastScanCompletedAt }
+        : {}),
+      ...(this.lastSuccessfulScanAt
+        ? { lastSuccessfulScanAt: this.lastSuccessfulScanAt }
         : {}),
       ...(this.lastScanError ? { lastScanError: this.lastScanError } : {}),
     }
@@ -468,7 +476,6 @@ class AnalyticsService {
       // persisted seq checkpoint so the database load below only reads new
       // events. Freshness is keyed off lastSeq, not file mtime/size.
       if (entry.lastSeq !== undefined) {
-        if (entry.pricingRevision !== this.pricingRevision) continue
         this.dbSeqCheckpoints.set(cacheKey, entry.lastSeq)
         const session = this.deserializeSession(entry, {
           sessionId: entry.sessionId,
@@ -486,10 +493,14 @@ class AnalyticsService {
         continue
       }
 
-      const stat = this.safeStat(entry.filePath)
+      // Restoring from cache deliberately skips the stat() freshness check.
+      // On network paths (WSL/UNC) a stat costs ~10ms, so verifying every
+      // cached session synchronously here added 10-25s to server startup and
+      // made the desktop app miss its backend-ready deadline. The background
+      // refresh scheduled right after startup re-stats every file and repairs
+      // or removes anything that is stale.
       if (
-        !stat ||
-        !this.isCacheEntryFresh(entry, entry.sessionId, agent.id, stat)
+        !this.isCacheEntryStructurallyUsable(entry, entry.sessionId, agent.id)
       ) {
         continue
       }
@@ -514,25 +525,13 @@ class AnalyticsService {
     // Watch for new sessions
     const sessionWatcher = watchSessionIndex(
       agentPath,
-      async (session: SessionMetadata) => {
+      (_session: SessionMetadata) => {
         if (!this.agents.has(agent.id)) return
-        if (this.sessions.has(session.id)) return
-
-        const logPath = path.join(agentPath, 'sessions', `${session.id}.jsonl`)
-        if (
-          await this.parseSessionFile(
-            logPath,
-            session.id,
-            agent.id,
-            agent.workspace || agentPath,
-            session.channel
-          )
-        ) {
-          this.markDirty()
-          broadcastNewSession(session.id)
-          broadcastCostsUpdated()
-          this.debouncedBudgetCheck()
-        }
+        this.scheduleBackgroundSessionRefresh(
+          this.activeOpenClawPath,
+          [agent],
+          this.refreshGeneration
+        )
       }
     )
     if (sessionWatcher) this.watchers.push(sessionWatcher)
@@ -639,6 +638,10 @@ class AnalyticsService {
     }
   }
 
+  private fingerprintEvent(line: string): string {
+    return createHash('sha256').update(line).digest('hex').slice(0, 16)
+  }
+
   private appendRequestsToSession(
     session: SessionData,
     requests: ParsedRequest[]
@@ -723,6 +726,21 @@ class AnalyticsService {
           sessionId
         )
         const checkpoint = this.dbSeqCheckpoints.get(checkpointKey)
+        const checkpointEntry = this.sessionCache.get(checkpointKey)
+        const checkpointPricingMatches =
+          checkpointEntry?.pricingRevision === pricingRevision
+        const checkpointEventMatches = Boolean(
+          checkpoint !== undefined &&
+          checkpointEntry?.lastEventFingerprint &&
+          (() => {
+            const line = reader.readEventAtSeq(sessionId, checkpoint)
+            return (
+              line !== null &&
+              this.fingerprintEvent(line) ===
+                checkpointEntry.lastEventFingerprint
+            )
+          })()
+        )
         const maxSeq = reader.maxSeqBySession.get(sessionId)
         const previous = this.sessions.get(sessionId)
         const previousIsCanonical = Boolean(
@@ -737,8 +755,28 @@ class AnalyticsService {
         const fullReload =
           maxSeq === undefined ||
           checkpoint === undefined ||
+          !checkpointPricingMatches ||
+          !checkpointEventMatches ||
           checkpoint > maxSeq ||
           !previousIsCanonical
+
+        const toolSession: SessionData =
+          previous && !fullReload
+            ? this.cloneSession(previous)
+            : {
+                id: sessionId,
+                agentId: agent.id,
+                projectPath: agent.workspace || agentPath,
+                startedAt: '',
+                lastActivity: '',
+                channel: meta.channel,
+                requests: [],
+                totalCost: 0,
+                totalInputTokens: 0,
+                totalOutputTokens: 0,
+                modelsUsed: new Set(),
+                toolCalls: [],
+              }
 
         let afterSeq = fullReload ? -1 : checkpoint
         const newRequests: ParsedRequest[] = []
@@ -757,11 +795,18 @@ class AnalyticsService {
           for (const row of page.rows) {
             if (!row.line) continue
             try {
-              const parsed = parseOpenClawEntry(
-                JSON.parse(row.line) as OpenClawLogEntry,
+              const entry = JSON.parse(row.line) as OpenClawLogEntry
+              const scanState = this.scanContext.getStore()
+              const calls = this.processLineForTools(
+                entry,
                 sessionId,
-                agent.id
+                agent.id,
+                toolSession
               )
+              if (scanState && calls.length > 0) {
+                scanState.outboundCalls.push(...calls)
+              }
+              const parsed = parseOpenClawEntry(entry, sessionId, agent.id)
               if (!parsed) continue
               newRequests.push(this.parsedRequestFromResult(parsed))
               if (!minTimestamp || parsed.timestamp < minTimestamp) {
@@ -804,6 +849,7 @@ class AnalyticsService {
         let sessionChanged = false
         if (!rebuild && previous) {
           session = previous
+          session.toolCalls = toolSession.toolCalls
           if (this.appendRequestsToSession(session, newRequests)) {
             sessionChanged = true
           }
@@ -831,7 +877,7 @@ class AnalyticsService {
             totalInputTokens: 0,
             totalOutputTokens: 0,
             modelsUsed: new Set(),
-            toolCalls: [],
+            toolCalls: toolSession.toolCalls,
           }
           this.appendRequestsToSession(session, newRequests)
           if (minTimestamp && minTimestamp < session.startedAt) {
@@ -891,6 +937,17 @@ class AnalyticsService {
           pricingRevision,
           session: this.serializeSession(session),
           lastSeq: this.dbSeqCheckpoints.get(checkpointKey),
+          ...(this.dbSeqCheckpoints.get(checkpointKey) !== undefined
+            ? {
+                lastEventFingerprint: (() => {
+                  const line = reader.readEventAtSeq(
+                    sessionId,
+                    this.dbSeqCheckpoints.get(checkpointKey)!
+                  )
+                  return line === null ? undefined : this.fingerprintEvent(line)
+                })(),
+              }
+            : {}),
         })
 
         sessionIds.add(sessionId)
@@ -947,24 +1004,25 @@ class AnalyticsService {
   private watchSessionDirectory(
     agentPath: string,
     agentId: string,
-    projectPath: string
+    _projectPath: string
   ): void {
     const sessionsDir = path.join(agentPath, 'sessions')
     if (!fs.existsSync(sessionsDir)) return
+
+    const usePolling = this.shouldUsePollingWatcher(sessionsDir)
 
     const watcher = chokidar.watch(sessionsDir, {
       persistent: true,
       ignoreInitial: true,
       depth: 0,
-      usePolling: this.shouldUsePollingWatcher(sessionsDir),
-      interval: 1000,
+      usePolling,
+      interval: usePolling
+        ? this.getPollingInterval(sessionsDir)
+        : POLL_INTERVAL_MIN_MS,
       awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 50 },
     })
 
-    const handleSessionFile = async (
-      filePath: string,
-      isNewSession: boolean
-    ) => {
+    const handleSessionFile = (filePath: string) => {
       if (!this.agents.has(agentId)) return
       const fileName = path.basename(filePath)
       const sessionId = getSessionIdFromFileName(fileName)
@@ -987,32 +1045,20 @@ class AnalyticsService {
         return
       }
 
-      const meta = loadSessionIndex(agentPath).find(
-        (session) => session.id === sessionId
+      const agent = this.agents.get(agentId)
+      if (!agent) return
+      this.scheduleBackgroundSessionRefresh(
+        this.activeOpenClawPath,
+        [agent],
+        this.refreshGeneration
       )
-      if (
-        await this.parseSessionFile(
-          filePath,
-          sessionId,
-          agentId,
-          projectPath,
-          meta?.channel
-        )
-      ) {
-        this.markDirty()
-        if (isNewSession) {
-          broadcastNewSession(sessionId)
-        }
-        broadcastCostsUpdated()
-        this.debouncedBudgetCheck()
-      }
     }
 
     watcher.on('add', (filePath) => {
-      void handleSessionFile(filePath, true)
+      handleSessionFile(filePath)
     })
     watcher.on('change', (filePath) => {
-      void handleSessionFile(filePath, false)
+      handleSessionFile(filePath)
     })
     watcher.on('unlink', (filePath) => {
       const fileName = path.basename(filePath)
@@ -1021,39 +1067,13 @@ class AnalyticsService {
         return
       }
 
-      const cacheKey = this.getFileCacheKey(filePath)
-      if (this.sessionFileKeys.get(sessionId) !== cacheKey) {
-        // A canonical SQLite session or a newer transcript may still own this
-        // session id. Removing an archived file must not remove that source.
-        this.sessionCache.delete(cacheKey)
-        this.scheduleSessionCacheSave()
-        return
-      }
-      this.sessions.delete(sessionId)
-      this.sessionFileKeys.delete(sessionId)
-      this.sessionCache.delete(cacheKey)
-
-      const fallbackFile = this.findPreferredFileForSession(
-        sessionId,
-        listSessionFiles(agentPath)
+      const agent = this.agents.get(agentId)
+      if (!agent) return
+      this.scheduleBackgroundSessionRefresh(
+        this.activeOpenClawPath,
+        [agent],
+        this.refreshGeneration
       )
-      void (async () => {
-        if (fallbackFile) {
-          const meta = loadSessionIndex(agentPath).find(
-            (session) => session.id === sessionId
-          )
-          await this.parseSessionFile(
-            fallbackFile,
-            sessionId,
-            agentId,
-            projectPath,
-            meta?.channel
-          )
-        }
-        this.markDirty()
-        this.scheduleSessionCacheSave()
-        broadcastCostsUpdated()
-      })()
     })
     watcher.on('error', (error) => {
       if (!isProduction) {
@@ -1081,12 +1101,56 @@ class AnalyticsService {
     }
   }
 
+  /**
+   * Polling interval for a watched directory, scaled by how many files
+   * chokidar would have to stat on every cycle.
+   */
+  private getPollingInterval(directoryPath: string): number {
+    let fileCount: number
+    try {
+      fileCount = fs.readdirSync(directoryPath).length
+    } catch {
+      return POLL_INTERVAL_MIN_MS
+    }
+
+    const cycleMs = (fileCount * POLL_STAT_COST_MS) / POLL_THREADPOOL_SIZE
+    const interval = Math.ceil(cycleMs / POLL_TARGET_UTILIZATION)
+
+    return Math.min(
+      Math.max(interval, POLL_INTERVAL_MIN_MS),
+      POLL_INTERVAL_MAX_MS
+    )
+  }
+
   private shouldUsePollingWatcher(filePath: string): boolean {
     const normalized = filePath.replace(/\\/g, '/').toLowerCase()
     return (
       normalized.startsWith('//wsl.localhost/') ||
       normalized.startsWith('//wsl$/')
     )
+  }
+
+  /**
+   * Metadata-only half of the cache check: everything that can be validated
+   * without touching the filesystem.
+   */
+  private isCacheEntryUsable(
+    entry: CachedSessionEntry,
+    sessionId: string,
+    agentId: string
+  ): boolean {
+    return (
+      this.isCacheEntryStructurallyUsable(entry, sessionId, agentId) &&
+      entry.pricingRevision === this.pricingRevision
+    )
+  }
+
+  private isCacheEntryStructurallyUsable(
+    entry: CachedSessionEntry,
+    sessionId: string,
+    agentId: string
+  ): boolean {
+    return entry.sessionId === sessionId && entry.agentId === agentId
   }
 
   private isCacheEntryFresh(
@@ -1096,9 +1160,7 @@ class AnalyticsService {
     stat: FsStats
   ): boolean {
     return (
-      entry.sessionId === sessionId &&
-      entry.agentId === agentId &&
-      entry.pricingRevision === this.pricingRevision &&
+      this.isCacheEntryUsable(entry, sessionId, agentId) &&
       entry.size === stat.size &&
       Math.abs(entry.mtimeMs - stat.mtimeMs) < 1
     )
@@ -1158,88 +1220,6 @@ class AnalyticsService {
     }
   }
 
-  private normalizeCachedEntry(value: unknown): CachedSessionEntry | null {
-    if (!value || typeof value !== 'object') {
-      return null
-    }
-
-    const entry = value as Partial<CachedSessionEntry>
-    const session = entry.session as Partial<SerializedSessionData> | undefined
-
-    if (
-      typeof entry.filePath !== 'string' ||
-      typeof entry.sessionId !== 'string' ||
-      typeof entry.agentId !== 'string' ||
-      typeof entry.projectPath !== 'string' ||
-      typeof entry.size !== 'number' ||
-      typeof entry.mtimeMs !== 'number' ||
-      !session ||
-      typeof session.id !== 'string' ||
-      typeof session.agentId !== 'string' ||
-      typeof session.projectPath !== 'string' ||
-      !Array.isArray(session.requests) ||
-      !Array.isArray(session.modelsUsed) ||
-      !Array.isArray(session.toolCalls)
-    ) {
-      return null
-    }
-
-    return {
-      filePath: entry.filePath,
-      sessionId: entry.sessionId,
-      agentId: entry.agentId,
-      projectPath: entry.projectPath,
-      channel: typeof entry.channel === 'string' ? entry.channel : undefined,
-      size: entry.size,
-      mtimeMs: entry.mtimeMs,
-      parsedAt:
-        typeof entry.parsedAt === 'string'
-          ? entry.parsedAt
-          : new Date().toISOString(),
-      ...(typeof entry.lastSeq === 'number' &&
-      Number.isSafeInteger(entry.lastSeq) &&
-      entry.lastSeq >= 0
-        ? { lastSeq: entry.lastSeq }
-        : {}),
-      ...(typeof entry.pricingRevision === 'number' &&
-      Number.isSafeInteger(entry.pricingRevision)
-        ? { pricingRevision: entry.pricingRevision }
-        : {}),
-      session: {
-        id: session.id,
-        agentId: session.agentId,
-        projectPath: session.projectPath,
-        startedAt:
-          typeof session.startedAt === 'string'
-            ? session.startedAt
-            : new Date().toISOString(),
-        lastActivity:
-          typeof session.lastActivity === 'string'
-            ? session.lastActivity
-            : typeof session.startedAt === 'string'
-              ? session.startedAt
-              : new Date().toISOString(),
-        channel:
-          typeof session.channel === 'string' ? session.channel : undefined,
-        requests: session.requests as ParsedRequest[],
-        totalCost:
-          typeof session.totalCost === 'number' ? session.totalCost : 0,
-        totalInputTokens:
-          typeof session.totalInputTokens === 'number'
-            ? session.totalInputTokens
-            : 0,
-        totalOutputTokens:
-          typeof session.totalOutputTokens === 'number'
-            ? session.totalOutputTokens
-            : 0,
-        modelsUsed: session.modelsUsed.filter(
-          (model): model is string => typeof model === 'string'
-        ),
-        toolCalls: session.toolCalls as ToolCallData[],
-      },
-    }
-  }
-
   private loadSessionCache(openClawPath: string): void {
     this.sessionCache.clear()
 
@@ -1253,15 +1233,22 @@ class AnalyticsService {
         fs.readFileSync(cachePath, 'utf-8')
       ) as Partial<SessionCacheFile>
       if (
-        cache.version !== SESSION_CACHE_VERSION ||
+        (cache.version !== SESSION_CACHE_VERSION &&
+          cache.version !== LEGACY_SESSION_CACHE_VERSION) ||
         cache.openClawPath !== openClawPath ||
         !Array.isArray(cache.entries)
       ) {
         return
       }
 
+      const cacheStat = this.safeStat(cachePath)
+      this.loadedCacheSnapshotAt =
+        typeof cache.lastSuccessfulScanAt === 'string'
+          ? cache.lastSuccessfulScanAt
+          : cacheStat?.mtime.toISOString()
+
       for (const rawEntry of cache.entries) {
-        const entry = this.normalizeCachedEntry(rawEntry)
+        const entry = normalizeCachedEntry(rawEntry)
         if (!entry) continue
 
         // SQLite has one file for many sessions; its cache key must include
@@ -1337,6 +1324,12 @@ class AnalyticsService {
   }
 
   private scheduleSessionCacheSave(): void {
+    const scanState = this.scanContext.getStore()
+    if (scanState) {
+      scanState.cacheDirty = true
+      return
+    }
+
     if (!this.activeOpenClawPath) {
       return
     }
@@ -1355,7 +1348,7 @@ class AnalyticsService {
 
   private flushSessionCache(): Promise<void> {
     if (!this.cacheSaveTimer) {
-      return Promise.resolve()
+      return this.cacheSaveCompletion
     }
 
     clearTimeout(this.cacheSaveTimer)
@@ -1378,32 +1371,33 @@ class AnalyticsService {
     this.cacheSaveInFlight = true
 
     try {
-      const cachePath = this.getSessionCachePath()
-      const cache: SessionCacheFile = {
-        version: SESSION_CACHE_VERSION,
-        openClawPath: this.activeOpenClawPath,
-        entries: [...this.sessionCache.values()],
-      }
-      const payload = JSON.stringify(cache)
-      if (payload === this.lastCachePayload) {
-        return
-      }
-      this.lastCachePayload = payload
+      do {
+        this.cacheSavePending = false
+        if (!this.activeOpenClawPath) break
 
-      await fs.promises.mkdir(path.dirname(cachePath), { recursive: true })
-      const tempPath = `${cachePath}.${process.pid}.tmp`
-      await fs.promises.writeFile(tempPath, payload, 'utf-8')
-      await fs.promises.rename(tempPath, cachePath)
+        const cachePath = this.getSessionCachePath()
+        const cache: SessionCacheFile = {
+          version: SESSION_CACHE_VERSION,
+          openClawPath: this.activeOpenClawPath,
+          pricingFingerprint: this.pricingRevision,
+          lastSuccessfulScanAt: this.lastSuccessfulScanAt,
+          entries: [...this.sessionCache.values()],
+        }
+        const payload = JSON.stringify(cache)
+        if (payload !== this.lastCachePayload) {
+          await fs.promises.mkdir(path.dirname(cachePath), { recursive: true })
+          const tempPath = `${cachePath}.${process.pid}.tmp`
+          await fs.promises.writeFile(tempPath, payload, 'utf-8')
+          await fs.promises.rename(tempPath, cachePath)
+          this.lastCachePayload = payload
+        }
+      } while (this.cacheSavePending)
     } catch (error) {
       if (!isProduction) {
         console.warn('Failed to save analytics session cache:', error)
       }
     } finally {
       this.cacheSaveInFlight = false
-      if (this.cacheSavePending) {
-        this.cacheSavePending = false
-        this.scheduleSessionCacheSave()
-      }
     }
   }
 
@@ -1419,6 +1413,7 @@ class AnalyticsService {
     this.analyticsStatus = 'scanning'
     this.lastScanStartedAt = new Date().toISOString()
     this.lastScanError = undefined
+    broadcastAnalyticsStatus()
 
     if (this.backgroundRefreshPromise) {
       const queuedAgents = new Map(
@@ -1466,9 +1461,6 @@ class AnalyticsService {
     agents: OpenClawAgent[],
     generation: number
   ): Promise<void> {
-    this.analyticsStatus = 'scanning'
-    this.lastScanStartedAt = new Date().toISOString()
-    this.lastScanError = undefined
     this.backgroundRefreshPromise = this.refreshSessionFilesInBackground(
       openClawPath,
       agents,
@@ -1515,12 +1507,9 @@ class AnalyticsService {
   /** Drop parsed cost snapshots after pricing changes and rebuild them. */
   invalidateCostCache(): void {
     if (!this.initialized || !this.activeOpenClawPath) return
-    this.pricingRevision++
-    this.sessionCache.clear()
-    this.sessions.clear()
-    this.sessionFileKeys.clear()
-    this.dbSeqCheckpoints.clear()
-    this.markDirty()
+    const nextPricingRevision = getPricingFingerprint()
+    if (nextPricingRevision === this.pricingRevision) return
+    this.pricingRevision = nextPricingRevision
     this.scheduleBackgroundSessionRefresh(
       this.activeOpenClawPath,
       [...this.agents.values()],
@@ -1565,13 +1554,130 @@ class AnalyticsService {
     return changed
   }
 
+  private cloneSession(session: SessionData): SessionData {
+    return {
+      ...session,
+      requests: session.requests.map((request) => ({ ...request })),
+      modelsUsed: new Set(session.modelsUsed),
+      toolCalls: session.toolCalls.map((call) => ({ ...call })),
+    }
+  }
+
+  private createScanState(): AnalyticsMutableState {
+    const sessions = new Map<string, SessionData>()
+    for (const [sessionId, session] of this.publishedState.sessions) {
+      sessions.set(sessionId, this.cloneSession(session))
+    }
+
+    const activeAgentIds = new Set(this.agents.keys())
+    for (const [sessionId, session] of sessions) {
+      if (!activeAgentIds.has(session.agentId)) {
+        sessions.delete(sessionId)
+      }
+    }
+
+    const sessionCache = new Map(this.publishedState.sessionCache)
+    for (const [cacheKey, entry] of sessionCache) {
+      if (!activeAgentIds.has(entry.agentId)) {
+        sessionCache.delete(cacheKey)
+      }
+    }
+
+    const sessionFileKeys = new Map(this.publishedState.sessionFileKeys)
+    for (const sessionId of sessionFileKeys.keys()) {
+      if (!sessions.has(sessionId)) {
+        sessionFileKeys.delete(sessionId)
+      }
+    }
+
+    return {
+      sessions,
+      sessionCache,
+      sessionFileKeys,
+      dbSeqCheckpoints: new Map(this.publishedState.dbSeqCheckpoints),
+      outboundCalls: [],
+      cacheDirty: false,
+    }
+  }
+
   private async refreshSessionFilesInBackground(
     openClawPath: string,
     agents: OpenClawAgent[],
     generation: number
   ): Promise<void> {
-    if (generation !== this.refreshGeneration || !this.initialized) {
+    if (generation !== this.refreshGeneration || !this.initialized) return
+
+    this.analyticsStatus = 'scanning'
+    this.lastScanStartedAt = new Date().toISOString()
+    this.lastScanError = undefined
+    broadcastAnalyticsStatus()
+
+    const previousSessionIds = new Set(this.publishedState.sessions.keys())
+    const scanState = this.createScanState()
+    const outcome = await this.scanContext.run(scanState, () =>
+      this.scanSessionFilesInBackground(openClawPath, agents, generation)
+    )
+
+    if (
+      generation !== this.refreshGeneration ||
+      !this.initialized ||
+      outcome.status !== 'success'
+    ) {
+      if (outcome.status === 'error' && this.initialized) {
+        this.analyticsStatus = 'error'
+        this.lastScanError = {
+          code: this.hasCompletedScan ? 'SCAN_FAILED' : 'INITIAL_SCAN_FAILED',
+          message: 'Analytics data scan failed',
+        }
+        console.error(
+          'Failed to refresh analytics sessions in background:',
+          outcome.error
+        )
+      }
+      if (this.snapshotState !== 'none') {
+        this.snapshotState = 'stale'
+      }
+      broadcastAnalyticsStatus()
       return
+    }
+
+    this.publishedState = scanState
+    this.analyticsStatus = 'ready'
+    this.hasCompletedScan = true
+    this.lastScanCompletedAt = new Date().toISOString()
+    this.lastScanError = undefined
+    this.snapshotState = 'verified'
+    this.lastSuccessfulScanAt = this.lastScanCompletedAt
+    this.markDirty()
+    this.scheduleSessionCacheSave()
+    broadcastAnalyticsStatus()
+
+    if (scanState.outboundCalls.length > 0) {
+      try {
+        logOutboundCalls(scanState.outboundCalls)
+      } catch {
+        // Security logging must not roll back a successfully published scan.
+      }
+    }
+
+    if (scanState.cacheDirty) {
+      for (const sessionId of scanState.sessions.keys()) {
+        if (!previousSessionIds.has(sessionId)) {
+          broadcastNewSession(sessionId)
+        }
+      }
+      broadcastCostsUpdated()
+      this.debouncedBudgetCheck()
+    }
+  }
+
+  private async scanSessionFilesInBackground(
+    openClawPath: string,
+    agents: OpenClawAgent[],
+    generation: number
+  ): Promise<AnalyticsScanOutcome> {
+    if (generation !== this.refreshGeneration || !this.initialized) {
+      return { status: 'cancelled' }
     }
 
     const activeFileKeys = new Set<string>()
@@ -1583,7 +1689,7 @@ class AnalyticsService {
     try {
       for (const agent of agents) {
         if (generation !== this.refreshGeneration || !this.initialized) {
-          return
+          return { status: 'cancelled' }
         }
 
         const agentPath = path.join(openClawPath, 'agents', agent.id)
@@ -1617,7 +1723,7 @@ class AnalyticsService {
 
         for (const filePath of files) {
           if (generation !== this.refreshGeneration || !this.initialized) {
-            return
+            return { status: 'cancelled' }
           }
 
           const sessionId = getSessionIdFromFileName(path.basename(filePath))
@@ -1671,14 +1777,14 @@ class AnalyticsService {
           if (checked % BACKGROUND_SESSION_REFRESH_YIELD_EVERY === 0) {
             await this.yieldToEventLoop()
             if (generation !== this.refreshGeneration || !this.initialized) {
-              return
+              return { status: 'cancelled' }
             }
           }
         }
       }
 
       if (generation !== this.refreshGeneration || !this.initialized) {
-        return
+        return { status: 'cancelled' }
       }
 
       const removed = this.removeMissingSessionFiles(
@@ -1686,8 +1792,8 @@ class AnalyticsService {
         new Set(agents.map((agent) => agent.id))
       )
       if (changed || removed) {
-        this.markDirty()
-        broadcastCostsUpdated()
+        const scanState = this.scanContext.getStore()
+        if (scanState) scanState.cacheDirty = true
       }
 
       if ((parsed > 0 || restored > 0 || removed) && !isProduction) {
@@ -1696,20 +1802,9 @@ class AnalyticsService {
         )
       }
 
-      this.analyticsStatus = 'ready'
-      this.hasCompletedScan = true
-      this.lastScanCompletedAt = new Date().toISOString()
-      this.lastScanError = undefined
+      return { status: 'success' }
     } catch (error) {
-      this.analyticsStatus = 'error'
-      this.lastScanError = {
-        code: this.hasCompletedScan ? 'SCAN_FAILED' : 'INITIAL_SCAN_FAILED',
-        message: 'Analytics data scan failed',
-      }
-      console.error(
-        'Failed to refresh analytics sessions in background:',
-        error
-      )
+      return { status: 'error', error }
     }
   }
 
@@ -1842,10 +1937,15 @@ class AnalyticsService {
       }
 
       if (outboundCalls.length > 0) {
-        try {
-          logOutboundCalls(outboundCalls)
-        } catch {
-          // Logging failures must not abort the analytics parse.
+        const scanState = this.scanContext.getStore()
+        if (scanState) {
+          scanState.outboundCalls.push(...outboundCalls)
+        } else {
+          try {
+            logOutboundCalls(outboundCalls)
+          } catch {
+            // Logging failures must not abort the analytics parse.
+          }
         }
       }
 
@@ -1994,9 +2094,7 @@ class AnalyticsService {
   }
 
   private markDirty(): void {
-    this._dailyCosts = null
-    this._modelUsage = null
-    this._statsCache = null
+    this._analyticsIndex = null
   }
 
   private debouncedBudgetCheck(): void {
@@ -2041,49 +2139,39 @@ class AnalyticsService {
   }
 
   private dateStr(iso: string): string {
-    const date = new Date(iso)
-    if (Number.isNaN(date.getTime())) {
-      return iso.split('T')[0]
-    }
-    return this.formatLocalDate(date)
+    return localDateFromIso(iso)
+  }
+
+  private now(): Date {
+    return new Date()
   }
 
   private today(): string {
-    return this.formatLocalDate(new Date())
+    return this.formatLocalDate(this.now())
   }
 
   private daysAgo(days: number): string {
-    const d = new Date()
+    const d = this.now()
     d.setDate(d.getDate() - days)
     return this.formatLocalDate(d)
   }
 
   /** Inclusive local-calendar start for a window containing today. */
   private lastNDaysStart(days: number): string {
-    const normalized = Number.isFinite(days) ? Math.max(1, Math.floor(days)) : 1
-    return this.daysAgo(normalized - 1)
+    return localWindowStart(this.now(), days)
   }
 
   private formatLocalDate(date: Date): string {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
-      date.getDate()
-    ).padStart(2, '0')}`
+    return formatLocalDate(date)
   }
 
   private startOfMonth(): string {
-    const d = new Date()
+    const d = this.now()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
   }
 
-  private startOfWeek(): string {
-    const d = new Date()
-    const daysSinceMonday = (d.getDay() + 6) % 7
-    d.setDate(d.getDate() - daysSinceMonday)
-    return this.formatLocalDate(d)
-  }
-
   private lastMonthStr(): string {
-    const d = new Date()
+    const d = this.now()
     d.setMonth(d.getMonth() - 1)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   }
@@ -2150,127 +2238,22 @@ class AnalyticsService {
   // ============================================
 
   getDailyCosts(days = 30): DailyCost[] {
-    if (!this._dailyCosts) {
-      this._dailyCosts = this.computeDailyCosts()
-    }
     const cutoff = this.lastNDaysStart(days)
-    return [...this._dailyCosts.values()]
+    return [...this.getAnalyticsIndex().dailyCosts.values()]
       .filter((day) => day.date >= cutoff && day.date <= this.today())
       .sort((a, b) => a.date.localeCompare(b.date))
   }
 
-  private computeDailyCosts(): Map<string, DailyCost> {
-    const dayMap = new Map<string, DailyCost>()
-    const sessionDates = new Map<string, Set<string>>() // date -> set of session IDs
-
-    for (const [, session] of this.sessions) {
-      for (const req of session.requests) {
-        const date = this.dateStr(req.timestamp)
-
-        let day = dayMap.get(date)
-        if (!day) {
-          day = {
-            date,
-            total_cost: 0,
-            total_input_tokens: 0,
-            total_output_tokens: 0,
-            cache_creation_tokens: 0,
-            cache_read_tokens: 0,
-            cache_savings: 0,
-            session_count: 0,
-            request_count: 0,
-          }
-          dayMap.set(date, day)
-          sessionDates.set(date, new Set())
-        }
-
-        day.total_cost += req.cost
-        day.total_input_tokens += req.inputTokens
-        day.total_output_tokens += req.outputTokens
-        day.cache_creation_tokens += req.cacheCreationTokens
-        day.cache_read_tokens += req.cacheReadTokens
-        day.cache_savings += req.cacheSavings
-        day.request_count++
-
-        sessionDates.get(date)!.add(session.id)
-      }
-    }
-
-    // Set session counts
-    for (const [date, day] of dayMap) {
-      day.session_count = sessionDates.get(date)!.size
-    }
-
-    return dayMap
-  }
-
-  private computeAggregatedStats(): AggregatedStats {
-    const today = this.today()
-    const weekCutoff = this.startOfWeek()
-    const monthStart = this.startOfMonth()
-
-    const stats: AggregatedStats = {
-      todaySpend: 0,
-      todayInput: 0,
-      todayOutput: 0,
-      weekSpend: 0,
-      monthSpend: 0,
-      totalCost: 0,
-      totalInput: 0,
-      totalOutput: 0,
-      totalCacheRead: 0,
-      totalCacheCreation: 0,
-      totalCacheSavings: 0,
-      activeThisMonth: 0,
-    }
-
-    for (const [, session] of this.sessions) {
-      if (
-        session.lastActivity >= monthStart &&
-        session.lastActivity <= new Date().toISOString()
-      ) {
-        stats.activeThisMonth++
-      }
-
-      for (const req of session.requests) {
-        const date = this.dateStr(req.timestamp)
-
-        if (date > today) continue
-
-        stats.totalCost += req.cost
-        stats.totalInput += req.inputTokens
-        stats.totalOutput += req.outputTokens
-        stats.totalCacheRead += req.cacheReadTokens
-        stats.totalCacheCreation += req.cacheCreationTokens
-        stats.totalCacheSavings += req.cacheSavings
-
-        if (date === today) {
-          stats.todaySpend += req.cost
-          stats.todayInput += req.inputTokens
-          stats.todayOutput += req.outputTokens
-        }
-        if (date >= weekCutoff && date <= today) {
-          stats.weekSpend += req.cost
-        }
-        if (date >= monthStart && date <= today) {
-          stats.monthSpend += req.cost
-        }
-      }
-    }
-
-    return stats
-  }
-
   private getStatsInternal(): AggregatedStats {
-    const today = this.today()
-    if (this._statsCache && this._statsCacheDate === today) {
-      return this._statsCache
-    }
+    return this.getAnalyticsIndex().stats
+  }
 
-    const stats = this.computeAggregatedStats()
-    this._statsCache = stats
-    this._statsCacheDate = today
-    return stats
+  private getAnalyticsIndex(): AnalyticsIndex {
+    const today = this.today()
+    if (!this._analyticsIndex || this._analyticsIndex.date !== today) {
+      this._analyticsIndex = buildAnalyticsIndex(this.sessions, this.now())
+    }
+    return this._analyticsIndex
   }
 
   getTodayCost(): number {
@@ -2290,13 +2273,10 @@ class AnalyticsService {
   // ============================================
 
   getModelUsage(days = 30): ModelUsage[] {
-    if (!this._modelUsage) {
-      this._modelUsage = this.computeModelUsageByDate()
-    }
     const cutoff = this.lastNDaysStart(days)
     // Roll up per-day aggregates into per-model totals across the window.
     const modelMap = new Map<string, ModelUsage>()
-    for (const [date, perModel] of this._modelUsage) {
+    for (const [date, perModel] of this.getAnalyticsIndex().modelUsageByDate) {
       if (date < cutoff || date > this.today()) continue
       for (const m of perModel.values()) {
         let acc = modelMap.get(`${m.provider}/${m.model}`)
@@ -2322,55 +2302,20 @@ class AnalyticsService {
     return [...modelMap.values()].sort((a, b) => b.cost - a.cost)
   }
 
-  private computeModelUsageByDate(): Map<string, Map<string, ModelUsage>> {
-    const byDate = new Map<string, Map<string, ModelUsage>>()
-
-    for (const [, session] of this.sessions) {
-      for (const req of session.requests) {
-        const date = this.dateStr(req.timestamp)
-        let perModel = byDate.get(date)
-        if (!perModel) {
-          perModel = new Map()
-          byDate.set(date, perModel)
-        }
-        const key = `${req.provider}/${req.model}`
-        let m = perModel.get(key)
-        if (!m) {
-          m = {
-            date,
-            provider: req.provider,
-            model: req.model,
-            input_tokens: 0,
-            output_tokens: 0,
-            cost: 0,
-            request_count: 0,
-          }
-          perModel.set(key, m)
-        }
-        m.input_tokens += req.inputTokens
-        m.output_tokens += req.outputTokens
-        m.cost += req.cost
-        m.request_count++
-      }
-    }
-
-    return byDate
-  }
-
   getModelUsageWithCache(days = 30): ModelUsageWithCache[] {
     const cutoff = this.lastNDaysStart(days)
     const modelMap = new Map<string, ModelUsageWithCache>()
 
-    for (const [, session] of this.sessions) {
-      for (const req of session.requests) {
-        const date = this.dateStr(req.timestamp)
-        if (date < cutoff || date > this.today()) continue
-        const key = `${req.provider}/${req.model}`
+    for (const [date, perModel] of this.getAnalyticsIndex()
+      .modelUsageWithCacheByDate) {
+      if (date < cutoff || date > this.today()) continue
+      for (const model of perModel.values()) {
+        const key = `${model.provider}/${model.model}`
         let m = modelMap.get(key)
         if (!m) {
           m = {
-            provider: req.provider,
-            model: req.model,
+            provider: model.provider,
+            model: model.model,
             inputTokens: 0,
             outputTokens: 0,
             cacheReadTokens: 0,
@@ -2380,12 +2325,12 @@ class AnalyticsService {
           }
           modelMap.set(key, m)
         }
-        m.inputTokens += req.inputTokens
-        m.outputTokens += req.outputTokens
-        m.cacheReadTokens += req.cacheReadTokens
-        m.cacheCreationTokens += req.cacheCreationTokens
-        m.cost += req.cost
-        m.requestCount++
+        m.inputTokens += model.inputTokens
+        m.outputTokens += model.outputTokens
+        m.cacheReadTokens += model.cacheReadTokens
+        m.cacheCreationTokens += model.cacheCreationTokens
+        m.cost += model.cost
+        m.requestCount += model.requestCount
       }
     }
 
@@ -2432,15 +2377,12 @@ class AnalyticsService {
       cacheRead = 0,
       cacheCreation = 0
 
-    for (const [, session] of this.sessions) {
-      for (const req of session.requests) {
-        const date = this.dateStr(req.timestamp)
-        if (date > today || (cutoff && date < cutoff)) continue
-        input += req.inputTokens
-        output += req.outputTokens
-        cacheRead += req.cacheReadTokens
-        cacheCreation += req.cacheCreationTokens
-      }
+    for (const [date, tokens] of this.getAnalyticsIndex().tokenTotalsByDate) {
+      if (date > today || (cutoff && date < cutoff)) continue
+      input += tokens.input
+      output += tokens.output
+      cacheRead += tokens.cacheRead
+      cacheCreation += tokens.cacheCreation
     }
 
     return {
@@ -2457,7 +2399,7 @@ class AnalyticsService {
     const last5Hours = this.createTokenPeriodSummary()
     const last7Days = this.createTokenPeriodSummary()
     const last30Days = this.createTokenPeriodSummary()
-    const now = Date.now()
+    const now = this.now().getTime()
     const fiveHoursCutoff = now - 5 * 60 * 60 * 1000
     const sevenDaysCutoff = now - 7 * 24 * 60 * 60 * 1000
     const thirtyDaysCutoff = now - 30 * 24 * 60 * 60 * 1000

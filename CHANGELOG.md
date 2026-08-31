@@ -1,3 +1,21 @@
+## v0.7.5 (2026-08-31)
+
+### Feat
+
+- add Hermes as an analytics data source with validation and live-pipeline diagnostics
+- add analytics source switching and source-aware configuration for OpenClaw and Hermes
+- add desktop notification statistics and improve Windows desktop lifecycle handling
+
+### Fix
+
+- improve analytics ingestion, session caching, dashboard reliability, and WebSocket invalidation
+- fix configuration loading, native dependency handling, and WSL/OpenClaw path detection
+- improve chart/table rendering, polling behavior, and security/session data views
+
+### Test
+
+- add regression coverage for analytics, Hermes data pipelines, data-source configuration, and desktop notifications
+
 ## v0.7.3 (2026-08-29)
 
 ### Perf

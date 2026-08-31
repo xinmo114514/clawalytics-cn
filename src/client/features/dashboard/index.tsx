@@ -195,6 +195,12 @@ export function Dashboard() {
                 'Your cost analytics at a glance'
               )}
             </p>
+            <p className='max-w-2xl text-sm leading-6 text-muted-foreground'>
+              {text(
+                'v0.7.5 更新：新增 Hermes 数据源与来源切换，优化分析数据采集、缓存、仪表盘可靠性及 Windows/WSL 支持；当前提供 Windows x64 安装版。',
+                'v0.7.5: Added the Hermes data source and source switching, improved analytics ingestion, caching, dashboard reliability, and Windows/WSL support. Windows x64 installer available.'
+              )}
+            </p>
           </div>
           <div className='flex items-center gap-3'>
             <div

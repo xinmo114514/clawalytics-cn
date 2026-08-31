@@ -1,3 +1,10 @@
+## v0.7.6 (2026-08-31)
+
+### Fix
+
+- fix model-usage treemap labels overflowing narrow cells
+- remove inconsistent treemap cell corner rounding and clip labels to each cell
+
 ## v0.7.5 (2026-08-31)
 
 ### Feat

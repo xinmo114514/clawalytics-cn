@@ -43,6 +43,39 @@ interface TreemapContentProps {
   fill: string
 }
 
+const LABEL_HORIZONTAL_PADDING = 8
+const MIN_LABEL_CHARACTERS = 4
+const ELLIPSIS = '…'
+
+function getApproximateTextWidth(value: string, fontSize: number): number {
+  return [...value].reduce(
+    (width, character) =>
+      width + (character.charCodeAt(0) > 255 ? fontSize : fontSize * 0.58),
+    0
+  )
+}
+
+function truncateLabel(
+  value: string,
+  availableWidth: number,
+  fontSize: number
+): string {
+  if (getApproximateTextWidth(value, fontSize) <= availableWidth) {
+    return value
+  }
+
+  let visible = ''
+  for (const character of value) {
+    const candidate = `${visible}${character}${ELLIPSIS}`
+    if (getApproximateTextWidth(candidate, fontSize) > availableWidth) {
+      break
+    }
+    visible += character
+  }
+
+  return visible.length >= MIN_LABEL_CHARACTERS ? `${visible}${ELLIPSIS}` : ''
+}
+
 function CustomTreemapContent({
   x,
   y,
@@ -52,10 +85,32 @@ function CustomTreemapContent({
   percentage,
   fill,
 }: TreemapContentProps) {
-  const showLabel = width > 40 && height > 30
+  const nameFontSize = width > 80 ? 13 : 11
+  const availableTextWidth = Math.max(0, width - LABEL_HORIZONTAL_PADDING * 2)
+  const displayName = truncateLabel(name, availableTextWidth, nameFontSize)
+  const displayPercentage = `${percentage.toFixed(1)}%`
+  const canShowPercentage =
+    height >= 28 &&
+    getApproximateTextWidth(displayPercentage, 11) <= availableTextWidth
+  const hasName = height > 30 && displayName.length > 0
+  const showTwoLines = hasName && canShowPercentage && height > 50
+  const showName = hasName && (!canShowPercentage || height > 50)
+  const showPercentage =
+    canShowPercentage && (showTwoLines || !hasName || height <= 50)
+  const clipId = `treemap-cell-${Math.round(x)}-${Math.round(y)}-${Math.round(width)}-${Math.round(height)}`
 
   return (
     <g>
+      <defs>
+        <clipPath id={clipId}>
+          <rect
+            x={x + 2}
+            y={y + 2}
+            width={Math.max(0, width - 4)}
+            height={Math.max(0, height - 4)}
+          />
+        </clipPath>
+      </defs>
       <rect
         x={x}
         y={y}
@@ -64,35 +119,36 @@ function CustomTreemapContent({
         fill={fill}
         stroke='hsl(var(--background))'
         strokeWidth={3}
-        rx={4}
         className='cursor-pointer transition-opacity hover:opacity-80'
       />
-      {showLabel && (
-        <>
-          <text
-            x={x + width / 2}
-            y={y + height / 2 - (height > 50 ? 6 : 0)}
-            textAnchor='middle'
-            dominantBaseline='central'
-            fill='white'
-            fontSize={width > 80 ? 13 : 11}
-            fontWeight={600}
-          >
-            {name}
-          </text>
-          {height > 50 && width > 55 && (
+      {(showName || showPercentage) && (
+        <g clipPath={`url(#${clipId})`}>
+          {showName && (
             <text
               x={x + width / 2}
-              y={y + height / 2 + 14}
+              y={y + height / 2 - (showTwoLines ? 6 : 0)}
+              textAnchor='middle'
+              dominantBaseline='central'
+              fill='white'
+              fontSize={nameFontSize}
+              fontWeight={600}
+            >
+              {displayName}
+            </text>
+          )}
+          {showPercentage && (
+            <text
+              x={x + width / 2}
+              y={y + height / 2 + (showTwoLines ? 14 : 0)}
               textAnchor='middle'
               dominantBaseline='central'
               fill='rgba(255,255,255,0.8)'
               fontSize={11}
             >
-              {percentage.toFixed(1)}%
+              {displayPercentage}
             </text>
           )}
-        </>
+        </g>
       )}
     </g>
   )

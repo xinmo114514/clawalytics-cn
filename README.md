@@ -11,16 +11,17 @@ Clawalytics 把原本分散在日志、会话记录和网关事件里的信息�
 - 最近有哪些会话、设备、配对请求和安全告警
 - 当前预算有没有接近阈值
 
-## 当前版本：v0.7.5
+## 当前版本：v0.7.6
 
-v0.7.5 重点增强了数据接入和分析稳定性：新增 Hermes 分析数据源、数据源切换和实时管线诊断，改进分析数据采集、会话缓存、仪表盘可靠性与 WebSocket 更新，同时补充桌面通知统计、Windows/WSL 支持和多项回归测试。
+v0.7.6 修复了模型使用 Treemap 在窄区域中的文字越界、内容缺失和圆角不一致问题，同时保留完整的模型详情悬停提示。
 
 当前发布提供 Windows x64 NSIS 安装版，推荐直接下载安装：
 
-- [下载 Clawalytics v0.7.5 Windows 安装包](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.5/Clawalytics-0.7.5-win-x64-setup.exe)
-- [查看 v0.7.5 Release](https://github.com/xinmo114514/clawalytics-cn/releases/tag/v0.7.5)
+- [下载 Clawalytics v0.7.6 Windows 安装包](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.6/Clawalytics-0.7.6-win-x64-setup.exe)
+- [下载 Clawalytics v0.7.6 Portable 版](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.6/Clawalytics-0.7.6-win-x64-portable.exe)
+- [查看 v0.7.6 Release](https://github.com/xinmo114514/clawalytics-cn/releases/tag/v0.7.6)
 
-本次发布仅上传 Windows 安装包及其更新元数据，不提供 portable 构建。
+本次发布提供 Windows x64 安装包和 portable 构建。
 
 ## 0.7.0 本次更新
 

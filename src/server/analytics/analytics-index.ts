@@ -84,6 +84,7 @@ export function buildAnalyticsIndex(
     for (const request of session.requests) {
       const date = localDateFromIso(request.timestamp)
       const modelKey = `${request.provider}/${request.model}`
+      const requestCount = Math.max(0, request.apiCallCount ?? 1)
 
       let day = dailyCosts.get(date)
       if (!day) {
@@ -107,7 +108,10 @@ export function buildAnalyticsIndex(
       day.cache_creation_tokens += request.cacheCreationTokens
       day.cache_read_tokens += request.cacheReadTokens
       day.cache_savings += request.cacheSavings
-      day.request_count++
+      day.request_count += requestCount
+      if (request.usageGranularity === 'aggregate') {
+        day.contains_aggregate_data = true
+      }
       dailySessions.get(date)!.add(session.id)
 
       let perModel = modelUsageByDate.get(date)
@@ -131,7 +135,7 @@ export function buildAnalyticsIndex(
       model.input_tokens += request.inputTokens
       model.output_tokens += request.outputTokens
       model.cost += request.cost
-      model.request_count++
+      model.request_count += requestCount
 
       let perModelWithCache = modelUsageWithCacheByDate.get(date)
       if (!perModelWithCache) {
@@ -157,7 +161,7 @@ export function buildAnalyticsIndex(
       modelWithCache.cacheReadTokens += request.cacheReadTokens
       modelWithCache.cacheCreationTokens += request.cacheCreationTokens
       modelWithCache.cost += request.cost
-      modelWithCache.requestCount++
+      modelWithCache.requestCount += requestCount
 
       let tokens = tokenTotalsByDate.get(date)
       if (!tokens) {

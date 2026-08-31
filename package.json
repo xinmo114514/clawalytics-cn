@@ -30,6 +30,8 @@
     "build:desktop": "corepack pnpm build && node scripts/run-electron-builder.mjs install-app-deps && node scripts/run-electron-builder.mjs --win portable nsis",
     "start": "node scripts/ensure-native-deps.mjs && node scripts/start-production.mjs",
     "test:openclaw": "node scripts/ensure-native-deps.mjs && node --import tsx scripts/test-openclaw-data-pipeline.mjs",
+    "test:hermes": "node scripts/ensure-native-deps.mjs && node --import tsx scripts/test-hermes-data-pipeline.mjs && node --import tsx scripts/test-data-source-config.mjs",
+    "test:desktop-notifications": "node scripts/test-desktop-notifications.mjs",
     "test:analytics": "node --import tsx scripts/test-analytics-regressions.mjs",
     "rebuild:native": "node scripts/ensure-native-deps.mjs",
     "postinstall": "node scripts/postinstall.js",

@@ -55,7 +55,7 @@ function aggregateByModel(requests: SessionRequest[]): ModelBreakdown[] {
     const existing = map.get(model)
     if (existing) {
       existing.cost += toFiniteNumber(r.cost)
-      existing.count += 1
+      existing.count += toFiniteNumber(r.api_call_count) || 1
       existing.inputTokens += toFiniteNumber(r.input_tokens)
       existing.outputTokens += toFiniteNumber(r.output_tokens)
       existing.cacheReadTokens += toFiniteNumber(r.cache_read_tokens)
@@ -63,7 +63,7 @@ function aggregateByModel(requests: SessionRequest[]): ModelBreakdown[] {
       map.set(model, {
         model,
         cost: toFiniteNumber(r.cost),
-        count: 1,
+        count: toFiniteNumber(r.api_call_count) || 1,
         inputTokens: toFiniteNumber(r.input_tokens),
         outputTokens: toFiniteNumber(r.output_tokens),
         cacheReadTokens: toFiniteNumber(r.cache_read_tokens),
@@ -123,9 +123,29 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
         )
       : '0'
   const unknownModelLabel = text('未知模型', 'Unknown')
+  const containsAggregateData = requests.some(
+    (request) => request.usage_granularity === 'aggregate'
+  )
+  const totalApiCalls = requests.reduce(
+    (total, request) => total + (toFiniteNumber(request.api_call_count) || 1),
+    0
+  )
 
   return (
     <div className='space-y-4 p-4'>
+      {containsAggregateData && (
+        <div className='rounded-lg border border-violet-500/30 bg-violet-500/5 px-3 py-2 text-sm'>
+          <div className='font-medium text-violet-700 dark:text-violet-300'>
+            {text('Hermes 聚合用量', 'Hermes aggregate usage')}
+          </div>
+          <p className='mt-1 text-xs leading-5 text-muted-foreground'>
+            {text(
+              `以下 ${totalApiCalls} 次调用按模型聚合，时间归到每条记录的最后更新时间。`,
+              `${totalApiCalls} calls are grouped by model; dates use each record's last-seen time.`
+            )}
+          </p>
+        </div>
+      )}
       {/* Model breakdown */}
       <div>
         <h4 className='mb-2 text-sm font-medium'>
@@ -183,8 +203,12 @@ export function SessionDetailRow({ sessionId }: SessionDetailRowProps) {
       <div>
         <h4 className='mb-2 text-sm font-medium'>
           {text(
-            `请求时间线（${requests.length}）`,
-            `Request Timeline (${requests.length})`
+            containsAggregateData
+              ? `聚合记录（${requests.length}）`
+              : `请求时间线（${requests.length}）`,
+            containsAggregateData
+              ? `Aggregate Records (${requests.length})`
+              : `Request Timeline (${requests.length})`
           )}
         </h4>
         <div className='max-h-[300px] overflow-y-auto rounded-md border'>

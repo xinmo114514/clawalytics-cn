@@ -4,6 +4,7 @@ import {
   getConfigPath,
   getDefaultOpenClawPath,
   loadConfig,
+  normalizeDataSourcesConfig,
   normalizeOpenClawPath,
   normalizeWslConfig,
   saveConfig,
@@ -11,8 +12,15 @@ import {
 } from '../config/loader.js'
 import {
   getWslAvailability,
+  parseWslUncPath,
+  resolveDataSourcePath,
   resolveOpenClawDataPath,
+  type ResolvedOpenClawPath,
 } from '../lib/wsl-openclaw.js'
+import {
+  HermesDataValidationError,
+  validateHermesDataSource,
+} from '../parser/hermes/adapter.js'
 import {
   OpenClawDataValidationError,
   validateOpenClawDataSource,
@@ -60,15 +68,48 @@ router.post('/', (req: Request, res: Response): void => {
         )
       : currentConfig.openClawPath
 
+    const requestedSources = {
+      openclaw: {
+        ...currentConfig.dataSources.openclaw,
+        ...updates.dataSources?.openclaw,
+        ...(updates.openClawPath !== undefined
+          ? { path: updates.openClawPath }
+          : {}),
+        ...(updates.wsl?.enabled !== undefined
+          ? {
+              environment: updates.wsl.enabled
+                ? ('wsl' as const)
+                : ('local' as const),
+            }
+          : {}),
+      },
+      hermes: {
+        ...currentConfig.dataSources.hermes,
+        ...updates.dataSources?.hermes,
+      },
+    }
+    const nextDataSources = normalizeDataSourcesConfig(
+      requestedSources,
+      nextOpenClawPath,
+      nextWslConfig
+    )
+
     const newConfig: Config = {
+      schemaVersion: 3,
+      currency: 'CNY',
+      dataSources: nextDataSources,
       rates: updates.rates ?? currentConfig.rates,
       alertThresholds: {
         ...currentConfig.alertThresholds,
         ...updates.alertThresholds,
       },
-      openClawPath: nextOpenClawPath ?? currentConfig.openClawPath,
+      openClawPath: nextDataSources.openclaw.path,
       gatewayLogsPath: updates.gatewayLogsPath ?? currentConfig.gatewayLogsPath,
-      wsl: nextWslConfig,
+      wsl: {
+        ...nextWslConfig,
+        enabled: nextDataSources.openclaw.environment === 'wsl',
+        openClawPath: nextDataSources.openclaw.path,
+      },
       securityAlertsEnabled:
         updates.securityAlertsEnabled ?? currentConfig.securityAlertsEnabled,
       pricingEndpoint: updates.pricingEndpoint ?? currentConfig.pricingEndpoint,
@@ -362,6 +403,40 @@ router.post(
         ...config.wsl,
         ...requestedUpdates.wsl,
       })
+      if (requestedUpdates.dataSources?.openclaw?.enabled === false) {
+        const dataSources = normalizeDataSourcesConfig(
+          {
+            ...config.dataSources,
+            openclaw: {
+              ...config.dataSources.openclaw,
+              ...requestedUpdates.dataSources.openclaw,
+              enabled: false,
+            },
+          },
+          config.openClawPath,
+          requestedWslConfig
+        )
+        const nextConfig: Config = {
+          ...config,
+          schemaVersion: 3,
+          dataSources,
+          wsl: {
+            ...requestedWslConfig,
+            enabled: dataSources.openclaw.environment === 'wsl',
+            openClawPath: dataSources.openclaw.path,
+          },
+        }
+        saveConfig(nextConfig)
+        await shutdownAnalyticsService()
+        initializeAnalyticsService(nextConfig)
+        res.json({
+          success: true,
+          sessionCount: 0,
+          openClawPath: dataSources.openclaw.path,
+          message: 'OpenClaw data source disabled',
+        })
+        return
+      }
       const shouldResolveOpenClawPath =
         requestedUpdates.openClawPath !== undefined ||
         requestedUpdates.wsl !== undefined
@@ -417,12 +492,31 @@ router.post(
       if (
         (requestedOpenClawPath &&
           requestedOpenClawPath !== config.openClawPath) ||
+        requestedUpdates.dataSources?.openclaw !== undefined ||
         JSON.stringify(requestedWslConfig) !== JSON.stringify(config.wsl)
       ) {
+        const nextDataSources = normalizeDataSourcesConfig(
+          {
+            ...config.dataSources,
+            openclaw: {
+              ...config.dataSources.openclaw,
+              enabled: true,
+              environment: requestedWslConfig.enabled ? 'wsl' : 'local',
+              path: effectiveOpenClawPath,
+            },
+          },
+          effectiveOpenClawPath,
+          requestedWslConfig
+        )
         saveConfig({
           ...config,
-          openClawPath: effectiveOpenClawPath,
-          wsl: requestedWslConfig,
+          schemaVersion: 3,
+          dataSources: nextDataSources,
+          openClawPath: nextDataSources.openclaw.path,
+          wsl: {
+            ...requestedWslConfig,
+            openClawPath: nextDataSources.openclaw.path,
+          },
         })
       }
 
@@ -441,7 +535,7 @@ router.post(
       }
 
       try {
-        const analyticsService = initializeAnalyticsService(openClawPath)
+        const analyticsService = initializeAnalyticsService(loadConfig())
         await analyticsService.refreshNow()
       } catch (initError) {
         res.status(500).json({
@@ -524,5 +618,139 @@ router.post(
     }
   }
 )
+
+router.post('/hermes/reload', (req: Request, res: Response): void => {
+  try {
+    const updates = req.body as Partial<Config>
+    const config = loadConfig()
+    const nextWsl = normalizeWslConfig({
+      ...config.wsl,
+      ...updates.wsl,
+    })
+    const requestedHermes = {
+      ...config.dataSources.hermes,
+      ...updates.dataSources?.hermes,
+      enabled: updates.dataSources?.hermes?.enabled ?? true,
+    }
+    const dataSources = normalizeDataSourcesConfig(
+      {
+        ...config.dataSources,
+        hermes: requestedHermes,
+      },
+      config.dataSources.openclaw.path,
+      nextWsl
+    )
+    const hermes = dataSources.hermes
+
+    if (!hermes.enabled) {
+      const nextConfig: Config = {
+        ...config,
+        schemaVersion: 3,
+        dataSources,
+        wsl: {
+          ...nextWsl,
+          enabled: dataSources.openclaw.environment === 'wsl',
+          openClawPath: dataSources.openclaw.path,
+        },
+      }
+      saveConfig(nextConfig)
+      getAnalyticsService().reloadHermesSource('', false)
+      res.json({
+        success: true,
+        sessionCount: 0,
+        hermesPath: '',
+        message: 'Hermes data source disabled',
+      })
+      return
+    }
+
+    if (!hermes.path) {
+      res.status(400).json({
+        error: 'Hermes path not configured',
+        solution: 'Set the Hermes data directory in settings.',
+      })
+      return
+    }
+
+    // A stored \\wsl.localhost\\... path is already the Windows-facing host
+    // path; resolving it again would append a second WSL UNC prefix.
+    const parsedHermesUnc = parseWslUncPath(hermes.path)
+    const sourceInfo: ResolvedOpenClawPath | undefined = parsedHermesUnc
+      ? {
+          originalPath: hermes.path,
+          hostPath: hermes.path,
+          source: 'wsl-unc',
+          isWsl: true,
+          distro: parsedHermesUnc.distro,
+          linuxPath: parsedHermesUnc.linuxPath,
+          warnings: [],
+        }
+      : resolveDataSourcePath(hermes.path, hermes.environment, nextWsl.distro)
+    if (sourceInfo?.error) {
+      res.status(400).json({
+        error: 'Unable to resolve Hermes data path',
+        details: sourceInfo.error,
+        path: hermes.path,
+      })
+      return
+    }
+    if (sourceInfo?.isWsl) {
+      const availability = getWslAvailability(sourceInfo.distro)
+      if (!availability.available) {
+        res.status(400).json({
+          error: 'WSL2 environment is not available',
+          details: availability.error,
+          path: hermes.path,
+        })
+        return
+      }
+    }
+
+    const validation = validateHermesDataSource(hermes.path)
+    const nextConfig: Config = {
+      ...config,
+      schemaVersion: 3,
+      dataSources,
+      wsl: {
+        ...nextWsl,
+        enabled: dataSources.openclaw.environment === 'wsl',
+        openClawPath: dataSources.openclaw.path,
+      },
+    }
+    saveConfig(nextConfig)
+    getAnalyticsService().reloadHermesSource(hermes.path, true)
+
+    res.json({
+      success: true,
+      sessionCount: validation.sessionCount,
+      hermesPath: hermes.path,
+      message: `Successfully reloaded Hermes data from ${hermes.path}`,
+      details: {
+        dataSource: sourceInfo?.isWsl ? 'wsl' : 'local',
+        source: sourceInfo?.isWsl
+          ? `WSL2${sourceInfo.distro ? ` (${sourceInfo.distro})` : ''}`
+          : 'local filesystem',
+        distro: sourceInfo?.distro,
+        linuxPath: sourceInfo?.linuxPath,
+        sessionCount: validation.sessionCount,
+        usageRecordCount: validation.usageRecordCount,
+        warnings: validation.warnings,
+      },
+    })
+  } catch (error) {
+    if (error instanceof HermesDataValidationError) {
+      res.status(error.statusCode).json({
+        error: error.message,
+        path: error.dataPath,
+        solution: error.solution,
+      })
+      return
+    }
+    res.status(500).json({
+      error: 'Failed to reload Hermes data',
+      details: error instanceof Error ? error.message : String(error),
+    })
+  }
+})
 
 export default router

@@ -9,6 +9,7 @@ import {
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { handleServerError } from '@/lib/handle-server-error'
+import { AnalyticsSourceProvider } from './context/analytics-source-provider'
 import { CurrencyProvider } from './context/currency-provider'
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
@@ -91,9 +92,11 @@ if (!rootElement.innerHTML) {
           <FontProvider>
             <LocaleProvider>
               <CurrencyProvider>
-                <DirectionProvider>
-                  <RouterProvider router={router} />
-                </DirectionProvider>
+                <AnalyticsSourceProvider>
+                  <DirectionProvider>
+                    <RouterProvider router={router} />
+                  </DirectionProvider>
+                </AnalyticsSourceProvider>
               </CurrencyProvider>
             </LocaleProvider>
           </FontProvider>

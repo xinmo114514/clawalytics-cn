@@ -6,6 +6,8 @@ import fs, { type Stats as FsStats } from 'fs'
 import os from 'os'
 import readline from 'readline'
 import type {
+  AnalyticsSourceFilter,
+  AnalyticsSourceType,
   AnalyticsSnapshotState,
   AnalyticsStatus,
   AnalyticsStatusResponse,
@@ -25,12 +27,17 @@ import type {
 import {
   LEGACY_SESSION_CACHE_VERSION,
   normalizeCachedEntry,
+  PREVIOUS_SESSION_CACHE_VERSION,
   SESSION_CACHE_VERSION,
   type CachedSessionEntry,
   type SerializedSessionData,
   type SessionCacheFile,
 } from '../analytics/session-cache.js'
-import { getConfigDir, normalizeOpenClawPath } from '../config/loader.js'
+import {
+  getConfigDir,
+  normalizeOpenClawPath,
+  type Config,
+} from '../config/loader.js'
 import type {
   Agent,
   AgentDailyCost,
@@ -67,6 +74,7 @@ import type {
   EnhancedSession,
   EnhancedSessionsOptions,
 } from '../db/queries.js'
+import { HermesDataSourceAdapter } from '../parser/hermes/adapter.js'
 import {
   getOpenClawAgentDatabasePath,
   openAgentDatabaseReader,
@@ -231,10 +239,22 @@ class AnalyticsService {
     cacheDirty: false,
   }
   private readonly scanContext = new AsyncLocalStorage<AnalyticsMutableState>()
+  private readonly querySourceContext =
+    new AsyncLocalStorage<AnalyticsSourceFilter>()
   private agents = new Map<string, OpenClawAgent>()
 
   private get sessions(): Map<string, SessionData> {
-    return this.scanContext.getStore()?.sessions ?? this.publishedState.sessions
+    const sessions =
+      this.scanContext.getStore()?.sessions ?? this.publishedState.sessions
+    const sourceFilter = this.querySourceContext.getStore()
+    if (!sourceFilter || sourceFilter === 'all') return sessions
+    return new Map(
+      [...sessions].filter(([, session]) =>
+        sourceFilter === 'hermes'
+          ? session.sourceType === 'hermes'
+          : session.sourceType !== 'hermes'
+      )
+    )
   }
 
   private get sessionCache(): Map<string, CachedSessionEntry> {
@@ -272,6 +292,11 @@ class AnalyticsService {
   private initialized = false
   private refreshGeneration = 0
   private activeOpenClawPath = ''
+  private activeHermesPath = ''
+  private hermesAdapter: HermesDataSourceAdapter | null = null
+  private hermesWatcher: FSWatcher | null = null
+  private hermesRefreshTimer: ReturnType<typeof setTimeout> | null = null
+  private sourceStatuses: NonNullable<AnalyticsStatusResponse['sources']> = {}
   private analyticsStatus: AnalyticsStatus = 'unavailable'
   private lastScanStartedAt: string | undefined
   private lastScanCompletedAt: string | undefined
@@ -284,7 +309,10 @@ class AnalyticsService {
   private parsingFiles = new Set<string>()
 
   // Cached aggregates
-  private _analyticsIndex: AnalyticsIndex | null = null
+  private readonly analyticsIndexes = new Map<
+    AnalyticsSourceFilter,
+    AnalyticsIndex
+  >()
   // Cache-file persistence state (async, deduplicated writes)
   private lastCachePayload: string | null = null
   private cacheSaveInFlight = false
@@ -295,10 +323,24 @@ class AnalyticsService {
   private lastSuccessfulScanAt: string | undefined
   private loadedCacheSnapshotAt: string | undefined
 
-  initialize(openClawPath?: string): void {
-    const agentConfigPath =
-      normalizeOpenClawPath(openClawPath) ||
-      path.join(os.homedir(), '.openclaw')
+  initialize(configOrOpenClawPath?: Config | string): void {
+    const config =
+      typeof configOrOpenClawPath === 'object'
+        ? configOrOpenClawPath
+        : undefined
+    const configuredOpenClawPath =
+      typeof configOrOpenClawPath === 'string'
+        ? configOrOpenClawPath
+        : (config?.dataSources?.openclaw.path ?? config?.openClawPath)
+    const openClawEnabled = config?.dataSources?.openclaw.enabled ?? true
+    const hermesEnabled = config?.dataSources?.hermes.enabled ?? false
+    const agentConfigPath = openClawEnabled
+      ? normalizeOpenClawPath(configuredOpenClawPath) ||
+        path.join(os.homedir(), '.openclaw')
+      : ''
+    const hermesPath = hermesEnabled
+      ? config?.dataSources?.hermes.path || ''
+      : ''
 
     if (this.initialized) {
       throw new Error(
@@ -309,6 +351,10 @@ class AnalyticsService {
     this.refreshGeneration++
     const generation = this.refreshGeneration
     this.activeOpenClawPath = agentConfigPath
+    this.activeHermesPath = hermesPath
+    this.hermesAdapter = hermesPath
+      ? new HermesDataSourceAdapter(hermesPath)
+      : null
     this.pricingRevision = getPricingFingerprint()
     this.analyticsStatus = 'scanning'
     this.lastScanStartedAt = new Date().toISOString()
@@ -318,53 +364,70 @@ class AnalyticsService {
     this.snapshotState = 'none'
     this.lastSuccessfulScanAt = undefined
     this.loadedCacheSnapshotAt = undefined
-
-    if (!fs.existsSync(agentConfigPath)) {
-      this.analyticsStatus = 'unavailable'
-      this.initialized = true
-      return
+    this.sourceStatuses = {
+      openclaw: {
+        enabled: openClawEnabled,
+        status: openClawEnabled ? 'scanning' : 'unavailable',
+        hasData: false,
+        path: agentConfigPath || undefined,
+        sessionCount: 0,
+      },
+      hermes: {
+        enabled: hermesEnabled,
+        status: hermesEnabled ? 'scanning' : 'unavailable',
+        hasData: false,
+        path: hermesPath || undefined,
+        sessionCount: 0,
+      },
     }
 
-    this.loadSessionCache(agentConfigPath)
+    const openClawAvailable = Boolean(
+      agentConfigPath && fs.existsSync(agentConfigPath)
+    )
+    let agents: OpenClawAgent[] = []
+    if (openClawAvailable) {
+      this.loadSessionCache(agentConfigPath)
 
-    // Load agents
-    const agents = loadAgents(agentConfigPath)
-    for (const agent of agents) {
-      this.agents.set(agent.id, agent)
-      this.loadCachedAgentSessions(agentConfigPath, agent)
-    }
-
-    if (this.loadedCacheSnapshotAt) {
-      this.snapshotState = 'cached'
-      this.lastSuccessfulScanAt = this.loadedCacheSnapshotAt
-    }
-
-    // Watch agent config
-    const configWatcher = watchAgentConfig(agentConfigPath, (updatedAgents) => {
-      const previousAgentIds = new Set(this.agents.keys())
-      this.agents.clear()
-      for (const agent of updatedAgents) {
+      agents = loadAgents(agentConfigPath)
+      for (const agent of agents) {
         this.agents.set(agent.id, agent)
+        this.loadCachedAgentSessions(agentConfigPath, agent)
       }
 
-      // Existing watcher callbacks self-disable when their agent disappears.
-      // Only register watchers for newly added agents; their cache restoration
-      // runs in a disposable state so published data remains atomic.
-      const watcherState = this.createScanState()
-      this.scanContext.run(watcherState, () => {
-        for (const agent of updatedAgents) {
-          if (!previousAgentIds.has(agent.id)) {
-            this.loadCachedAgentSessions(agentConfigPath, agent)
-          }
-        }
-      })
-      this.scheduleBackgroundSessionRefresh(
+      if (this.loadedCacheSnapshotAt) {
+        this.snapshotState = 'cached'
+        this.lastSuccessfulScanAt = this.loadedCacheSnapshotAt
+      }
+
+      const configWatcher = watchAgentConfig(
         agentConfigPath,
-        updatedAgents,
-        this.refreshGeneration
+        (updatedAgents) => {
+          const previousAgentIds = new Set(this.agents.keys())
+          this.agents.clear()
+          for (const agent of updatedAgents) {
+            this.agents.set(agent.id, agent)
+          }
+
+          const watcherState = this.createScanState()
+          this.scanContext.run(watcherState, () => {
+            for (const agent of updatedAgents) {
+              if (!previousAgentIds.has(agent.id)) {
+                this.loadCachedAgentSessions(agentConfigPath, agent)
+              }
+            }
+          })
+          this.scheduleBackgroundSessionRefresh(
+            agentConfigPath,
+            updatedAgents,
+            this.refreshGeneration
+          )
+        }
       )
-    })
-    if (configWatcher) this.watchers.push(configWatcher)
+      if (configWatcher) this.watchers.push(configWatcher)
+    } else if (openClawEnabled && this.sourceStatuses.openclaw) {
+      this.sourceStatuses.openclaw.status = 'unavailable'
+      this.sourceStatuses.openclaw.error = 'OpenClaw path is unavailable.'
+    }
 
     // Tool call cleanup interval
     this.toolCleanupInterval = setInterval(
@@ -375,7 +438,134 @@ class AnalyticsService {
     )
 
     this.initialized = true
-    this.scheduleBackgroundSessionRefresh(agentConfigPath, agents, generation)
+    if (openClawAvailable) {
+      this.scheduleBackgroundSessionRefresh(agentConfigPath, agents, generation)
+    }
+    if (this.hermesAdapter) {
+      this.refreshHermesSessions()
+      this.watchHermesDatabase()
+    }
+    if (!openClawAvailable && !this.hermesAdapter) {
+      this.analyticsStatus = 'unavailable'
+    }
+  }
+
+  private refreshHermesSessions(): void {
+    if (!this.hermesAdapter || !this.initialized) return
+
+    const sourceStatus = this.sourceStatuses.hermes
+    if (sourceStatus) {
+      sourceStatus.status = 'scanning'
+      sourceStatus.error = undefined
+    }
+    try {
+      const result = this.hermesAdapter.scan()
+      const sessions = new Map<string, SessionData>()
+      for (const [sessionId, session] of this.publishedState.sessions) {
+        if (session.sourceType !== 'hermes') {
+          sessions.set(sessionId, this.cloneSession(session))
+        }
+      }
+      for (const [sessionId, session] of result.sessions) {
+        sessions.set(sessionId, session)
+      }
+      this.publishedState = {
+        ...this.publishedState,
+        sessions,
+        cacheDirty: true,
+      }
+      if (sourceStatus) {
+        sourceStatus.status = 'ready'
+        sourceStatus.hasData = result.sessions.size > 0
+        sourceStatus.sessionCount = result.sessionCount
+        sourceStatus.usageRecordCount = result.usageRecordCount
+      }
+      this.analyticsStatus = 'ready'
+      this.hasCompletedScan = true
+      this.lastScanCompletedAt = new Date().toISOString()
+      this.lastSuccessfulScanAt = this.lastScanCompletedAt
+      this.snapshotState = 'verified'
+      this.markDirty()
+      broadcastAnalyticsStatus()
+      broadcastCostsUpdated()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (sourceStatus) {
+        sourceStatus.status = 'error'
+        sourceStatus.error = message
+        sourceStatus.hasData = [...this.publishedState.sessions.values()].some(
+          (session) => session.sourceType === 'hermes'
+        )
+      }
+      if (!this.publishedState.sessions.size) {
+        this.analyticsStatus = 'error'
+        this.lastScanError = {
+          code: this.hasCompletedScan ? 'SCAN_FAILED' : 'INITIAL_SCAN_FAILED',
+          message: `Hermes data scan failed: ${message}`,
+        }
+      }
+      console.error('Failed to refresh Hermes analytics:', error)
+      broadcastAnalyticsStatus()
+    }
+  }
+
+  private scheduleHermesRefresh(): void {
+    if (this.hermesRefreshTimer) clearTimeout(this.hermesRefreshTimer)
+    this.hermesRefreshTimer = setTimeout(() => {
+      this.hermesRefreshTimer = null
+      this.refreshHermesSessions()
+    }, BACKGROUND_SESSION_REFRESH_DELAY_MS)
+  }
+
+  private watchHermesDatabase(): void {
+    if (!this.hermesAdapter) return
+    this.hermesWatcher?.close()
+    const watchPaths = this.hermesAdapter.getWatchPaths()
+    this.hermesWatcher = chokidar.watch(watchPaths, {
+      persistent: true,
+      ignoreInitial: true,
+      usePolling: this.shouldUsePollingWatcher(watchPaths[0]),
+      interval: 1000,
+      awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 50 },
+    })
+    this.hermesWatcher.on('add', () => this.scheduleHermesRefresh())
+    this.hermesWatcher.on('change', () => this.scheduleHermesRefresh())
+    this.hermesWatcher.on('unlink', () => this.scheduleHermesRefresh())
+    this.hermesWatcher.on('error', (error) => {
+      console.warn('Error watching Hermes state database:', error)
+    })
+    this.watchers.push(this.hermesWatcher)
+  }
+
+  reloadHermesSource(rootPath: string, enabled = true): void {
+    this.hermesWatcher?.close()
+    this.hermesWatcher = null
+    if (this.hermesRefreshTimer) {
+      clearTimeout(this.hermesRefreshTimer)
+      this.hermesRefreshTimer = null
+    }
+    this.activeHermesPath = enabled ? rootPath : ''
+    this.hermesAdapter = enabled ? new HermesDataSourceAdapter(rootPath) : null
+    this.sourceStatuses.hermes = {
+      enabled,
+      status: enabled ? 'scanning' : 'unavailable',
+      hasData: false,
+      path: enabled ? rootPath : undefined,
+      sessionCount: 0,
+    }
+    if (!enabled) {
+      const sessions = new Map(
+        [...this.publishedState.sessions].filter(
+          ([, session]) => session.sourceType !== 'hermes'
+        )
+      )
+      this.publishedState = { ...this.publishedState, sessions }
+      this.markDirty()
+      broadcastCostsUpdated()
+      return
+    }
+    this.refreshHermesSessions()
+    this.watchHermesDatabase()
   }
 
   async shutdown(): Promise<void> {
@@ -393,6 +583,11 @@ class AnalyticsService {
       clearTimeout(this.backgroundRefreshTimer)
       this.backgroundRefreshTimer = null
     }
+    if (this.hermesRefreshTimer) {
+      clearTimeout(this.hermesRefreshTimer)
+      this.hermesRefreshTimer = null
+    }
+    this.hermesWatcher = null
     if (this.toolCleanupInterval) {
       clearInterval(this.toolCleanupInterval)
       this.toolCleanupInterval = null
@@ -409,6 +604,9 @@ class AnalyticsService {
     this.lastCachePayload = null
     this.queuedBackgroundRefresh = null
     this.activeOpenClawPath = ''
+    this.activeHermesPath = ''
+    this.hermesAdapter = null
+    this.sourceStatuses = {}
     this.analyticsStatus = 'unavailable'
     this.lastScanStartedAt = undefined
     this.lastScanCompletedAt = undefined
@@ -439,7 +637,15 @@ class AnalyticsService {
         ? { lastSuccessfulScanAt: this.lastSuccessfulScanAt }
         : {}),
       ...(this.lastScanError ? { lastScanError: this.lastScanError } : {}),
+      sources: this.sourceStatuses,
     }
+  }
+
+  runWithSourceFilter<T>(
+    sourceFilter: AnalyticsSourceFilter,
+    callback: () => T
+  ): T {
+    return this.querySourceContext.run(sourceFilter, callback)
   }
 
   private loadCachedAgentSessions(
@@ -635,6 +841,13 @@ class AnalyticsService {
       cost: result.cost,
       cacheSavings: result.cacheSavings,
       messageType: result.messageType,
+      sourceType: 'openclaw',
+      reasoningTokens: 0,
+      apiCallCount: 1,
+      usageGranularity: 'request',
+      costCurrency: 'CNY',
+      costStatus: 'estimated',
+      costSource: 'openclaw-or-clawalytics-pricing',
     }
   }
 
@@ -651,6 +864,10 @@ class AnalyticsService {
       session.totalCost += request.cost
       session.totalInputTokens += request.inputTokens
       session.totalOutputTokens += request.outputTokens
+      session.totalReasoningTokens =
+        (session.totalReasoningTokens ?? 0) + (request.reasoningTokens ?? 0)
+      session.apiCallCount =
+        (session.apiCallCount ?? 0) + (request.apiCallCount ?? 1)
       if (request.model && request.model !== 'unknown') {
         session.modelsUsed.add(request.model)
       }
@@ -1169,6 +1386,9 @@ class AnalyticsService {
   private serializeSession(session: SessionData): SerializedSessionData {
     return {
       id: session.id,
+      rawSessionId: session.rawSessionId ?? session.id,
+      sourceType: session.sourceType ?? 'openclaw',
+      usageGranularity: session.usageGranularity ?? 'request',
       agentId: session.agentId,
       projectPath: session.projectPath,
       startedAt: session.startedAt,
@@ -1178,6 +1398,11 @@ class AnalyticsService {
       totalCost: session.totalCost,
       totalInputTokens: session.totalInputTokens,
       totalOutputTokens: session.totalOutputTokens,
+      totalReasoningTokens: session.totalReasoningTokens ?? 0,
+      apiCallCount: session.apiCallCount ?? session.requests.length,
+      costCurrency: session.costCurrency ?? 'CNY',
+      costStatus: session.costStatus ?? 'estimated',
+      costSource: session.costSource,
       modelsUsed: [...session.modelsUsed],
       toolCalls: session.toolCalls,
     }
@@ -1200,6 +1425,9 @@ class AnalyticsService {
 
     return {
       id: overrides?.sessionId ?? cached.id,
+      rawSessionId: cached.rawSessionId ?? overrides?.sessionId ?? cached.id,
+      sourceType: cached.sourceType ?? 'openclaw',
+      usageGranularity: cached.usageGranularity ?? 'request',
       agentId: overrides?.agentId ?? cached.agentId,
       projectPath: overrides?.projectPath ?? cached.projectPath,
       startedAt,
@@ -1213,6 +1441,11 @@ class AnalyticsService {
       totalOutputTokens: Number.isFinite(totalOutputTokens)
         ? totalOutputTokens
         : 0,
+      totalReasoningTokens: cached.totalReasoningTokens ?? 0,
+      apiCallCount: cached.apiCallCount ?? cached.requests.length,
+      costCurrency: cached.costCurrency ?? 'CNY',
+      costStatus: cached.costStatus ?? 'estimated',
+      costSource: cached.costSource,
       modelsUsed: new Set(
         Array.isArray(cached.modelsUsed) ? cached.modelsUsed : []
       ),
@@ -1234,6 +1467,7 @@ class AnalyticsService {
       ) as Partial<SessionCacheFile>
       if (
         (cache.version !== SESSION_CACHE_VERSION &&
+          cache.version !== PREVIOUS_SESSION_CACHE_VERSION &&
           cache.version !== LEGACY_SESSION_CACHE_VERSION) ||
         cache.openClawPath !== openClawPath ||
         !Array.isArray(cache.entries)
@@ -1494,11 +1728,16 @@ class AnalyticsService {
       return
     }
 
-    await this.startBackgroundSessionRefresh(
-      this.activeOpenClawPath,
-      [...this.agents.values()],
-      this.refreshGeneration
-    )
+    if (this.activeOpenClawPath) {
+      await this.startBackgroundSessionRefresh(
+        this.activeOpenClawPath,
+        [...this.agents.values()],
+        this.refreshGeneration
+      )
+    }
+    if (this.hermesAdapter) {
+      this.refreshHermesSessions()
+    }
     if (this.analyticsStatus === 'error') {
       throw new Error(this.lastScanError?.message ?? 'Analytics scan failed')
     }
@@ -1506,15 +1745,18 @@ class AnalyticsService {
 
   /** Drop parsed cost snapshots after pricing changes and rebuild them. */
   invalidateCostCache(): void {
-    if (!this.initialized || !this.activeOpenClawPath) return
+    if (!this.initialized) return
     const nextPricingRevision = getPricingFingerprint()
     if (nextPricingRevision === this.pricingRevision) return
     this.pricingRevision = nextPricingRevision
-    this.scheduleBackgroundSessionRefresh(
-      this.activeOpenClawPath,
-      [...this.agents.values()],
-      this.refreshGeneration
-    )
+    if (this.activeOpenClawPath) {
+      this.scheduleBackgroundSessionRefresh(
+        this.activeOpenClawPath,
+        [...this.agents.values()],
+        this.refreshGeneration
+      )
+    }
+    if (this.hermesAdapter) this.scheduleHermesRefresh()
   }
 
   private async yieldToEventLoop(): Promise<void> {
@@ -1571,7 +1813,10 @@ class AnalyticsService {
 
     const activeAgentIds = new Set(this.agents.keys())
     for (const [sessionId, session] of sessions) {
-      if (!activeAgentIds.has(session.agentId)) {
+      if (
+        session.sourceType !== 'hermes' &&
+        !activeAgentIds.has(session.agentId)
+      ) {
         sessions.delete(sessionId)
       }
     }
@@ -1633,6 +1878,11 @@ class AnalyticsService {
           'Failed to refresh analytics sessions in background:',
           outcome.error
         )
+        const sourceStatus = this.sourceStatuses.openclaw
+        if (sourceStatus) {
+          sourceStatus.status = 'error'
+          sourceStatus.error = 'Analytics data scan failed'
+        }
       }
       if (this.snapshotState !== 'none') {
         this.snapshotState = 'stale'
@@ -1648,6 +1898,16 @@ class AnalyticsService {
     this.lastScanError = undefined
     this.snapshotState = 'verified'
     this.lastSuccessfulScanAt = this.lastScanCompletedAt
+    const openClawStatus = this.sourceStatuses.openclaw
+    if (openClawStatus) {
+      const openClawSessions = [...scanState.sessions.values()].filter(
+        (session) => session.sourceType !== 'hermes'
+      )
+      openClawStatus.status = 'ready'
+      openClawStatus.hasData = openClawSessions.length > 0
+      openClawStatus.sessionCount = openClawSessions.length
+      openClawStatus.error = undefined
+    }
     this.markDirty()
     this.scheduleSessionCacheSave()
     broadcastAnalyticsStatus()
@@ -2094,7 +2354,7 @@ class AnalyticsService {
   }
 
   private markDirty(): void {
-    this._analyticsIndex = null
+    this.analyticsIndexes.clear()
   }
 
   private debouncedBudgetCheck(): void {
@@ -2119,6 +2379,35 @@ class AnalyticsService {
   // Helpers
   // ============================================
 
+  private getSessionSourceType(session: SessionData): AnalyticsSourceType {
+    return session.sourceType === 'hermes' ? 'hermes' : 'openclaw'
+  }
+
+  private getPublicSessionId(session: SessionData): string {
+    if (session.sourceType === 'hermes') return session.id
+    return `openclaw:${session.agentId}:${session.rawSessionId ?? session.id}`
+  }
+
+  private findSession(id: string): SessionData | undefined {
+    const direct = this.sessions.get(id)
+    if (direct) return direct
+    if (id.startsWith('openclaw:')) {
+      const [, agentId, ...rawParts] = id.split(':')
+      const rawSessionId = rawParts.join(':')
+      return [...this.sessions.values()].find(
+        (session) =>
+          this.getSessionSourceType(session) === 'openclaw' &&
+          session.agentId === agentId &&
+          (session.rawSessionId ?? session.id) === rawSessionId
+      )
+    }
+    return [...this.sessions.values()].find(
+      (session) =>
+        (session.rawSessionId ?? session.id) === id ||
+        this.getPublicSessionId(session) === id
+    )
+  }
+
   private allRequests(): Array<
     ParsedRequest & { sessionId: string; agentId: string; channel?: string }
   > {
@@ -2129,7 +2418,7 @@ class AnalyticsService {
       for (const req of session.requests) {
         result.push({
           ...req,
-          sessionId: session.id,
+          sessionId: this.getPublicSessionId(session),
           agentId: session.agentId,
           channel: session.channel,
         })
@@ -2181,16 +2470,24 @@ class AnalyticsService {
   // ============================================
 
   getSession(id: string): Session | undefined {
-    const s = this.sessions.get(id)
+    const s = this.findSession(id)
     if (!s) return undefined
     return {
-      id: s.id,
+      id: this.getPublicSessionId(s),
+      raw_session_id: s.rawSessionId ?? s.id,
+      source_type: this.getSessionSourceType(s),
+      usage_granularity: s.usageGranularity ?? 'request',
       project_path: s.projectPath,
       started_at: s.startedAt,
       last_activity: s.lastActivity,
       total_input_tokens: s.totalInputTokens,
       total_output_tokens: s.totalOutputTokens,
       total_cost: s.totalCost,
+      reasoning_tokens: s.totalReasoningTokens ?? 0,
+      api_call_count: s.apiCallCount ?? s.requests.length,
+      cost_currency: s.costCurrency ?? 'CNY',
+      cost_status: s.costStatus ?? 'estimated',
+      cost_source: s.costSource,
       models_used: [...s.modelsUsed],
     }
   }
@@ -2200,13 +2497,21 @@ class AnalyticsService {
       b.lastActivity.localeCompare(a.lastActivity)
     )
     return all.slice(offset, offset + limit).map((s) => ({
-      id: s.id,
+      id: this.getPublicSessionId(s),
+      raw_session_id: s.rawSessionId ?? s.id,
+      source_type: this.getSessionSourceType(s),
+      usage_granularity: s.usageGranularity ?? 'request',
       project_path: s.projectPath,
       started_at: s.startedAt,
       last_activity: s.lastActivity,
       total_input_tokens: s.totalInputTokens,
       total_output_tokens: s.totalOutputTokens,
       total_cost: s.totalCost,
+      reasoning_tokens: s.totalReasoningTokens ?? 0,
+      api_call_count: s.apiCallCount ?? s.requests.length,
+      cost_currency: s.costCurrency ?? 'CNY',
+      cost_status: s.costStatus ?? 'estimated',
+      cost_source: s.costSource,
       models_used: [...s.modelsUsed],
     }))
   }
@@ -2216,11 +2521,11 @@ class AnalyticsService {
   }
 
   getRequests(sessionId: string): Request[] {
-    const s = this.sessions.get(sessionId)
+    const s = this.findSession(sessionId)
     if (!s) return []
     return s.requests.map((r, i) => ({
       id: i,
-      session_id: sessionId,
+      session_id: this.getPublicSessionId(s),
       timestamp: r.timestamp,
       provider: r.provider,
       model: r.model,
@@ -2229,6 +2534,13 @@ class AnalyticsService {
       cache_creation_tokens: r.cacheCreationTokens,
       cache_read_tokens: r.cacheReadTokens,
       cost: r.cost,
+      source_type: r.sourceType ?? this.getSessionSourceType(s),
+      reasoning_tokens: r.reasoningTokens ?? 0,
+      api_call_count: r.apiCallCount ?? 1,
+      usage_granularity: r.usageGranularity ?? 'request',
+      cost_currency: r.costCurrency ?? 'CNY',
+      cost_status: r.costStatus ?? 'estimated',
+      cost_source: r.costSource,
       message_type: r.messageType,
     }))
   }
@@ -2250,10 +2562,13 @@ class AnalyticsService {
 
   private getAnalyticsIndex(): AnalyticsIndex {
     const today = this.today()
-    if (!this._analyticsIndex || this._analyticsIndex.date !== today) {
-      this._analyticsIndex = buildAnalyticsIndex(this.sessions, this.now())
+    const sourceFilter = this.querySourceContext.getStore() ?? 'all'
+    let index = this.analyticsIndexes.get(sourceFilter)
+    if (!index || index.date !== today) {
+      index = buildAnalyticsIndex(this.sessions, this.now())
+      this.analyticsIndexes.set(sourceFilter, index)
     }
-    return this._analyticsIndex
+    return index
   }
 
   getTodayCost(): number {
@@ -2877,7 +3192,11 @@ class AnalyticsService {
         case 'total_output_tokens':
           return (a.totalOutputTokens - b.totalOutputTokens) * dir
         case 'request_count':
-          return (a.requests.length - b.requests.length) * dir
+          return (
+            ((a.apiCallCount ?? a.requests.length) -
+              (b.apiCallCount ?? b.requests.length)) *
+            dir
+          )
         case 'last_activity':
         default:
           return a.lastActivity.localeCompare(b.lastActivity) * dir
@@ -2887,15 +3206,23 @@ class AnalyticsService {
     const page = filtered.slice(offset, offset + limit)
 
     const sessions: EnhancedSession[] = page.map((s) => ({
-      id: s.id,
+      id: this.getPublicSessionId(s),
+      raw_session_id: s.rawSessionId ?? s.id,
+      source_type: this.getSessionSourceType(s),
+      usage_granularity: s.usageGranularity ?? 'request',
       project_path: s.projectPath,
       started_at: s.startedAt,
       last_activity: s.lastActivity,
       total_input_tokens: s.totalInputTokens,
       total_output_tokens: s.totalOutputTokens,
       total_cost: s.totalCost,
+      reasoning_tokens: s.totalReasoningTokens ?? 0,
+      api_call_count: s.apiCallCount ?? s.requests.length,
+      cost_currency: s.costCurrency ?? 'CNY',
+      cost_status: s.costStatus ?? 'estimated',
+      cost_source: s.costSource,
       models_used: [...s.modelsUsed],
-      request_count: s.requests.length,
+      request_count: s.apiCallCount ?? s.requests.length,
     }))
 
     return { sessions, total }
@@ -3163,10 +3490,10 @@ export function getAnalyticsService(): AnalyticsService {
 }
 
 export function initializeAnalyticsService(
-  openClawPath?: string
+  configOrOpenClawPath?: Config | string
 ): AnalyticsService {
   const service = getAnalyticsService()
-  service.initialize(openClawPath)
+  service.initialize(configOrOpenClawPath)
   return service
 }
 

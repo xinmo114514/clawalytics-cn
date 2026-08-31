@@ -1,11 +1,24 @@
+export type AnalyticsSourceType = 'openclaw' | 'hermes'
+export type AnalyticsSourceFilter = 'all' | AnalyticsSourceType
+export type UsageGranularity = 'request' | 'aggregate'
+export type AnalyticsCostStatus = 'reported' | 'estimated' | 'unknown'
+
 export interface Session {
   id: string
+  raw_session_id?: string
+  source_type?: AnalyticsSourceType
+  usage_granularity?: UsageGranularity
   project_path: string
   started_at: string
   last_activity: string
   total_input_tokens: number
   total_output_tokens: number
   total_cost: number
+  reasoning_tokens?: number
+  api_call_count?: number
+  cost_currency?: 'CNY'
+  cost_status?: AnalyticsCostStatus
+  cost_source?: string
   models_used: string[]
 }
 
@@ -20,6 +33,13 @@ export interface Request {
   cache_creation_tokens: number
   cache_read_tokens: number
   cost: number
+  source_type?: AnalyticsSourceType
+  reasoning_tokens?: number
+  api_call_count?: number
+  usage_granularity?: UsageGranularity
+  cost_currency?: 'CNY'
+  cost_status?: AnalyticsCostStatus
+  cost_source?: string
   message_type?: string
   raw_data?: string
 }
@@ -34,6 +54,7 @@ export interface DailyCost {
   cache_savings: number
   session_count: number
   request_count: number
+  contains_aggregate_data?: boolean
 }
 
 export interface ModelUsage {
@@ -82,6 +103,20 @@ export interface AnalyticsStatusResponse {
     code: 'INITIAL_SCAN_FAILED' | 'SCAN_FAILED'
     message: string
   }
+  sources?: Partial<
+    Record<
+      AnalyticsSourceType,
+      {
+        enabled: boolean
+        status: AnalyticsStatus
+        hasData: boolean
+        path?: string
+        sessionCount: number
+        usageRecordCount?: number
+        error?: string
+      }
+    >
+  >
 }
 
 export interface TokenBreakdown {

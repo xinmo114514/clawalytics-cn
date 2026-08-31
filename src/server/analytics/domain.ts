@@ -1,3 +1,9 @@
+import type {
+  AnalyticsCostStatus,
+  AnalyticsSourceType,
+  UsageGranularity,
+} from '../../shared/analytics-contracts.js'
+
 export interface ParsedRequest {
   timestamp: string
   provider: string
@@ -9,6 +15,13 @@ export interface ParsedRequest {
   cost: number
   cacheSavings: number
   messageType: string
+  sourceType?: AnalyticsSourceType
+  reasoningTokens?: number
+  apiCallCount?: number
+  usageGranularity?: UsageGranularity
+  costCurrency?: 'CNY'
+  costStatus?: AnalyticsCostStatus
+  costSource?: string
 }
 
 export interface ToolCallData {
@@ -24,6 +37,9 @@ export interface ToolCallData {
 
 export interface SessionData {
   id: string
+  rawSessionId?: string
+  sourceType?: AnalyticsSourceType
+  usageGranularity?: UsageGranularity
   agentId: string
   projectPath: string
   startedAt: string
@@ -33,6 +49,11 @@ export interface SessionData {
   totalCost: number
   totalInputTokens: number
   totalOutputTokens: number
+  totalReasoningTokens?: number
+  apiCallCount?: number
+  costCurrency?: 'CNY'
+  costStatus?: AnalyticsCostStatus
+  costSource?: string
   modelsUsed: Set<string>
   toolCalls: ToolCallData[]
 }

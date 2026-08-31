@@ -130,6 +130,9 @@ export function identifyProvider(model: string): string {
   if (modelLower.includes('minimax')) {
     return 'minimax'
   }
+  if (modelLower.includes('mimo')) {
+    return 'xiaomi'
+  }
   if (modelLower.includes('gemini')) {
     return 'google'
   }

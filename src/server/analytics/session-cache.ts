@@ -1,10 +1,14 @@
 import type { ParsedRequest, ToolCallData } from './domain.js'
 
-export const SESSION_CACHE_VERSION = 4
+export const SESSION_CACHE_VERSION = 5
+export const PREVIOUS_SESSION_CACHE_VERSION = 4
 export const LEGACY_SESSION_CACHE_VERSION = 3
 
 export interface SerializedSessionData {
   id: string
+  rawSessionId?: string
+  sourceType?: 'openclaw' | 'hermes'
+  usageGranularity?: 'request' | 'aggregate'
   agentId: string
   projectPath: string
   startedAt: string
@@ -14,6 +18,11 @@ export interface SerializedSessionData {
   totalCost: number
   totalInputTokens: number
   totalOutputTokens: number
+  totalReasoningTokens?: number
+  apiCallCount?: number
+  costCurrency?: 'CNY'
+  costStatus?: 'reported' | 'estimated' | 'unknown'
+  costSource?: string
   modelsUsed: string[]
   toolCalls: ToolCallData[]
 }
@@ -93,6 +102,13 @@ export function normalizeCachedEntry(
       : {}),
     session: {
       id: session.id,
+      rawSessionId:
+        typeof session.rawSessionId === 'string'
+          ? session.rawSessionId
+          : session.id,
+      sourceType: session.sourceType === 'hermes' ? 'hermes' : 'openclaw',
+      usageGranularity:
+        session.usageGranularity === 'aggregate' ? 'aggregate' : 'request',
       agentId: session.agentId,
       projectPath: session.projectPath,
       startedAt:
@@ -117,6 +133,19 @@ export function normalizeCachedEntry(
         typeof session.totalOutputTokens === 'number'
           ? session.totalOutputTokens
           : 0,
+      totalReasoningTokens:
+        typeof session.totalReasoningTokens === 'number'
+          ? session.totalReasoningTokens
+          : 0,
+      apiCallCount:
+        typeof session.apiCallCount === 'number' ? session.apiCallCount : 0,
+      costCurrency: 'CNY',
+      costStatus:
+        session.costStatus === 'reported' || session.costStatus === 'estimated'
+          ? session.costStatus
+          : 'unknown',
+      costSource:
+        typeof session.costSource === 'string' ? session.costSource : undefined,
       modelsUsed: session.modelsUsed.filter(
         (model): model is string => typeof model === 'string'
       ),

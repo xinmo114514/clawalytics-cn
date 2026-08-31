@@ -69,6 +69,9 @@ export function TokenUsageChart({ data }: TokenUsageChartProps) {
   const chartColor = colors.chart2 || 'var(--chart-2)'
   const gridColor = colors.border || 'var(--border)'
   const axisColor = colors.mutedForeground || 'var(--muted-foreground)'
+  const containsAggregateData = data.some(
+    (item) => item.contains_aggregate_data
+  )
 
   return (
     <div
@@ -78,6 +81,14 @@ export function TokenUsageChart({ data }: TokenUsageChartProps) {
         'Token usage trend over the last 30 days'
       )}
     >
+      {containsAggregateData && (
+        <p className='mb-1 text-right text-[11px] text-violet-600 dark:text-violet-300'>
+          {text(
+            '含 Hermes 聚合数据 · 日期按 last_seen 近似归属',
+            'Includes Hermes aggregates · dates use last_seen attribution'
+          )}
+        </p>
+      )}
       <ResponsiveContainer width='100%' height={300}>
         <AreaChart
           data={chartData}

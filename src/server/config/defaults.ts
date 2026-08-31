@@ -302,6 +302,10 @@ export interface Config {
   /** Versioned currency marker used to make legacy migrations unambiguous. */
   schemaVersion?: number
   currency?: 'CNY'
+  dataSources: {
+    openclaw: DataSourceConfig
+    hermes: DataSourceConfig
+  }
   rates: DefaultRates
   alertThresholds: {
     dailyBudget: number
@@ -321,9 +325,29 @@ export interface Config {
   pricingEndpoint: string | null // Custom endpoint for model pricing
 }
 
+export type DataSourceEnvironment = 'local' | 'wsl'
+
+export interface DataSourceConfig {
+  enabled: boolean
+  environment: DataSourceEnvironment
+  path: string
+}
+
 export const DEFAULT_CONFIG: Config = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   currency: 'CNY',
+  dataSources: {
+    openclaw: {
+      enabled: true,
+      environment: 'local',
+      path: '',
+    },
+    hermes: {
+      enabled: false,
+      environment: 'local',
+      path: '',
+    },
+  },
   rates: DEFAULT_RATES,
   alertThresholds: {
     dailyBudget: 70,

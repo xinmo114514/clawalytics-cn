@@ -10,25 +10,36 @@ import {
 import type { ProviderSummary } from '@/lib/api'
 import { useCurrency } from '@/context/currency-provider'
 import { useLocale } from '@/context/locale-provider'
+import { useChartColors } from '@/hooks/use-chart-colors'
 
 interface ProviderDistributionChartProps {
   providers: ProviderSummary[]
 }
-
-const COLORS = [
-  'hsl(var(--chart-1))',
-  'hsl(var(--chart-2))',
-  'hsl(var(--chart-3))',
-  'hsl(var(--chart-4))',
-  'hsl(var(--chart-5))',
-  'hsl(var(--primary))',
-]
 
 export function ProviderDistributionChart({
   providers,
 }: ProviderDistributionChartProps) {
   const { text } = useLocale()
   const { formatCurrencyPrecise } = useCurrency()
+  const colors = useChartColors()
+  const chartColors = useMemo(
+    () => [
+      colors.chart1 || 'var(--chart-1)',
+      colors.chart2 || 'var(--chart-2)',
+      colors.chart3 || 'var(--chart-3)',
+      colors.chart4 || 'var(--chart-4)',
+      colors.chart5 || 'var(--chart-5)',
+      colors.primary || 'var(--primary)',
+    ],
+    [
+      colors.chart1,
+      colors.chart2,
+      colors.chart3,
+      colors.chart4,
+      colors.chart5,
+      colors.primary,
+    ]
+  )
   const totalCost = useMemo(
     () => providers.reduce((acc, provider) => acc + provider.totalCost, 0),
     [providers]
@@ -47,13 +58,13 @@ export function ProviderDistributionChart({
           value: provider.totalCost,
           percentage:
             totalCost > 0 ? (provider.totalCost / totalCost) * 100 : 0,
-          fill: COLORS[idx % COLORS.length],
+          fill: chartColors[idx % chartColors.length],
           modelCount: provider.modelCount,
           requestCount: provider.requestCount,
           inputTokens: provider.totalInputTokens,
           outputTokens: provider.totalOutputTokens,
         })),
-    [providers, totalCost]
+    [providers, totalCost, chartColors]
   )
 
   if (chartData.length === 0) {

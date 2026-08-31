@@ -31,6 +31,8 @@ export interface WslAvailability {
   details?: string
 }
 
+export type DataSourceEnvironment = 'local' | 'wsl'
+
 export interface ResolvedOpenClawPath {
   originalPath: string
   hostPath: string
@@ -332,6 +334,19 @@ export function getWslAvailability(distroName?: string): WslAvailability {
     distributions,
     details: distro.state ? `Distribution state: ${distro.state}` : undefined,
   }
+}
+
+export function resolveDataSourcePath(
+  dataPath: string | null | undefined,
+  environment: 'local' | 'wsl',
+  distro?: string
+): ResolvedOpenClawPath | undefined {
+  return resolveOpenClawDataPath(
+    dataPath,
+    environment === 'wsl'
+      ? { enabled: true, distro, openClawPath: dataPath ?? undefined }
+      : { enabled: false, distro }
+  )
 }
 
 export function resolveOpenClawDataPath(

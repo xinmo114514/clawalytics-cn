@@ -26,6 +26,7 @@ import tokensRoutes from './routes/tokens.js'
 import toolsRoutes from './routes/tools.js'
 import trendsRoutes from './routes/trends.js'
 import {
+  getAnalyticsService,
   initializeAnalyticsService,
   shutdownAnalyticsService,
 } from './services/analytics-service.js'
@@ -87,6 +88,23 @@ app.use('/api', (req, res, next) => {
     return
   }
   next()
+})
+
+app.use('/api', (req, res, next) => {
+  const raw = Array.isArray(req.query.sourceType)
+    ? req.query.sourceType[0]
+    : req.query.sourceType
+  const sourceType = typeof raw === 'string' ? raw : 'all'
+  if (!['all', 'openclaw', 'hermes'].includes(sourceType)) {
+    res.status(400).json({
+      error: 'sourceType must be all, openclaw, or hermes',
+    })
+    return
+  }
+  getAnalyticsService().runWithSourceFilter(
+    sourceType as 'all' | 'openclaw' | 'hermes',
+    () => next()
+  )
 })
 
 // Serve static files in production (before API routes)
@@ -277,7 +295,7 @@ export async function start(
 
     await initPricingService(config.pricingEndpoint, config.rates)
 
-    initializeAnalyticsService(config.openClawPath)
+    initializeAnalyticsService(config)
 
     if (config.securityAlertsEnabled) {
       startSecurityWatcher({

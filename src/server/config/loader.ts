@@ -6,6 +6,9 @@ import { convertUsdToCny } from '../lib/currency.js'
 import {
   DEFAULT_WSL_OPENCLAW_PATH,
   detectDefaultWslOpenClawPath,
+  isWslUncPath,
+  parseWslUncPath,
+  resolveDataSourcePath,
   resolveOpenClawDataPath,
   type WslOpenClawSettings,
 } from '../lib/wsl-openclaw.js'
@@ -13,11 +16,13 @@ import {
   DEFAULT_CONFIG,
   DEFAULT_RATES,
   type Config,
+  type DataSourceEnvironment,
   type DefaultRates,
 } from './defaults.js'
 
 // Re-export types for use in other modules
 export type { Config, DefaultRates, ProviderRates } from './defaults.js'
+export type { DataSourceEnvironment } from './defaults.js'
 
 const CONFIG_DIR = path.join(os.homedir(), '.clawalytics')
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.yaml')
@@ -247,6 +252,95 @@ export function normalizeWslConfig(
   }
 }
 
+function normalizeDataSourceEnvironment(
+  value: unknown,
+  fallback: DataSourceEnvironment
+): DataSourceEnvironment {
+  return value === 'wsl' || value === 'local' ? value : fallback
+}
+
+export function normalizeHermesPath(
+  value: string | null | undefined,
+  environment: DataSourceEnvironment,
+  distro?: string
+): string | undefined {
+  // A \\wsl.localhost\\... or \\wsl$\\... path is already resolved; feeding it
+  // through the Linux resolver would prepend a second WSL UNC prefix.
+  const rawValue = value?.trim()
+  if (rawValue && isWslUncPath(rawValue)) {
+    return rawValue
+  }
+
+  const resolved = resolveDataSourcePath(value, environment, distro)
+  if (!resolved) return undefined
+
+  // The resolver may return a \\wsl$\\... host path. Re-resolving that Windows
+  // path later would treat it as a Linux path and prepend a second WSL prefix.
+  let normalized = isWslUncPath(resolved.hostPath)
+    ? resolved.originalPath || resolved.hostPath
+    : resolved.hostPath
+  try {
+    if (fs.existsSync(normalized) && fs.statSync(normalized).isFile()) {
+      normalized = path.dirname(normalized)
+    }
+  } catch {
+    // Validation reports inaccessible or malformed paths with source context.
+  }
+  return normalized
+}
+
+export function normalizeDataSourcesConfig(
+  sources: Partial<Config['dataSources']> | undefined,
+  legacyOpenClawPath: string | undefined,
+  wsl: Config['wsl'],
+  defaultOpenClawPath = getDefaultOpenClawPath()
+): Config['dataSources'] {
+  const legacyEnvironment: DataSourceEnvironment =
+    wsl.enabled ||
+    Boolean(legacyOpenClawPath && isWslUncPath(legacyOpenClawPath))
+      ? 'wsl'
+      : 'local'
+  const openclawEnvironment = normalizeDataSourceEnvironment(
+    sources?.openclaw?.environment,
+    legacyEnvironment
+  )
+  const openclawRequestedPath =
+    sources?.openclaw?.path || legacyOpenClawPath || defaultOpenClawPath
+  const openclawWsl: WslOpenClawSettings = {
+    ...wsl,
+    enabled: openclawEnvironment === 'wsl',
+    openClawPath: openclawRequestedPath,
+  }
+  const openclawPath = resolveConfiguredOpenClawPath(
+    normalizeOpenClawPath(openclawRequestedPath, openclawWsl),
+    defaultOpenClawPath,
+    openclawWsl
+  )
+
+  const hermesEnvironment = normalizeDataSourceEnvironment(
+    sources?.hermes?.environment,
+    'local'
+  )
+  const hermesRequestedPath = sources?.hermes?.path || ''
+  const hermesPath = hermesRequestedPath
+    ? normalizeHermesPath(hermesRequestedPath, hermesEnvironment, wsl.distro) ||
+      hermesRequestedPath
+    : ''
+
+  return {
+    openclaw: {
+      enabled: sources?.openclaw?.enabled ?? true,
+      environment: openclawEnvironment,
+      path: openclawPath,
+    },
+    hermes: {
+      enabled: sources?.hermes?.enabled ?? false,
+      environment: hermesEnvironment,
+      path: hermesPath,
+    },
+  }
+}
+
 export function getDefaultGatewayLogsPath(): string {
   const platform = os.platform()
 
@@ -436,10 +530,18 @@ export function invalidateConfigCache(): void {
 }
 
 function loadConfigFromDisk(): Config {
+  const defaultWsl = normalizeWslConfig(DEFAULT_CONFIG.wsl)
+  const defaultOpenClawPath = getDefaultOpenClawPath()
   const defaultConfig: Config = {
     ...DEFAULT_CONFIG,
-    wsl: normalizeWslConfig(DEFAULT_CONFIG.wsl),
-    openClawPath: getDefaultOpenClawPath(),
+    wsl: defaultWsl,
+    dataSources: normalizeDataSourcesConfig(
+      undefined,
+      defaultOpenClawPath,
+      defaultWsl,
+      defaultOpenClawPath
+    ),
+    openClawPath: defaultOpenClawPath,
     gatewayLogsPath: getDefaultGatewayLogsPath(),
   }
 
@@ -457,12 +559,22 @@ function loadConfigFromDisk(): Config {
   try {
     const fileContent = fs.readFileSync(CONFIG_FILE, 'utf-8')
     const userConfig = yaml.parse(fileContent) as Partial<Config>
-    const defaultOpenClawPath = getDefaultOpenClawPath()
-    const wslConfig = normalizeWslConfig(userConfig.wsl)
-    const normalizedUserOpenClawPath = normalizeOpenClawPath(
+    let wslConfig = normalizeWslConfig(userConfig.wsl)
+    const dataSources = normalizeDataSourcesConfig(
+      userConfig.dataSources,
       userConfig.openClawPath,
-      wslConfig
+      wslConfig,
+      defaultOpenClawPath
     )
+    const configuredWslPath =
+      parseWslUncPath(dataSources.openclaw.path) ??
+      parseWslUncPath(dataSources.hermes.path)
+    const correctedWslDistro = Boolean(
+      configuredWslPath && configuredWslPath.distro !== wslConfig.distro
+    )
+    if (configuredWslPath) {
+      wslConfig = { ...wslConfig, distro: configuredWslPath.distro }
+    }
     const hasLegacyUsdRates = looksLikeLegacyUsdRates(userConfig.rates)
     // Threshold values such as 10/50/200 are valid user-configured CNY
     // budgets and are not sufficient evidence of a legacy USD file.
@@ -480,8 +592,9 @@ function loadConfigFromDisk(): Config {
     )
 
     const config: Config = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       currency: 'CNY',
+      dataSources,
       rates: mergedRates,
       alertThresholds: {
         ...defaultConfig.alertThresholds,
@@ -490,14 +603,14 @@ function loadConfigFromDisk(): Config {
           : userConfig.alertThresholds),
       },
       // OpenClaw settings
-      openClawPath: resolveConfiguredOpenClawPath(
-        normalizedUserOpenClawPath,
-        defaultOpenClawPath,
-        wslConfig
-      ),
+      openClawPath: dataSources.openclaw.path,
       gatewayLogsPath:
         userConfig.gatewayLogsPath || defaultConfig.gatewayLogsPath,
-      wsl: wslConfig,
+      wsl: {
+        ...wslConfig,
+        enabled: dataSources.openclaw.environment === 'wsl',
+        openClawPath: dataSources.openclaw.path,
+      },
       securityAlertsEnabled:
         userConfig.securityAlertsEnabled ?? defaultConfig.securityAlertsEnabled,
       // Pricing
@@ -505,7 +618,12 @@ function loadConfigFromDisk(): Config {
         userConfig.pricingEndpoint ?? defaultConfig.pricingEndpoint,
     }
 
-    if (shouldConvertLegacyCurrency) {
+    if (
+      shouldConvertLegacyCurrency ||
+      userConfig.schemaVersion !== 3 ||
+      !userConfig.dataSources ||
+      correctedWslDistro
+    ) {
       try {
         saveConfig(config)
       } catch (saveError) {

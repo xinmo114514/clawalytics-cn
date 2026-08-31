@@ -81,9 +81,7 @@ void runBackendChild().catch((error) => {
   const parentPort = getParentPort()
   if (parentPort) {
     const reason =
-      error instanceof Error
-        ? `${error.name}: ${error.message}`
-        : String(error)
+      error instanceof Error ? `${error.name}: ${error.message}` : String(error)
     const stack = error instanceof Error ? error.stack : undefined
     try {
       parentPort.postMessage({ type: 'startError', reason, stack })

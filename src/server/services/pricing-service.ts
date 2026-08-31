@@ -296,6 +296,17 @@ export function getModelPricing(
     return memoryCache.models[model]
   }
 
+  // Tools disagree on model-name casing (for example Hermes stores
+  // `minimax-m3` while the catalog lists `MiniMax-M3`). Match exact names
+  // case-insensitively before prefix matching so a real catalog entry is
+  // never reported as unpriced.
+  const modelLowerName = model.toLowerCase()
+  for (const key of Object.keys(memoryCache.models)) {
+    if ((key.toLowerCase().split('/').pop() ?? '') === modelLowerName) {
+      return memoryCache.models[key]
+    }
+  }
+
   // Try safe prefix matching for model variants. The previous bidirectional
   // `includes` fallback could map `gpt-4o` to a `gpt-4` price simply because
   // the shorter name appeared first in the catalog.

@@ -18,6 +18,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import WebSocket from 'ws';
+import {
+  NOTIFICATION_SOURCES,
+  buildNotification,
+  createEmptyStats,
+  normalizeStats,
+} from './notification-stats.mjs';
 
 const isMac = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
@@ -215,78 +221,6 @@ function getIcon() {
 
 function formatInteger(value) {
   return integerFormatter.format(Math.round(value));
-}
-
-function normalizeStats(stats) {
-  const totalTokens = stats?.totalTokens ?? {};
-
-  return {
-    totalCost: Number(stats?.totalCost ?? 0),
-    monthCost: Number(stats?.monthCost ?? 0),
-    totalTokens: {
-      input: Number(totalTokens.input ?? 0),
-      output: Number(totalTokens.output ?? 0),
-      cacheRead: Number(totalTokens.cacheRead ?? 0),
-      cacheCreation: Number(totalTokens.cacheCreation ?? 0),
-    },
-    cacheSavings: Number(stats?.cacheSavings ?? 0),
-    activeSessionsThisMonth: Number(stats?.activeSessionsThisMonth ?? 0),
-  };
-}
-
-function getTotalTokens(stats) {
-  return (
-    stats.totalTokens.input
-    + stats.totalTokens.output
-    + stats.totalTokens.cacheRead
-    + stats.totalTokens.cacheCreation
-  );
-}
-
-function diffStats(previous, current) {
-  return {
-    totalCost: Math.max(0, current.totalCost - previous.totalCost),
-    totalTokens: {
-      input: Math.max(0, current.totalTokens.input - previous.totalTokens.input),
-      output: Math.max(0, current.totalTokens.output - previous.totalTokens.output),
-      cacheRead: Math.max(0, current.totalTokens.cacheRead - previous.totalTokens.cacheRead),
-      cacheCreation: Math.max(0, current.totalTokens.cacheCreation - previous.totalTokens.cacheCreation),
-    },
-  };
-}
-
-function hasMeaningfulCostDelta(delta) {
-  return delta.totalCost > 0.000001 || getTotalTokens(delta) > 0;
-}
-
-function hasCostDelta(delta) {
-  return delta.totalCost > 0.000001;
-}
-
-function hasTokenDelta(delta) {
-  return getTotalTokens(delta) > 0;
-}
-
-function shouldShowCostsNotification(delta) {
-  if (!getSavedNotificationsEnabled()) {
-    return false;
-  }
-
-  const notificationTrigger = getSavedNotificationTrigger();
-  const costChanged = hasCostDelta(delta);
-  const tokensChanged = hasTokenDelta(delta);
-
-  switch (notificationTrigger) {
-    case NOTIFICATION_TRIGGER_COST:
-      return costChanged;
-    case NOTIFICATION_TRIGGER_TOKENS:
-      return tokensChanged;
-    case NOTIFICATION_TRIGGER_BOTH:
-      return costChanged && tokensChanged;
-    case NOTIFICATION_TRIGGER_ACTIVITY:
-    default:
-      return costChanged || tokensChanged;
-  }
 }
 
 function normalizeLocale(value) {
@@ -1129,8 +1063,10 @@ function handleMainWindowClose() {
   requestDesktopCloseChoice();
 }
 
-async function fetchEnhancedStats(port) {
-  const response = await fetch(`http://127.0.0.1:${port}/api/stats/enhanced`);
+async function fetchEnhancedStats(port, sourceType) {
+  const response = await fetch(
+    `http://127.0.0.1:${port}/api/stats/enhanced?sourceType=${sourceType}`
+  );
 
   if (!response.ok) {
     throw new Error(`Failed to fetch enhanced stats: ${response.status}`);
@@ -1139,47 +1075,47 @@ async function fetchEnhancedStats(port) {
   return normalizeStats(await response.json());
 }
 
+function replaceSourceSnapshots(target, source) {
+  for (const sourceType of NOTIFICATION_SOURCES) {
+    target[sourceType] = source[sourceType] ?? createEmptyStats();
+  }
+}
+
 function showCostsNotification(currentStats) {
   if (!lastNotifiedStatsSnapshot) {
-    lastNotifiedStatsSnapshot = currentStats;
+    lastNotifiedStatsSnapshot = { ...currentStats };
     return false;
   }
 
-  const delta = diffStats(lastNotifiedStatsSnapshot, currentStats);
+  const result = buildNotification({
+    previousSnapshots: lastNotifiedStatsSnapshot,
+    currentSnapshots: currentStats,
+    trigger: getSavedNotificationTrigger(),
+    enabled: getSavedNotificationsEnabled(),
+    translate: translateDesktop,
+    formatCurrency,
+    formatInteger,
+  });
 
-  if (!hasMeaningfulCostDelta(delta) || !shouldShowCostsNotification(delta)) {
+  // A source reload/reset must establish a new baseline immediately. Other
+  // sources can still contribute a valid notification in the same refresh.
+  for (const source of result.resetSources) {
+    lastNotifiedStatsSnapshot[source] = currentStats[source];
+  }
+
+  if (!result.notification) {
+    if (result.resetSources.length > 0 || !result.sourceKeys.length) {
+      replaceSourceSnapshots(lastNotifiedStatsSnapshot, currentStats);
+    }
     return false;
-  }
-
-  const messageParts = [];
-  const totalDeltaTokens = getTotalTokens(delta);
-
-  if (totalDeltaTokens > 0) {
-    messageParts.push(
-      translateDesktop(
-        `新增 ${formatInteger(totalDeltaTokens)} 词元`,
-        `Added ${formatInteger(totalDeltaTokens)} tokens`
-      )
-    );
-  }
-
-  if (delta.totalCost > 0) {
-    messageParts.push(
-      translateDesktop(
-        `成本 +${formatCurrency(delta.totalCost)}`,
-        `Cost +${formatCurrency(delta.totalCost)}`
-      )
-    );
   }
 
   showNativeNotification({
-    title: translateDesktop('OpenClaw 用量已更新', 'OpenClaw usage updated'),
-    body: `${messageParts.join(
-      translateDesktop('，', ', ')
-    )}\n${translateDesktop('累计成本', 'Total cost')} ${formatCurrency(currentStats.totalCost)}`,
+    title: result.notification.title,
+    body: result.notification.body,
   });
 
-  lastNotifiedStatsSnapshot = currentStats;
+  lastNotifiedStatsSnapshot = { ...currentStats };
   return true;
 }
 
@@ -1194,18 +1130,6 @@ function clearPendingCostsNotification() {
 
 function flushPendingCostsNotification() {
   if (!latestStatsSnapshot || !lastNotifiedStatsSnapshot) {
-    return;
-  }
-
-  const delta = diffStats(lastNotifiedStatsSnapshot, latestStatsSnapshot);
-
-  if (!hasMeaningfulCostDelta(delta)) {
-    lastNotifiedStatsSnapshot = latestStatsSnapshot;
-    return;
-  }
-
-  if (!shouldShowCostsNotification(delta)) {
-    lastNotifiedStatsSnapshot = latestStatsSnapshot;
     return;
   }
 
@@ -1240,30 +1164,41 @@ async function refreshDesktopCostStats() {
   try {
     do {
       hasQueuedCostRefresh = false;
-      const stats = await fetchEnhancedStats(backendPort);
+      const sourceStats = Object.fromEntries(
+        await Promise.all(
+          NOTIFICATION_SOURCES.map(async (source) => [
+            source,
+            await fetchEnhancedStats(backendPort, source),
+          ])
+        )
+      );
 
-      latestStatsSnapshot = stats;
+      latestStatsSnapshot = sourceStats;
 
       if (!lastNotifiedStatsSnapshot) {
-        lastNotifiedStatsSnapshot = stats;
-        continue;
-      }
-
-      const delta = diffStats(lastNotifiedStatsSnapshot, stats);
-
-      if (!hasMeaningfulCostDelta(delta)) {
+        lastNotifiedStatsSnapshot = { ...sourceStats };
         continue;
       }
 
       if (!getSavedNotificationsEnabled()) {
         clearPendingCostsNotification();
-        lastNotifiedStatsSnapshot = stats;
+        lastNotifiedStatsSnapshot = { ...sourceStats };
         continue;
       }
 
-      if (!shouldShowCostsNotification(delta)) {
+      const result = buildNotification({
+        previousSnapshots: lastNotifiedStatsSnapshot,
+        currentSnapshots: sourceStats,
+        trigger: getSavedNotificationTrigger(),
+        enabled: true,
+        translate: translateDesktop,
+        formatCurrency,
+        formatInteger,
+      });
+
+      if (!result.notification) {
         clearPendingCostsNotification();
-        lastNotifiedStatsSnapshot = stats;
+        replaceSourceSnapshots(lastNotifiedStatsSnapshot, sourceStats);
         continue;
       }
 

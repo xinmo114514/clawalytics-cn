@@ -274,9 +274,7 @@ const AuditRow = memo(function AuditRow({
           <span className='text-sm'>
             {formatDate(
               entry.timestamp,
-              locale === 'zh'
-                ? 'yyyy/MM/dd HH:mm:ss'
-                : 'MM/dd/yyyy HH:mm:ss',
+              locale === 'zh' ? 'yyyy/MM/dd HH:mm:ss' : 'MM/dd/yyyy HH:mm:ss',
               locale
             )}
           </span>

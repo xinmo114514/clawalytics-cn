@@ -1,5 +1,8 @@
 import axios from 'axios'
+import { getGlobalAnalyticsSource } from '@/context/analytics-source-provider'
 import type {
+  AnalyticsCostStatus,
+  AnalyticsSourceType,
   AnalyticsStatusResponse,
   EnhancedStats,
   TokenBreakdown,
@@ -20,6 +23,12 @@ const api = axios.create({
   baseURL: '/api',
 })
 
+api.interceptors.request.use((request) => {
+  const sourceType = getGlobalAnalyticsSource()
+  request.params = { ...(request.params ?? {}), sourceType }
+  return request
+})
+
 // Types
 export interface Stats {
   todaySpend: number
@@ -34,12 +43,20 @@ export interface Stats {
 
 export interface Session {
   id: string
+  raw_session_id?: string
+  source_type?: AnalyticsSourceType
+  usage_granularity?: 'request' | 'aggregate'
   project_path: string
   started_at: string
   last_activity: string
   total_input_tokens: number
   total_output_tokens: number
   total_cost: number
+  reasoning_tokens?: number
+  api_call_count?: number
+  cost_currency?: 'CNY'
+  cost_status?: AnalyticsCostStatus
+  cost_source?: string
   models_used: string[]
 }
 
@@ -61,6 +78,7 @@ export interface DailyCost {
   cache_savings: number
   session_count: number
   request_count: number
+  contains_aggregate_data?: boolean
 }
 
 /**
@@ -82,6 +100,10 @@ export interface ModelUsage {
 export interface Config {
   schemaVersion?: number
   currency?: 'CNY'
+  dataSources: {
+    openclaw: DataSourceConfig
+    hermes: DataSourceConfig
+  }
   logPath: string
   rates: Record<string, Record<string, { input: number; output: number }>>
   alertThresholds: {
@@ -100,6 +122,12 @@ export interface Config {
   }
   securityAlertsEnabled?: boolean
   pricingEndpoint?: string | null
+}
+
+export interface DataSourceConfig {
+  enabled: boolean
+  environment: 'local' | 'wsl'
+  path: string
 }
 
 export interface OpenClawReloadResult {
@@ -215,6 +243,13 @@ export interface SessionRequest {
   cache_creation_tokens: number
   cache_read_tokens: number
   cost: number
+  source_type?: AnalyticsSourceType
+  reasoning_tokens?: number
+  api_call_count?: number
+  usage_granularity?: 'request' | 'aggregate'
+  cost_currency?: 'CNY'
+  cost_status?: AnalyticsCostStatus
+  cost_source?: string
   message_type?: string
 }
 
@@ -260,13 +295,13 @@ export async function getSessionRequests(
   sessionId: string
 ): Promise<SessionRequest[]> {
   const { data } = await api.get<SessionRequest[]>(
-    `/sessions/${sessionId}/requests`
+    `/sessions/${encodeURIComponent(sessionId)}/requests`
   )
   return data
 }
 
 export async function getSession(id: string): Promise<Session> {
-  const { data } = await api.get<Session>(`/sessions/${id}`)
+  const { data } = await api.get<Session>(`/sessions/${encodeURIComponent(id)}`)
   return data
 }
 
@@ -281,7 +316,8 @@ export async function getDailyCosts(days = 30): Promise<DailyCost[]> {
  * Shared query key so the dashboard overview and the Models tab dedupe into a
  * single request/cache entry instead of fetching the same payload twice.
  */
-export const modelUsageQueryKey = (days = 30) => ['modelUsage', days] as const
+export const modelUsageQueryKey = (days = 30) =>
+  ['modelUsage', getGlobalAnalyticsSource(), days] as const
 
 export async function getModelUsage(days = 30): Promise<ModelUsage[]> {
   const { data } = await api.get<ModelUsage[]>('/models/with-cache', {
@@ -301,10 +337,38 @@ export async function updateConfig(config: Partial<Config>): Promise<Config> {
 }
 
 export async function reloadOpenClawData(
-  config: Partial<Pick<Config, 'openClawPath' | 'gatewayLogsPath' | 'wsl'>> = {}
+  config: Partial<
+    Pick<Config, 'openClawPath' | 'gatewayLogsPath' | 'wsl' | 'dataSources'>
+  > = {}
 ): Promise<OpenClawReloadResult> {
   const { data } = await api.post<OpenClawReloadResult>(
     '/config/openclaw/reload',
+    config
+  )
+  return data
+}
+
+export interface HermesReloadResult {
+  success: boolean
+  sessionCount: number
+  hermesPath: string
+  message: string
+  details?: {
+    dataSource?: 'local' | 'wsl'
+    source?: string
+    distro?: string
+    linuxPath?: string
+    sessionCount?: number
+    usageRecordCount?: number
+    warnings?: string[]
+  }
+}
+
+export async function reloadHermesData(
+  config: Partial<Pick<Config, 'dataSources' | 'wsl'>>
+): Promise<HermesReloadResult> {
+  const { data } = await api.post<HermesReloadResult>(
+    '/config/hermes/reload',
     config
   )
   return data

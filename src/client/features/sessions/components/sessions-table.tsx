@@ -10,6 +10,7 @@ import {
 import type { EnhancedSession } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
 import { formatDurationCompact, formatRelativeTime } from '@/lib/i18n'
+import { cn } from '@/lib/utils'
 import { useCurrency } from '@/context/currency-provider'
 import { useLocale, type AppLocale } from '@/context/locale-provider'
 import { Badge } from '@/components/ui/badge'
@@ -276,6 +277,16 @@ const SessionTableRow = memo(function SessionTableRow({
                 {formatProjectPath(session.project_path, unknownProjectLabel)}
               </div>
               <div className='mt-0.5 flex flex-wrap gap-1'>
+                <Badge
+                  variant='secondary'
+                  className={cn(
+                    'px-1 py-0 text-[10px]',
+                    session.source_type === 'hermes' &&
+                      'bg-violet-500/10 text-violet-700 dark:text-violet-300'
+                  )}
+                >
+                  {session.source_type === 'hermes' ? 'Hermes' : 'OpenClaw'}
+                </Badge>
                 {modelsUsed.slice(0, 2).map((model) => (
                   <Badge
                     key={model}

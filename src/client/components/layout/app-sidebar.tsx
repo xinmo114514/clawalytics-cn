@@ -7,6 +7,7 @@ import {
   SidebarHeader,
   SidebarRail,
 } from '@/components/ui/sidebar'
+import { AnalyticsSourceSwitcher } from './analytics-source-switcher'
 // import { AppTitle } from './app-title'
 import { getSidebarData } from './data/sidebar-data'
 import { NavGroup } from './nav-group'
@@ -20,6 +21,7 @@ export function AppSidebar() {
     <Sidebar collapsible={collapsible} variant={variant}>
       <SidebarHeader>
         <TeamSwitcher teams={sidebarData.teams} />
+        <AnalyticsSourceSwitcher />
 
         {/* Replace <TeamSwitch /> with the following <AppTitle />
          /* if you want to use the normal app title instead of TeamSwitch dropdown */}

@@ -11,6 +11,17 @@ Clawalytics 把原本分散在日志、会话记录和网关事件里的信息�
 - 最近有哪些会话、设备、配对请求和安全告警
 - 当前预算有没有接近阈值
 
+## 当前版本：v0.7.5
+
+v0.7.5 重点增强了数据接入和分析稳定性：新增 Hermes 分析数据源、数据源切换和实时管线诊断，改进分析数据采集、会话缓存、仪表盘可靠性与 WebSocket 更新，同时补充桌面通知统计、Windows/WSL 支持和多项回归测试。
+
+当前发布提供 Windows x64 NSIS 安装版，推荐直接下载安装：
+
+- [下载 Clawalytics v0.7.5 Windows 安装包](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.5/Clawalytics-0.7.5-win-x64-setup.exe)
+- [查看 v0.7.5 Release](https://github.com/xinmo114514/clawalytics-cn/releases/tag/v0.7.5)
+
+本次发布仅上传 Windows 安装包及其更新元数据，不提供 portable 构建。
+
 ## 0.7.0 本次更新
 
 这一版重点补齐 Windows 桌面端和 OpenClaw 数据接入体验：
@@ -27,7 +38,7 @@ Clawalytics 把原本分散在日志、会话记录和网关事件里的信息�
 这个仓库基于 [clawalytics/clawalytics](https://github.com/clawalytics/clawalytics)，保留了原版的成本分析、会话历史、Agent 分析、渠道分析和安全监控能力，同时额外补上了更适合中文用户和 Windows 用户的增强：
 
 - 完整中文本地化：内置 `中文 / English` 切换，导航、页面文案、设置项、错误页以及部分时间展示都做了双语支持
-- Windows 桌面版：新增 Electron 桌面应用，可直接打包和分发 `setup.exe` 与 `portable.exe`
+- Windows 桌面版：新增 Electron 桌面应用，提供可直接安装的 `setup.exe`
 - 托盘常驻体验：支持最小化到托盘、关闭时询问、记住关闭动作、托盘菜单重新打开和真正退出
 - 开机自启与启动方式：可配置登录 Windows 后自动启动，并选择启动后直接显示主窗口或静默驻留托盘
 - OpenClaw WSL2 支持：可选择 Windows 或 WSL2 数据源，支持 Linux 路径填写和 `\\wsl.localhost\...` 读取路径预览
@@ -77,9 +88,6 @@ Clawalytics 把原本分散在日志、会话记录和网关事件里的信息�
 - `Clawalytics-<version>-win-x64-setup.exe`
   - 推荐普通用户使用
   - 安装后会自动创建开始菜单和桌面快捷方式
-- `Clawalytics-<version>-win-x64-portable.exe`
-  - 适合免安装、临时使用或放到 U 盘中运行
-  - 不会走完整安装流程
 - 第一次打开应用后，建议先在右上角设置里确认:
   - OpenClaw 数据运行在 Windows 还是 WSL2
   - OpenClaw 数据目录或 WSL2 Linux 路径

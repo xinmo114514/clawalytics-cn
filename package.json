@@ -41,7 +41,7 @@
     "preview": "vite preview",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
-    "test:server-binding": "node --import tsx scripts/test-server-binding.mjs"
+    "test:server-binding": "node scripts/ensure-native-deps.mjs && node --import tsx scripts/test-server-binding.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",

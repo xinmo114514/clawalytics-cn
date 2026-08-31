@@ -186,8 +186,11 @@ function resolvePort(port?: number): number {
 }
 
 function listen(port: number): Promise<Server> {
+  // Pin to the IPv4 loopback interface so the unauthenticated API never
+  // escapes the local machine. The CLI/docs keep using the friendly
+  // `localhost` URL — only the bind target is restricted here.
   return new Promise((resolve, reject) => {
-    const server = app.listen(port, () => resolve(server))
+    const server = app.listen(port, '127.0.0.1', () => resolve(server))
     server.once('error', reject)
   })
 }

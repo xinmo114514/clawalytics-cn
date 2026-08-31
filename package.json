@@ -1,6 +1,6 @@
 {
   "name": "clawalytics",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "Cost-tracking analytics dashboard for OpenClaw - track AI spending across 100+ models, monitor agents, analyze channels, and manage security",
   "author": "David Novotny",
   "license": "MIT",
@@ -40,7 +40,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "format:check": "prettier --check .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test:server-binding": "node --import tsx scripts/test-server-binding.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",

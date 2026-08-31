@@ -11,17 +11,26 @@ Clawalytics 把原本分散在日志、会话记录和网关事件里的信息�
 - 最近有哪些会话、设备、配对请求和安全告警
 - 当前预算有没有接近阈值
 
-## 当前版本：v0.7.6
+## 当前版本：v0.7.7
 
-v0.7.6 修复了模型使用 Treemap 在窄区域中的文字越界、内容缺失和圆角不一致问题，同时保留完整的模型详情悬停提示。
+v0.7.7 把后端 HTTP 服务固定绑定到 IPv4 回环接口（`127.0.0.1`），避免无认证的分析与配置 API 在局域网内可访问；命令行内部的回环请求也统一改用 `127.0.0.1`，并新增 `pnpm test:server-binding` 在每次发布前自动验证绑定地址、健康接口与外部访问拒绝行为。
 
 当前发布提供 Windows x64 NSIS 安装版，推荐直接下载安装：
 
-- [下载 Clawalytics v0.7.6 Windows 安装包](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.6/Clawalytics-0.7.6-win-x64-setup.exe)
-- [下载 Clawalytics v0.7.6 Portable 版](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.6/Clawalytics-0.7.6-win-x64-portable.exe)
-- [查看 v0.7.6 Release](https://github.com/xinmo114514/clawalytics-cn/releases/tag/v0.7.6)
+- [下载 Clawalytics v0.7.7 Windows 安装包](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.7/Clawalytics-0.7.7-win-x64-setup.exe)
+- [下载 Clawalytics v0.7.7 Portable 版](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.7/Clawalytics-0.7.7-win-x64-portable.exe)
+- [查看 v0.7.7 Release](https://github.com/xinmo114514/clawalytics-cn/releases/tag/v0.7.7)
 
 本次发布提供 Windows x64 安装包和 portable 构建。
+
+## 0.7.7 本次更新
+
+这一版重点修复本机后端服务在局域网可被访问的风险，并补齐相关回归测试：
+
+- 后端 HTTP 服务固定绑定到 IPv4 回环接口（`127.0.0.1`），避免无认证的分析与配置 API 在局域网内被访问。
+- CLI 内部的回环请求统一改用 `127.0.0.1`，避免依赖系统的 `localhost` 解析，保证与回环绑定一致。
+- 新增 `pnpm test:server-binding`：在每次发布前自动验证监听地址、健康接口响应，以及对外部接口的连接拒绝。
+- 其它可用性修复：仪表盘模型用量 Treemap 在窄区域内的文字越界、圆角不一致等问题（沿用 v0.7.6 已修复内容）。
 
 ## 0.7.0 本次更新
 

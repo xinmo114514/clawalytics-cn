@@ -1,3 +1,13 @@
+## v0.7.7 (2026-08-31)
+
+### Security
+
+- bind the backend HTTP server to the IPv4 loopback interface (`127.0.0.1`) so the unauthenticated analytics and configuration API is no longer reachable on the LAN
+- point internal CLI fetches at `127.0.0.1` to avoid relying on the system `localhost` resolver and to keep working when only the loopback interface is bound
+
+### Test
+
+- add `scripts/test-server-binding.mjs` and `pnpm test:server-binding` to assert the bound interface, `/api/health` response, and refusal of non-loopback traffic
 ## v0.7.6 (2026-08-31)
 
 ### Fix

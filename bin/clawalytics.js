@@ -15,6 +15,7 @@ const CONFIG_DIR = path.join(os.homedir(), '.clawalytics');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.yaml');
 const LOG_FILE = path.join(CONFIG_DIR, 'clawalytics.log');
 const DEFAULT_PORT = '9174';
+const LOOPBACK_HOST = '127.0.0.1';
 const MIN_PORT = 1;
 const MAX_PORT = 65535;
 const UPDATE_CHECK_FILE = path.join(CONFIG_DIR, 'update-check.json');
@@ -231,7 +232,7 @@ function printTunnelInfo(port) {
 
 async function fetchStats(port) {
   try {
-    const response = await fetch(`http://localhost:${port}/api/stats`);
+    const response = await fetch(`http://${LOOPBACK_HOST}:${port}/api/stats`);
     if (!response.ok) return null;
     return await response.json();
   } catch { return null; }
@@ -239,7 +240,7 @@ async function fetchStats(port) {
 
 async function fetchEnhanced(port) {
   try {
-    const response = await fetch(`http://localhost:${port}/api/stats/enhanced`);
+    const response = await fetch(`http://${LOOPBACK_HOST}:${port}/api/stats/enhanced`);
     if (!response.ok) return null;
     return await response.json();
   } catch { return null; }
@@ -247,7 +248,7 @@ async function fetchEnhanced(port) {
 
 async function fetchBudget(port) {
   try {
-    const response = await fetch(`http://localhost:${port}/api/stats/budget`);
+    const response = await fetch(`http://${LOOPBACK_HOST}:${port}/api/stats/budget`);
     if (!response.ok) return null;
     return await response.json();
   } catch { return null; }
@@ -806,7 +807,7 @@ program
 
     // Try to notify running server
     try {
-      await fetch(`http://localhost:${DEFAULT_PORT}/api/config`, {
+      await fetch(`http://${LOOPBACK_HOST}:${DEFAULT_PORT}/api/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ alertThresholds: thresholds }),

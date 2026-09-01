@@ -139,6 +139,38 @@ try {
   assert.equal(validation.parsedUsageEntries, 3)
   assert.equal(validation.sampledLines, 2)
 
+
+  // parseModelIdentifier must agree with the canonical identifyProvider on
+  // every model that ships with a default rate. The previous implementation
+  // combined Mistral into the "meta" check (returning "meta" for
+  // mistral-large) and ignored MiniMax / MiMo / Moonshot k2p5 entirely.
+  const { parseModelIdentifier } = await import(
+    '../src/server/parser/openclaw/gateway-parser.ts'
+  )
+  const expectations = {
+    'minimax-m3': 'minimax',
+    'mimo-v2.5': 'xiaomi',
+    k2p5: 'moonshot',
+    'mistral-large': 'mistral',
+    'llama-3': 'meta',
+    'claude-opus-4': 'anthropic',
+    'gpt-4o': 'openai',
+    'gemini-1.5-pro': 'google',
+  }
+  for (const [model, expected] of Object.entries(expectations)) {
+    const result = parseModelIdentifier(model)
+    assert.equal(
+      result.provider,
+      expected,
+      `${model} must parse to provider ${expected}, got ${result.provider}`
+    )
+    assert.equal(result.model, model)
+  }
+  // Explicit provider prefix wins over inference.
+  assert.deepEqual(parseModelIdentifier('customprov/custom-model'), {
+    provider: 'customprov',
+    model: 'custom-model',
+  })
   console.log('OpenClaw data pipeline checks passed')
 } finally {
   fs.rmSync(root, { recursive: true, force: true })

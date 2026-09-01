@@ -12,7 +12,7 @@ import chokidar, { type FSWatcher } from 'chokidar'
 
 import fs from 'fs'
 import { convertUsdToCny } from '../../lib/currency.js'
-import { calculateCost } from '../costs.js'
+import { calculateCost, identifyProvider } from '../costs.js'
 
 // ============================================
 // Interfaces
@@ -273,51 +273,12 @@ export function parseModelIdentifier(modelId: string): {
 }
 
 /**
- * Infer provider from model name when not explicitly provided
+ * Infer provider from model name when not explicitly provided. Delegates to
+ * the canonical identifier in costs.ts so every model name is bucketed the
+ * same way regardless of which parser first saw it.
  */
 function inferProvider(model: string): string {
-  const modelLower = model.toLowerCase()
-
-  if (modelLower.includes('claude') || modelLower.includes('anthropic')) {
-    return 'anthropic'
-  }
-  if (
-    modelLower.includes('gpt') ||
-    modelLower.includes('o1') ||
-    modelLower.includes('davinci')
-  ) {
-    return 'openai'
-  }
-  if (modelLower.includes('gemini')) {
-    return 'google'
-  }
-  if (modelLower.includes('moonshot') || modelLower.includes('kimi')) {
-    return 'moonshot'
-  }
-  if (modelLower.includes('deepseek')) {
-    return 'deepseek'
-  }
-  if (modelLower.includes('hunyuan') || modelLower.includes('腾讯混元')) {
-    return 'tencent'
-  }
-  if (modelLower.includes('qwen')) {
-    return 'qwen'
-  }
-  if (modelLower.includes('doubao')) {
-    return 'doubao'
-  }
-  if (
-    modelLower.includes('glm') ||
-    modelLower.includes('chatglm') ||
-    modelLower.includes('bigmodel')
-  ) {
-    return 'zhipu'
-  }
-  if (modelLower.includes('llama') || modelLower.includes('mistral')) {
-    return 'meta'
-  }
-
-  return 'unknown'
+  return identifyProvider(model)
 }
 
 /**

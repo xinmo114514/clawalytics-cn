@@ -488,6 +488,10 @@ class AnalyticsService {
       this.markDirty()
       broadcastAnalyticsStatus()
       broadcastCostsUpdated()
+      // Mirror OpenClaw's publish step: a successful scan may have just
+      // pushed Hermes sessions past a budget threshold or produced a cost
+      // spike, so schedule the same debounced check.
+      this.debouncedBudgetCheck()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (sourceStatus) {
@@ -2366,8 +2370,13 @@ class AnalyticsService {
         // Dynamic imports to avoid circular dependency
         const { checkBudgets } = await import('./budget-checker.js')
         const { detectAnomalies } = await import('./anomaly-detector.js')
-        checkBudgets()
-        detectAnomalies()
+        // Always evaluate the merged data set so budget thresholds and
+        // anomaly detection stay stable regardless of which source the UI is
+        // currently viewing.
+        this.runWithSourceFilter('all', () => {
+          checkBudgets()
+          detectAnomalies()
+        })
       } catch {
         // Budget check failures should not break the app
       }
@@ -2431,11 +2440,25 @@ class AnalyticsService {
     return localDateFromIso(iso)
   }
 
-  private now(): Date {
-    return new Date()
+  private nowProvider: () => Date = () => new Date()
+
+  /** Override the wall clock the service uses for window arithmetic.
+   * Intended for deterministic regression tests that need to exercise
+   * calendar-boundary behavior without freezing the real system clock. */
+  setNow(provider: () => Date): void {
+    this.nowProvider = provider
   }
 
-  private today(): string {
+  /** Restore the default wall clock. */
+  resetNow(): void {
+    this.nowProvider = () => new Date()
+  }
+
+  private now(): Date {
+    return this.nowProvider()
+  }
+
+  today(): string {
     return this.formatLocalDate(this.now())
   }
 
@@ -2460,9 +2483,12 @@ class AnalyticsService {
   }
 
   private lastMonthStr(): string {
-    const d = this.now()
-    d.setMonth(d.getMonth() - 1)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    // Build from the first of the current month minus one to avoid month-end
+    // rollover (Mar 31 minus one month rolls into early March because Feb has
+    // no 31st, which previously caused last-month totals to silently include
+    // the current month on any date between the 29th and the 31st).
+    const anchor = new Date(this.now().getFullYear(), this.now().getMonth() - 1, 1)
+    return `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, '0')}`
   }
 
   // ============================================
@@ -3000,7 +3026,7 @@ class AnalyticsService {
         m.inputTokens += req.inputTokens
         m.outputTokens += req.outputTokens
         m.cost += req.cost
-        m.requestCount++
+        m.requestCount += Math.max(0, req.apiCallCount ?? 1)
       }
     }
 
@@ -3252,18 +3278,28 @@ class AnalyticsService {
 
   getAgents(): Agent[] {
     const agentMap = new Map<string, Agent>()
+    const sourceFilter = this.querySourceContext.getStore()
 
-    for (const [, agent] of this.agents) {
-      agentMap.set(agent.id, {
-        id: agent.id,
-        name: agent.name,
-        workspace: agent.workspace || null,
-        created_at: new Date().toISOString(),
-        total_cost: 0,
-        total_input_tokens: 0,
-        total_output_tokens: 0,
-        session_count: 0,
-      })
+    // this.agents is populated exclusively from OpenClaw's filesystem layout.
+    // When the caller restricts the view to Hermes (or any non-OpenClaw
+    // source), those pre-loaded shells would appear as zero-cost agents and
+    // leak across the source boundary.
+    const includeOpenClawAgents =
+      !sourceFilter || sourceFilter === 'all' || sourceFilter === 'openclaw'
+
+    if (includeOpenClawAgents) {
+      for (const [, agent] of this.agents) {
+        agentMap.set(agent.id, {
+          id: agent.id,
+          name: agent.name,
+          workspace: agent.workspace || null,
+          created_at: new Date().toISOString(),
+          total_cost: 0,
+          total_input_tokens: 0,
+          total_output_tokens: 0,
+          session_count: 0,
+        })
+      }
     }
 
     for (const [, session] of this.sessions) {
@@ -3322,7 +3358,7 @@ class AnalyticsService {
         d.output_tokens += req.outputTokens
         d.cache_read_tokens += req.cacheReadTokens
         d.cache_creation_tokens += req.cacheCreationTokens
-        d.request_count++
+        d.request_count += Math.max(0, req.apiCallCount ?? 1)
       }
     }
 
@@ -3357,7 +3393,7 @@ class AnalyticsService {
         d.output_tokens += req.outputTokens
         d.cache_read_tokens += req.cacheReadTokens
         d.cache_creation_tokens += req.cacheCreationTokens
-        d.request_count++
+        d.request_count += Math.max(0, req.apiCallCount ?? 1)
       }
     }
 

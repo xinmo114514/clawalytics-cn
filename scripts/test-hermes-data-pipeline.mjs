@@ -1,3 +1,4 @@
+import yaml from "yaml"
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import os from "node:os"
@@ -91,7 +92,136 @@ try {
     assert.equal(legacyResult.usageRecordCount, 0)
     assert.equal(legacyResult.sessions.get("hermes:old")?.apiCallCount, 1)
   } finally { fs.rmSync(legacyRoot, { recursive: true, force: true }) }
-  console.log("Hermes data pipeline checks passed")
+
+  // A Hermes aggregate record that represents 5 API calls must be counted as
+  // 5 in every request-count surface. Prior to the fix getModelDailyUsage,
+  // getAgentDailyCosts, and getAllAgentsDailyCosts all incremented the
+  // request counter per parsed record, silently dropping the 4 extra calls
+  // each time an aggregate row covered multiple turns.
+  const aggregateRoot = fs.mkdtempSync(path.join(os.tmpdir(), "clawalytics-aggregate-"))
+  try {
+    const aggregateDb = new Database(path.join(aggregateRoot, "state.db"))
+    createSessionsTable(aggregateDb)
+    aggregateDb.exec("CREATE TABLE session_model_usage (session_id TEXT NOT NULL, model TEXT NOT NULL, billing_provider TEXT NOT NULL DEFAULT '', billing_base_url TEXT NOT NULL DEFAULT '', billing_mode TEXT NOT NULL DEFAULT '', task TEXT NOT NULL DEFAULT '', api_call_count INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0, cache_write_tokens INTEGER NOT NULL DEFAULT 0, reasoning_tokens INTEGER NOT NULL DEFAULT 0, first_seen REAL, last_seen REAL)")
+    aggregateDb.prepare("INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("agg", "cli", "deepseek-v4-flash", 1788000000, null, 1788000100, null, 90, 20, 0, 0, 0, 5)
+    aggregateDb.prepare("INSERT INTO session_model_usage VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("agg", "deepseek-v4-flash", "custom", "", "", "", 5, 90, 20, 0, 0, 0, 1788000001, 1788000090)
+    aggregateDb.close()
+    const aggregateService = initializeAnalyticsService({ ...DEFAULT_CONFIG, dataSources: { openclaw: { enabled: false, environment: "local", path: "" }, hermes: { enabled: true, environment: "local", path: aggregateRoot } }, openClawPath: "" })
+    await aggregateService.refreshNow()
+    const modelDaily = aggregateService.getModelDailyUsage(30)
+    const modelTotal = modelDaily.reduce((sum, entry) => sum + entry.requestCount, 0)
+    assert.equal(modelTotal, 5, "model daily request count must include all 5 calls")
+    const agentDaily = aggregateService.getAgentDailyCosts("hermes", 30)
+    const agentTotal = agentDaily.reduce((sum, entry) => sum + entry.request_count, 0)
+    assert.equal(agentTotal, 5, "agent daily request count must include all 5 calls")
+    const allAgentsDaily = aggregateService.getAllAgentsDailyCosts(30)
+    const allAgentsTotal = allAgentsDaily.reduce((sum, entry) => sum + entry.request_count, 0)
+    assert.equal(allAgentsTotal, 5, "all-agents daily request count must include all 5 calls")
+    await shutdownAnalyticsService()
+    // Explicit 0 must be preserved (zero-call residual records do not become 1).
+    const zeroCallRoot = fs.mkdtempSync(path.join(os.tmpdir(), "clawalytics-zero-call-"))
+    const zeroCallDb = new Database(path.join(zeroCallRoot, "state.db"))
+    createSessionsTable(zeroCallDb)
+    zeroCallDb.exec("CREATE TABLE session_model_usage (session_id TEXT NOT NULL, model TEXT NOT NULL, billing_provider TEXT NOT NULL DEFAULT '', billing_base_url TEXT NOT NULL DEFAULT '', billing_mode TEXT NOT NULL DEFAULT '', task TEXT NOT NULL DEFAULT '', api_call_count INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0, cache_write_tokens INTEGER NOT NULL DEFAULT 0, reasoning_tokens INTEGER NOT NULL DEFAULT 0, first_seen REAL, last_seen REAL)")
+    zeroCallDb.prepare("INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("zero", "cli", "deepseek-v4-flash", 1788000000, null, 1788000100, null, 0, 0, 0, 0, 0, 0)
+    zeroCallDb.prepare("INSERT INTO session_model_usage VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("zero", "deepseek-v4-flash", "custom", "", "", "", 0, 0, 0, 0, 0, 0, 1788000001, 1788000090)
+    zeroCallDb.close()
+    const zeroCallService = initializeAnalyticsService({ ...DEFAULT_CONFIG, dataSources: { openclaw: { enabled: false, environment: "local", path: "" }, hermes: { enabled: true, environment: "local", path: zeroCallRoot } }, openClawPath: "" })
+    await zeroCallService.refreshNow()
+    const zeroModel = zeroCallService.getModelDailyUsage(30).reduce((sum, entry) => sum + entry.requestCount, 0)
+    assert.equal(zeroModel, 0, "explicit zero apiCallCount must stay zero in daily totals")
+    await shutdownAnalyticsService()
+    fs.rmSync(zeroCallRoot, { recursive: true, force: true })
+  } finally { fs.rmSync(aggregateRoot, { recursive: true, force: true }) }
+
+  // Hermes-only agent lists must not surface pre-loaded OpenClaw agent shells
+  // (zero-cost rows). The agent map is hydrated from the OpenClaw filesystem
+  // layout, which has no bearing on the Hermes source - skipping it under the
+  // 'hermes' filter keeps each source's agent inventory self-contained.
+  const isolationRoot = fs.mkdtempSync(path.join(os.tmpdir(), "clawalytics-isolation-"))
+  try {
+    const isolationOpenClaw = path.join(isolationRoot, "openclaw")
+    const isolationOpenClawSessions = path.join(isolationOpenClaw, "agents", "main", "sessions")
+    fs.mkdirSync(isolationOpenClawSessions, { recursive: true })
+    fs.writeFileSync(path.join(isolationOpenClaw, "openclaw.json"), JSON.stringify({ agents: [{ id: "main", name: "Main" }] }))
+    fs.writeFileSync(
+      path.join(isolationOpenClawSessions, "main.jsonl"),
+      JSON.stringify({ type: "message", timestamp: "2026-08-29T00:00:00.000Z", message: { role: "assistant", provider: "deepseek", model: "deepseek-v4-flash", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } } }) + String.fromCharCode(10),
+      "utf8"
+    )
+    const isolationHermesDb = new Database(path.join(isolationRoot, "state.db"))
+    isolationHermesDb.exec("CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT, model TEXT, started_at REAL NOT NULL, ended_at REAL, last_activity_at REAL, cwd TEXT, input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, cache_write_tokens INTEGER DEFAULT 0, reasoning_tokens INTEGER DEFAULT 0, api_call_count INTEGER DEFAULT 0)")
+    isolationHermesDb.exec("CREATE TABLE session_model_usage (session_id TEXT NOT NULL, model TEXT NOT NULL, billing_provider TEXT NOT NULL DEFAULT '', billing_base_url TEXT NOT NULL DEFAULT '', billing_mode TEXT NOT NULL DEFAULT '', task TEXT NOT NULL DEFAULT '', api_call_count INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0, cache_write_tokens INTEGER NOT NULL DEFAULT 0, reasoning_tokens INTEGER NOT NULL DEFAULT 0, first_seen REAL, last_seen REAL)")
+    isolationHermesDb.prepare("INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("h-only", "cli", "mimo-v2.5", 1788000000, null, 1788000100, null, 10, 5, 0, 0, 0, 1)
+    isolationHermesDb.prepare("INSERT INTO session_model_usage VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("h-only", "mimo-v2.5", "custom", "", "", "", 1, 10, 5, 0, 0, 0, 1788000001, 1788000090)
+    isolationHermesDb.close()
+    const isolationService = initializeAnalyticsService({ ...DEFAULT_CONFIG, dataSources: { openclaw: { enabled: true, environment: "local", path: isolationOpenClaw }, hermes: { enabled: true, environment: "local", path: isolationRoot } }, openClawPath: isolationOpenClaw })
+    await isolationService.refreshNow()
+    const openclawAgents = isolationService.runWithSourceFilter("openclaw", () => isolationService.getAgents().map((agent) => agent.id))
+    const hermesAgents = isolationService.runWithSourceFilter("hermes", () => isolationService.getAgents().map((agent) => agent.id))
+    assert.ok(openclawAgents.includes("main"), "openclaw source filter must surface OpenClaw agents")
+    assert.ok(!hermesAgents.includes("main"), "hermes source filter must not leak OpenClaw agents")
+    assert.ok(hermesAgents.includes("hermes"), "hermes source filter must surface the Hermes agent")
+    await shutdownAnalyticsService()
+  } finally { fs.rmSync(isolationRoot, { recursive: true, force: true }) }
+  
+  // A successful Hermes refresh must schedule the same debounced budget +
+  // anomaly checks as the OpenClaw publish step, otherwise alerts lag until
+  // the next OpenClaw event. Install a tiny daily budget, refresh, and
+  // assert that a budget alert lands in the SQLite alerts table after the
+  // 5-second debounce.
+  const triggerRoot = fs.mkdtempSync(path.join(os.tmpdir(), "clawalytics-trigger-"))
+  const triggerDb = new Database(path.join(triggerRoot, "state.db"))
+  createSessionsTable(triggerDb)
+  triggerDb.exec("CREATE TABLE session_model_usage (session_id TEXT NOT NULL, model TEXT NOT NULL, billing_provider TEXT NOT NULL DEFAULT '', billing_base_url TEXT NOT NULL DEFAULT '', billing_mode TEXT NOT NULL DEFAULT '', task TEXT NOT NULL DEFAULT '', api_call_count INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0, cache_write_tokens INTEGER NOT NULL DEFAULT 0, reasoning_tokens INTEGER NOT NULL DEFAULT 0, first_seen REAL, last_seen REAL)")
+  triggerDb.prepare("INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("trigger", "cli", "mimo-v2.5", 1788243830, null, 1788247490, null, 100_000_000, 1, 0, 0, 0, 1)
+  triggerDb.prepare("INSERT INTO session_model_usage VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("trigger", "mimo-v2.5", "custom", "", "", "", 1, 100_000_000, 1, 0, 0, 0, 1788243890, 1788247490)
+  triggerDb.close()
+  const configDir = path.join(os.homedir(), ".clawalytics")
+  fs.mkdirSync(configDir, { recursive: true })
+  const configPath = path.join(configDir, "config.yaml")
+  const configBackup = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : null
+  fs.writeFileSync(
+    configPath,
+    yaml.stringify({
+      schemaVersion: 3,
+      currency: "CNY",
+      dataSources: {
+        openclaw: { enabled: false, environment: "local", path: "" },
+        hermes: { enabled: true, environment: "local", path: triggerRoot },
+      },
+      rates: {},
+      alertThresholds: { dailyBudget: 1, weeklyBudget: 0, monthlyBudget: 0 },
+      openClawPath: "",
+      gatewayLogsPath: "/tmp/openclaw",
+      wsl: { enabled: false, distro: "", openClawPath: "" },
+      securityAlertsEnabled: true,
+      pricingEndpoint: null,
+    }),
+    "utf8"
+  )
+  const triggerService = initializeAnalyticsService({ ...DEFAULT_CONFIG, dataSources: { openclaw: { enabled: false, environment: "local", path: "" }, hermes: { enabled: true, environment: "local", path: triggerRoot } }, openClawPath: "", alertThresholds: { dailyBudget: 1, weeklyBudget: 0, monthlyBudget: 0 } })
+  const { getAlertsByType } = await import(
+    '../src/server/db/queries-security.ts'
+  )
+  const baselineBudgetAlerts = getAlertsByType("budget_daily_exceeded", 500)
+  await triggerService.refreshNow()
+  await new Promise((resolve) => setTimeout(resolve, 6000))
+  const refreshedBudgetAlerts = getAlertsByType("budget_daily_exceeded", 500)
+  const { closeDatabase } = await import('../src/server/db/schema.ts')
+  assert.ok(
+    refreshedBudgetAlerts.length > baselineBudgetAlerts.length,
+    `Hermes refresh must schedule a budget check that emits a new alert (before=${baselineBudgetAlerts.length}, after=${refreshedBudgetAlerts.length})`
+  )
+  await shutdownAnalyticsService()
+  await closeDatabase()
+  fs.rmSync(triggerRoot, { recursive: true, force: true })
+  if (configBackup !== null) {
+    fs.writeFileSync(configPath, configBackup, "utf8")
+  } else {
+    fs.rmSync(configPath, { force: true })
+  }
+    console.log("Hermes data pipeline checks passed")
 } finally { fs.rmSync(root, { recursive: true, force: true }) }
 
 

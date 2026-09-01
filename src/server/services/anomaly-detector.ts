@@ -1,6 +1,7 @@
 import { createAlert } from '../db/queries-security.js'
 import { formatCny } from '../lib/currency.js'
 import { getAnalyticsService } from './analytics-service.js'
+import { formatLocalDate, localWindowStart } from '../analytics/analytics-index.js'
 
 interface AnomalyResult {
   type: string
@@ -22,7 +23,7 @@ const MIN_MODEL_SPIKE_COST = 3.5
 export function detectAnomalies(): AnomalyResult[] {
   const anomalies: AnomalyResult[] = []
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = formatLocalDate(new Date())
 
   // Only run once per day to avoid spam
   if (lastCheckDate === today) return anomalies
@@ -98,35 +99,37 @@ function detectCostSpike(): AnomalyResult | null {
 function detectModelSpikes(): AnomalyResult[] {
   const anomalies: AnomalyResult[] = []
   const svc = getAnalyticsService()
+  const today = svc.today()
+  const windowStart = localWindowStart(new Date(), 7) // last 7 days inclusive
+  const previousStart = localWindowStart(new Date(), 14) // previous 7 days
 
-  // Compare last 7 days vs previous 7 days per model
-  const recent = svc.getModelUsage(7)
-  const previous = svc.getModelUsage(14)
+  const daily = svc.getModelDailyUsage(14)
+  const recentByModel = new Map<string, number>()
+  const previousByModel = new Map<string, number>()
 
-  for (const model of recent) {
-    const key = `${model.provider}/${model.model}`
-    const prev = previous.find(
-      (m) => m.provider === model.provider && m.model === model.model
-    )
+  for (const entry of daily) {
+    if (entry.date > today) continue
+    const key = entry.provider + '/' + entry.model
+    if (entry.date >= windowStart) {
+      recentByModel.set(key, (recentByModel.get(key) ?? 0) + entry.cost)
+    } else if (entry.date >= previousStart) {
+      previousByModel.set(key, (previousByModel.get(key) ?? 0) + entry.cost)
+    }
+  }
 
-    if (!prev || prev.cost <= 0) continue
-
-    // Compare cost (recent is 7-day total, previous is 14-day total)
-    // Normalize previous to 7-day equivalent
-    const prevNormalized = prev.cost / 2
-    if (prevNormalized <= 0) continue
-
-    const ratio = model.cost / prevNormalized
-
-    if (ratio >= 3 && model.cost > MIN_MODEL_SPIKE_COST) {
+  for (const [key, recentCost] of recentByModel) {
+    const previousCost = previousByModel.get(key) ?? 0
+    if (previousCost <= 0) continue
+    const ratio = recentCost / previousCost
+    if (ratio >= 3 && recentCost > MIN_MODEL_SPIKE_COST) {
       anomalies.push({
         type: 'model_spike',
         severity: 'medium',
-        message: `Model cost spike: ${key} cost ${formatCny(model.cost)} this week (${ratio.toFixed(1)}x previous week)`,
+        message: 'Model cost spike: ' + key + ' cost ' + formatCny(recentCost) + ' this week (' + ratio.toFixed(1) + 'x previous week)',
         details: {
           model: key,
-          recentCost: model.cost,
-          previousCost: prevNormalized,
+          recentCost,
+          previousCost,
           ratio,
         },
       })

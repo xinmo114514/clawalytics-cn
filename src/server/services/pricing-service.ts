@@ -396,7 +396,16 @@ export function hasPricing(provider: string, model: string): boolean {
  * Clear the memory cache and reload from config/defaults
  * Call this when custom rates are updated to ensure latest pricing is used
  */
-export function refreshPricingCache(): void {
-  memoryCache = getDefaultPricingData(configuredDefaultRates)
+/**
+ * Replace the in-memory pricing cache with the provided rates.
+ *
+ * Callers must pass the rate table that was loaded from disk after their most
+ * recent change. Using the locally configured rate object (or pulling it from
+ * a stale closure) leaves the cache pinned to whatever rates were in effect at
+ * process start, which is why prior versions of this function silently ignored
+ * post-launch config edits.
+ */
+export function refreshPricingCache(rates: DefaultRates): void {
+  memoryCache = getDefaultPricingData(rates)
   console.log('Pricing cache refreshed from config')
 }

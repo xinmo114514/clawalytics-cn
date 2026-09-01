@@ -1,4 +1,5 @@
 import { loadConfig } from '../config/loader.js'
+import { formatLocalDate } from '../analytics/analytics-index.js'
 import { createAlert } from '../db/queries-security.js'
 import { formatCny } from '../lib/currency.js'
 import { getAnalyticsService } from './analytics-service.js'
@@ -19,7 +20,7 @@ export function checkBudgets(): void {
   const weekCost = svc.getWeekCost()
   const monthCost = svc.getMonthCost()
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = formatLocalDate(new Date())
 
   // Check daily budget
   if (

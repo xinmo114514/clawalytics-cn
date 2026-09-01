@@ -117,7 +117,7 @@ router.post('/', (req: Request, res: Response): void => {
 
     saveConfig(newConfig)
     if (updates.rates || updates.pricingEndpoint !== undefined) {
-      refreshPricingCache()
+      refreshPricingCache(loadConfig().rates)
       getAnalyticsService().invalidateCostCache()
     }
     res.json({
@@ -196,7 +196,7 @@ router.post('/rates/:provider/:model', (req: Request, res: Response): void => {
     }
 
     saveConfig({ ...config, rates })
-    refreshPricingCache()
+    refreshPricingCache(loadConfig().rates)
     getAnalyticsService().invalidateCostCache()
     res.json(rates[provider][model])
   } catch {
@@ -323,7 +323,7 @@ router.put(
       }
 
       saveConfig({ ...config, rates })
-      refreshPricingCache()
+      refreshPricingCache(loadConfig().rates)
       getAnalyticsService().invalidateCostCache()
 
       // Check for significant price change for notification
@@ -379,7 +379,7 @@ router.delete(
       )
       delete rates[provider][model]
       saveConfig({ ...config, rates })
-      refreshPricingCache()
+      refreshPricingCache(loadConfig().rates)
       getAnalyticsService().invalidateCostCache()
 
       res.json({

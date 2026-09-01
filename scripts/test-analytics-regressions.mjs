@@ -353,6 +353,100 @@ try {
   assert.equal(getOutboundCallsBySession('tool-session').length, 1)
   await shutdownAnalyticsService()
 
+
+  // lastMonthStr must not silently include the current month when today is a
+  // 29-31 day-of-month. The legacy implementation subtracted one month from
+  // today and let JS roll forward: Mar 31 - 1 month on a 31st rolled into
+  // Mar 3 because Feb has 28 days, so February requests disappeared from
+  // lastMonth totals. Build a fresh fixture session dated Feb 15 so we own
+  // the date that should land in lastMonth when the clock points at Mar 31.
+  const febSessionDir = path.join(openClawPath, 'agents', 'feb', 'sessions')
+  fs.mkdirSync(febSessionDir, { recursive: true })
+  fs.appendFileSync(
+    path.join(openClawPath, 'openclaw.json'),
+    ',\n{ id: "feb", name: "Feb" }\n',
+    'utf8'
+  )
+  fs.writeFileSync(
+    path.join(febSessionDir, 'feb-session.jsonl'),
+    `${usage('2026-02-15T00:00:00.000Z', 5)}
+`,
+    'utf8'
+  )
+  const clockService = initializeAnalyticsService(openClawPath)
+  await clockService.refreshNow()
+  clockService.setNow(() => new Date(2026, 2, 31, 12, 0, 0))
+  const marSummary = clockService.getCostSummary()
+  assert.ok(
+    marSummary.lastMonth.inputTokens > 0,
+    'Feb 15 fixture must be counted as lastMonth when now is Mar 31'
+  )
+  assert.equal(
+    marSummary.thisMonth.inputTokens,
+    0,
+    'Mar 31 with no Mar requests must leave thisMonth empty'
+  )
+  clockService.resetNow()
+  await shutdownAnalyticsService()
+
+  // Model anomaly detection must use two disjoint 7-day windows so a real cost
+  // spike (previous week 1, recent week 100) actually trips the alert. The
+  // legacy implementation folded both halves of the comparison into the same
+  // 14-day sum, capping the ratio at 2.0 and letting any spike through.
+  const spikeService = initializeAnalyticsService(openClawPath)
+  await spikeService.refreshNow()
+  // Manually seed a session whose only request sits in the recent week with
+  // a high cost; the previous week is empty so the new ratio exceeds 3.
+  const now = new Date()
+  const recentDate = new Date(now)
+  recentDate.setDate(recentDate.getDate() - 1)
+  const recentIso = recentDate.toISOString()
+  const priorDate = new Date(now)
+  priorDate.setDate(priorDate.getDate() - 10)
+  const priorIso = priorDate.toISOString()
+  const fixtureDir = path.join(openClawPath, 'agents', 'main', 'sessions')
+  fs.writeFileSync(
+    path.join(fixtureDir, 'spike-session.jsonl'),
+    [
+      JSON.stringify({
+        type: 'message',
+        timestamp: recentIso,
+        message: {
+          role: 'assistant',
+          provider: 'anthropic',
+          model: 'claude-haiku',
+          usage: { input: 100_000_000, output: 1, cacheRead: 0, cacheWrite: 0 },
+        },
+      }),
+      JSON.stringify({
+        type: 'message',
+        timestamp: priorIso,
+        message: {
+          role: 'assistant',
+          provider: 'anthropic',
+          model: 'claude-haiku',
+          usage: { input: 1_000_000, output: 1, cacheRead: 0, cacheWrite: 0 },
+        },
+      }),
+    ].join(String.fromCharCode(10)) + String.fromCharCode(10),
+    'utf8'
+  )
+  await spikeService.refreshNow()
+  const { detectAnomalies, resetAnomalyState } = await import(
+    '../src/server/services/anomaly-detector.ts'
+  )
+  resetAnomalyState()
+  const spikeResults = detectAnomalies()
+  const spikeAlerts = spikeResults.filter((r) => r.type === 'model_spike')
+  assert.ok(
+    spikeAlerts.length > 0,
+    'model cost spike must be detected when recent week dwarfs prior week'
+  )
+  assert.ok(
+    spikeAlerts.every((a) => (a.details.ratio ?? 0) >= 3),
+    'model spike ratios must reflect disjoint windows, not a 14-day average'
+  )
+  await shutdownAnalyticsService()
   console.log('Analytics regression checks passed')
 } finally {
   closeDatabase()

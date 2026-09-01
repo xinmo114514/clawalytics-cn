@@ -19,11 +19,11 @@ v0.7.7 把后端 HTTP 服务固定绑定到 IPv4 回环接口（`127.0.0.1`）�
 
 当前发布提供 Windows x64 NSIS 安装版，推荐直接下载安装：
 
-- [下载 Clawalytics v0.7.7 Windows 安装包](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.7/Clawalytics-0.7.7-win-x64-setup.exe)
-- [下载 Clawalytics v0.7.7 Portable 版](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.7/Clawalytics-0.7.7-win-x64-portable.exe)
-- [查看 v0.7.7 Release](https://github.com/xinmo114514/clawalytics-cn/releases/tag/v0.7.7)
+- [下载 Clawalytics v0.7.8 Windows 安装包](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.8/Clawalytics-0.7.8-win-x64-setup.exe)
+- [下载 Clawalytics v0.7.8 Portable 版](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.8/Clawalytics-0.7.8-win-x64-portable.exe)
+- [查看 v0.7.8 Release](https://github.com/xinmo114514/clawalytics-cn/releases/tag/v0.7.8)
 
-本次发布提供 Windows x64 安装包和 portable 构建。
+本次发布提供 Windows x64 安装包和 portable 构建，普通用户推荐使用上面的 NSIS 安装包。
 
 ## 0.7.8 本次更新
 

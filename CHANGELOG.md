@@ -1,3 +1,20 @@
+## v0.7.8 (2026-09-01)
+
+### Fix
+
+- pricing cache now uses the rates freshly loaded from disk after each config write, so custom rate updates and built-in rate deletions take effect immediately without restarting the server; deleting a built-in rate restores the default, while a purely custom rate deletion leaves the model unpriced
+- last-month window now anchors on the first day of the current month minus one, so 29-31 day-of-month dates no longer fold February or April into "last month" and silently drop the real previous month from cost summaries
+- Hermes aggregate records that span multiple API calls now contribute every call to model-daily, agent-daily, and all-agents-daily request counts; explicit zero-call residual records stay zero instead of defaulting to one
+- Hermes-only queries no longer leak zero-cost OpenClaw agents that were pre-loaded from the filesystem
+- gateway model identifiers now reuse the canonical provider inference, so MiniMax, MiMo, Moonshot k2p5, Mistral, Llama and other models bucket consistently across the parser and pricing pipeline
+- model anomaly detection now compares two strictly disjoint 7-day windows via per-day model data, so a real cost spike (e.g. previous week 1, recent week 100) finally trips the alert instead of being capped at a 2.0 ratio
+- a successful Hermes refresh now schedules the same debounced budget + anomaly check as the OpenClaw publish step, and both checks always evaluate the merged "all sources" data set so a Hermes spend spike is not held back by the active UI filter
+- budget and anomaly detection deduplication keys now use the local calendar date, so users west of UTC no longer get alerts dated "tomorrow"
+
+### Test
+
+- cover pricing refresh round-trip, lastMonth boundary at Mar 31, Hermes request-count math, agent source isolation, provider inference parity, model-spike disjoint windows, and Hermes refresh triggering budget alerts
+
 ## v0.7.7 (2026-08-31)
 
 ### Security

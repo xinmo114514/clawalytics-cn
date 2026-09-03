@@ -216,6 +216,7 @@ interface AnalyticsMutableState {
   dbSeqCheckpoints: Map<string, number>
   outboundCalls: OutboundCallInput[]
   cacheDirty: boolean
+  openClawWarning?: string
 }
 
 type AnalyticsScanOutcome =
@@ -237,6 +238,7 @@ class AnalyticsService {
     dbSeqCheckpoints: new Map(),
     outboundCalls: [],
     cacheDirty: false,
+    openClawWarning: undefined,
   }
   private readonly scanContext = new AsyncLocalStorage<AnalyticsMutableState>()
   private readonly querySourceContext =
@@ -483,8 +485,11 @@ class AnalyticsService {
       this.analyticsStatus = 'ready'
       this.hasCompletedScan = true
       this.lastScanCompletedAt = new Date().toISOString()
-      this.lastSuccessfulScanAt = this.lastScanCompletedAt
-      this.snapshotState = 'verified'
+      const openClawStale = this.sourceStatuses.openclaw?.status === 'error'
+      if (!openClawStale) {
+        this.lastSuccessfulScanAt = this.lastScanCompletedAt
+      }
+      this.snapshotState = openClawStale ? 'stale' : 'verified'
       this.markDirty()
       broadcastAnalyticsStatus()
       broadcastCostsUpdated()
@@ -846,7 +851,7 @@ class AnalyticsService {
       cacheSavings: result.cacheSavings,
       messageType: result.messageType,
       sourceType: 'openclaw',
-      reasoningTokens: 0,
+      reasoningTokens: result.reasoningTokens,
       apiCallCount: 1,
       usageGranularity: 'request',
       costCurrency: 'CNY',
@@ -883,7 +888,11 @@ class AnalyticsService {
     agentPath: string,
     agent: OpenClawAgent,
     generation: number
-  ): Promise<{ sessionIds: Set<string>; changed: boolean }> {
+  ): Promise<{
+    sessionIds: Set<string>
+    changed: boolean
+    warning?: string
+  }> {
     const databasePath = getOpenClawAgentDatabasePath(agentPath)
     const pricingRevision = this.pricingRevision
     const dbCacheKey = this.getFileCacheKey(databasePath)
@@ -903,14 +912,17 @@ class AnalyticsService {
     try {
       reader = openAgentDatabaseReader(agentPath)
     } catch (error) {
+      const warning = `OpenClaw SQLite database could not be read: ${
+        error instanceof Error ? error.message : String(error)
+      }`
       if (!isProduction) {
-        console.warn(
-          `Unable to read OpenClaw agent database: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        )
+        console.warn(warning)
       }
-      return { sessionIds: collectExistingDbSessionIds(), changed: false }
+      return {
+        sessionIds: collectExistingDbSessionIds(),
+        changed: false,
+        warning,
+      }
     }
 
     if (!reader) {
@@ -1846,6 +1858,7 @@ class AnalyticsService {
       dbSeqCheckpoints: new Map(this.publishedState.dbSeqCheckpoints),
       outboundCalls: [],
       cacheDirty: false,
+      openClawWarning: undefined,
     }
   }
 
@@ -1900,17 +1913,19 @@ class AnalyticsService {
     this.hasCompletedScan = true
     this.lastScanCompletedAt = new Date().toISOString()
     this.lastScanError = undefined
-    this.snapshotState = 'verified'
-    this.lastSuccessfulScanAt = this.lastScanCompletedAt
+    this.snapshotState = scanState.openClawWarning ? 'stale' : 'verified'
+    if (!scanState.openClawWarning) {
+      this.lastSuccessfulScanAt = this.lastScanCompletedAt
+    }
     const openClawStatus = this.sourceStatuses.openclaw
     if (openClawStatus) {
       const openClawSessions = [...scanState.sessions.values()].filter(
         (session) => session.sourceType !== 'hermes'
       )
-      openClawStatus.status = 'ready'
+      openClawStatus.status = scanState.openClawWarning ? 'error' : 'ready'
       openClawStatus.hasData = openClawSessions.length > 0
       openClawStatus.sessionCount = openClawSessions.length
-      openClawStatus.error = undefined
+      openClawStatus.error = scanState.openClawWarning
     }
     this.markDirty()
     this.scheduleSessionCacheSave()
@@ -1967,6 +1982,10 @@ class AnalyticsService {
           agent,
           generation
         )
+        const scanState = this.scanContext.getStore()
+        if (scanState && databaseResult.warning) {
+          scanState.openClawWarning = databaseResult.warning
+        }
         const databaseSessionIds = databaseResult.sessionIds
         for (const sessionId of databaseSessionIds) {
           activeFileKeys.add(
@@ -2487,7 +2506,11 @@ class AnalyticsService {
     // rollover (Mar 31 minus one month rolls into early March because Feb has
     // no 31st, which previously caused last-month totals to silently include
     // the current month on any date between the 29th and the 31st).
-    const anchor = new Date(this.now().getFullYear(), this.now().getMonth() - 1, 1)
+    const anchor = new Date(
+      this.now().getFullYear(),
+      this.now().getMonth() - 1,
+      1
+    )
     return `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, '0')}`
   }
 

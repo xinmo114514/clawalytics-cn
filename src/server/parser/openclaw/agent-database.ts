@@ -1,6 +1,7 @@
 import path from 'path'
 import Database from 'better-sqlite3'
 import fs from 'fs'
+import { materializeWslSqliteDatabase } from '../../lib/wsl-openclaw.js'
 import {
   parseOpenClawLine,
   type ParsedOpenClawResult,
@@ -128,8 +129,11 @@ export function readOpenClawAgentDatabase(
   }
 
   let database: Database.Database | null = null
+  let materialized: ReturnType<typeof materializeWslSqliteDatabase> | null =
+    null
   try {
-    database = new Database(databasePath, {
+    materialized = materializeWslSqliteDatabase(databasePath)
+    database = new Database(materialized.databasePath, {
       readonly: true,
       fileMustExist: true,
       timeout: 2000,
@@ -273,6 +277,7 @@ export function readOpenClawAgentDatabase(
     }
   } finally {
     database?.close()
+    materialized?.cleanup()
   }
 }
 
@@ -289,13 +294,15 @@ export function openAgentDatabaseReader(
     return null
   }
 
-  const database = new Database(databasePath, {
-    readonly: true,
-    fileMustExist: true,
-    timeout: 2000,
-  })
+  let database: Database.Database | null = null
+  const materialized = materializeWslSqliteDatabase(databasePath)
 
   try {
+    database = new Database(materialized.databasePath, {
+      readonly: true,
+      fileMustExist: true,
+      timeout: 2000,
+    })
     const sessionMeta = new Map<string, OpenClawDatabaseSessionMeta>()
 
     if (tableExists(database, 'session_windows')) {
@@ -436,13 +443,15 @@ export function openAgentDatabaseReader(
         return eventJsonToLine(row?.event_json) ?? null
       },
       close() {
-        database.close()
+        database?.close()
+        materialized.cleanup()
       },
     }
 
     return reader
   } catch (error) {
-    database.close()
+    database?.close()
+    materialized.cleanup()
     throw error
   }
 }

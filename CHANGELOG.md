@@ -436,3 +436,17 @@ but introduces breaking changes.
 - update sidebar logo and title
 - **ui**: remove unnecessary spacing
 - remove unused files
+## v0.7.9 (2026-09-03)
+
+### Fix
+
+- fix OpenClaw 2026.8.2 data ingestion after active sessions migrated from JSONL transcripts to `openclaw-agent.sqlite`
+- read WSL2 SQLite databases through a consistent WSL-side backup before opening them on Windows, with a Python SQLite fallback when the `sqlite3` CLI is unavailable
+- keep legacy JSONL session ingestion and short-lived legacy SQLite schemas compatible, while preventing duplicate usage records
+- ignore compressed `.jsonl.deleted....zst` archives that are not directly readable as JSONL and are represented by the canonical SQLite store
+- preserve OpenClaw `reasoningTokens` in request and session analytics
+- expose a stale/error source status when a WSL SQLite snapshot cannot be created instead of silently showing old data as current
+
+### Test
+
+- add regression coverage for WSL SQLite backup fallback and cleanup, OpenClaw reasoning tokens, compressed transcript archives, and date-stable Hermes alert fixtures

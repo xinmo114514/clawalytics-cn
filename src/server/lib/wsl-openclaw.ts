@@ -219,6 +219,131 @@ export function parseWslUncPath(value: string): {
   }
 }
 
+export interface MaterializedSqliteDatabase {
+  sourcePath: string
+  databasePath: string
+  cleanup(): void
+}
+
+interface WslSqliteSnapshotOptions {
+  commandRunner?: (
+    file: string,
+    args: string[],
+    options: Record<string, unknown>
+  ) => unknown
+}
+
+function windowsPathToWslPath(value: string): string {
+  const driveMatch = value.match(/^([A-Za-z]):[\\/](.*)$/)
+  if (!driveMatch) {
+    throw new Error(`Unable to map temporary path into WSL: ${value}`)
+  }
+
+  return `/mnt/${driveMatch[1].toLowerCase()}/${driveMatch[2].replace(/\\/g, '/')}`
+}
+
+function runWslSqliteBackup(
+  runner: NonNullable<WslSqliteSnapshotOptions['commandRunner']>,
+  distro: string,
+  sourcePath: string,
+  destinationPath: string
+): void {
+  const commandOptions = {
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 30000,
+  }
+  const escapedDestination = destinationPath.replaceAll("'", "''")
+  let sqliteError: unknown
+
+  try {
+    runner(
+      'wsl.exe',
+      ['-d', distro, 'sqlite3', sourcePath, `.backup '${escapedDestination}'`],
+      commandOptions
+    )
+    return
+  } catch (error) {
+    sqliteError = error
+  }
+
+  const pythonScript = [
+    'import sqlite3, sys',
+    'source, destination = sys.argv[1:3]',
+    'source_db = sqlite3.connect("file:" + source + "?mode=ro", uri=True)',
+    'destination_db = sqlite3.connect(destination)',
+    'try:',
+    '    source_db.backup(destination_db)',
+    'finally:',
+    '    destination_db.close()',
+    '    source_db.close()',
+  ].join('\n')
+
+  try {
+    runner(
+      'wsl.exe',
+      [
+        '-d',
+        distro,
+        'python3',
+        '-c',
+        pythonScript,
+        sourcePath,
+        destinationPath,
+      ],
+      commandOptions
+    )
+  } catch (pythonError) {
+    const sqliteMessage =
+      sqliteError instanceof Error ? sqliteError.message : String(sqliteError)
+    const pythonMessage =
+      pythonError instanceof Error ? pythonError.message : String(pythonError)
+    throw new Error(
+      `Unable to snapshot WSL SQLite database. sqlite3: ${sqliteMessage}; python3: ${pythonMessage}`
+    )
+  }
+}
+
+export function materializeWslSqliteDatabase(
+  sourcePath: string,
+  options: WslSqliteSnapshotOptions = {}
+): MaterializedSqliteDatabase {
+  const parsed =
+    process.platform === 'win32' ? parseWslUncPath(sourcePath) : null
+  if (!parsed) {
+    return { sourcePath, databasePath: sourcePath, cleanup() {} }
+  }
+
+  const runner =
+    options.commandRunner ??
+    ((file, args, commandOptions) =>
+      execFileSync(file, args, commandOptions as never))
+  const snapshotRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'clawalytics-openclaw-snapshot-')
+  )
+  const snapshotPath = path.join(snapshotRoot, 'openclaw-agent.sqlite')
+  const linuxDestination = windowsPathToWslPath(snapshotPath)
+
+  try {
+    runWslSqliteBackup(
+      runner,
+      parsed.distro,
+      parsed.linuxPath,
+      linuxDestination
+    )
+    return {
+      sourcePath,
+      databasePath: snapshotPath,
+      cleanup() {
+        fs.rmSync(snapshotRoot, { recursive: true, force: true })
+      },
+    }
+  } catch (error) {
+    fs.rmSync(snapshotRoot, { recursive: true, force: true })
+    throw error
+  }
+}
+
 function isLikelyLinuxPath(value: string): boolean {
   return value === '~' || value.startsWith('~/') || value.startsWith('/')
 }

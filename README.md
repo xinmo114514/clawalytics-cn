@@ -13,17 +13,24 @@ Clawalytics 把原本分散在日志、会话记录和网关事件里的信息�
 
 OpenClaw 与 Hermes 可以分别配置数据位置并独立分析；切换数据源后，仪表盘会使用对应的数据管道和统计结果，不影响本地运行方式。
 
-## 当前版本：v0.7.8
+## 当前版本：v0.7.9
 
 v0.7.7 把后端 HTTP 服务固定绑定到 IPv4 回环接口（`127.0.0.1`），避免无认证的分析与配置 API 在局域网内可访问；命令行内部的回环请求也统一改用 `127.0.0.1`，并新增 `pnpm test:server-binding` 在每次发布前自动验证绑定地址、健康接口与外部访问拒绝行为。
 
 当前发布提供 Windows x64 NSIS 安装版，推荐直接下载安装：
 
-- [下载 Clawalytics v0.7.8 Windows 安装包](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.8/Clawalytics-0.7.8-win-x64-setup.exe)
-- [下载 Clawalytics v0.7.8 Portable 版](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.8/Clawalytics-0.7.8-win-x64-portable.exe)
-- [查看 v0.7.8 Release](https://github.com/xinmo114514/clawalytics-cn/releases/tag/v0.7.8)
+- [下载 Clawalytics v0.7.9 Windows 安装包](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.9/Clawalytics-0.7.9-win-x64-setup.exe)
+- [下载 Clawalytics v0.7.9 Portable 版](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.9/Clawalytics-0.7.9-win-x64-portable.exe)
+- [查看 v0.7.9 Release](https://github.com/xinmo114514/clawalytics-cn/releases/tag/v0.7.9)
 
 本次发布提供 Windows x64 安装包和 portable 构建，普通用户推荐使用上面的 NSIS 安装包。
+
+## 0.7.9 本次更新
+
+- 兼容 OpenClaw 2026.8.2 将活跃会话迁移到 SQLite 后的数据读取
+- 支持 WSL2 SQLite/WAL 一致性快照、旧版 JSONL 和旧版 SQLite 格式
+- OpenClaw 无法创建快照时保留历史数据并明确提示数据源已过期
+- 支持 reasoning tokens，并过滤不可直接读取的 `.zst` 压缩归档
 
 ## 0.7.8 本次更新
 

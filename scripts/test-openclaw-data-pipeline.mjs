@@ -59,6 +59,23 @@ try {
     [10, 2, 3, 4]
   )
 
+  const reasoningUsage = {
+    ...usage,
+    message: {
+      ...usage.message,
+      usage: {
+        ...usage.message.usage,
+        reasoningTokens: 7,
+      },
+    },
+  }
+  const reasoningParsed = parseOpenClawLine(
+    JSON.stringify(reasoningUsage),
+    'reasoning-session',
+    'main'
+  )
+  assert.equal(reasoningParsed?.reasoningTokens, 7)
+
   const numericTimestampParsed = parseOpenClawLine(
     JSON.stringify({ ...usage, timestamp: 1787875200000 }),
     'session-numeric-time',
@@ -79,9 +96,14 @@ try {
     sessionsPath,
     'session-3.jsonl.deleted.2026-08-28T00-00-00.000Z'
   )
+  const compressedDeletedPath = path.join(
+    sessionsPath,
+    'session-4.jsonl.deleted.2026-08-28T00-00-00.000Z.hash.zst'
+  )
   fs.writeFileSync(activePath, JSON.stringify(usage), 'utf8')
   fs.writeFileSync(resetPath, JSON.stringify(usage), 'utf8')
   fs.writeFileSync(deletedPath, JSON.stringify(usage), 'utf8')
+  fs.writeFileSync(compressedDeletedPath, 'compressed', 'utf8')
   fs.writeFileSync(
     path.join(sessionsPath, 'session-1.checkpoint.abc.jsonl'),
     JSON.stringify(usage),
@@ -94,6 +116,10 @@ try {
     false
   )
   assert.equal(isSessionTranscriptFileName(path.basename(resetPath)), true)
+  assert.equal(
+    isSessionTranscriptFileName(path.basename(compressedDeletedPath)),
+    false
+  )
   assert.equal(getSessionIdFromFileName(path.basename(resetPath)), 'session-2')
 
   const databasePath = path.join(agentPath, 'agent', 'openclaw-agent.sqlite')
@@ -171,6 +197,49 @@ try {
     provider: 'customprov',
     model: 'custom-model',
   })
+
+  const {
+    materializeWslSqliteDatabase,
+  } = await import('../src/server/lib/wsl-openclaw.ts')
+  const wslCommands = []
+  const materialized = materializeWslSqliteDatabase(
+    '\\\\wsl.localhost\\Ubuntu-24.04\\home\\xinmo\\.openclaw\\agents\\main\\agent\\openclaw-agent.sqlite',
+    {
+      commandRunner(file, args) {
+        wslCommands.push({ file, args })
+        if (wslCommands.length === 1) {
+          throw new Error('sqlite3 is unavailable')
+        }
+        return ''
+      },
+    }
+  )
+  assert.equal(wslCommands.length, 2)
+  assert.deepEqual(wslCommands[0].args.slice(0, 4), [
+    '-d',
+    'Ubuntu-24.04',
+    'sqlite3',
+    '/home/xinmo/.openclaw/agents/main/agent/openclaw-agent.sqlite',
+  ])
+  assert.deepEqual(wslCommands[1].args.slice(0, 3), [
+    '-d',
+    'Ubuntu-24.04',
+    'python3',
+  ])
+  assert.equal(fs.existsSync(path.dirname(materialized.databasePath)), true)
+  assert.notEqual(materialized.databasePath, materialized.sourcePath)
+  materialized.cleanup()
+  assert.equal(fs.existsSync(path.dirname(materialized.databasePath)), false)
+
+  assert.throws(
+    () =>
+      materializeWslSqliteDatabase(
+        '\\\\wsl.localhost\\Ubuntu-24.04\\home\\xinmo\\.openclaw\\broken.sqlite',
+        { commandRunner: () => { throw new Error('backup unavailable') } }
+      ),
+    /Unable to snapshot WSL SQLite database/
+  )
+
   console.log('OpenClaw data pipeline checks passed')
 } finally {
   fs.rmSync(root, { recursive: true, force: true })

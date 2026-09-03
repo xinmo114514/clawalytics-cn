@@ -41,6 +41,13 @@ const ARCHIVED_SESSION_FILE_PATTERN = /^.+\.jsonl\.(?:reset|deleted)\.[^\\/]+$/i
  * included because they are snapshots, not additional model conversations.
  */
 export function isSessionTranscriptFileName(fileName: string): boolean {
+  // Newer OpenClaw releases compress deleted transcripts as `.zst`; those
+  // archives are represented by the canonical SQLite store and are not
+  // directly readable as JSONL.
+  if (/\.zst$/i.test(fileName)) {
+    return false
+  }
+
   if (/\.checkpoint\.[^\\/]+\.jsonl$/i.test(fileName)) {
     return false
   }

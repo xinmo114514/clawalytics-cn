@@ -47,6 +47,7 @@ export interface OpenClawLogEntry {
       cacheRead?: number
       cacheWrite?: number
       totalTokens?: number
+      reasoningTokens?: number
       cost?: {
         input?: number
         output?: number
@@ -61,6 +62,7 @@ export interface OpenClawLogEntry {
       cache_read_input_tokens?: number
       cache_creation_tokens?: number
       cache_read_tokens?: number
+      reasoning_tokens?: number
     }
     stopReason?: string
     timestamp?: number
@@ -124,6 +126,7 @@ export interface ParsedOpenClawResult {
   outputTokens: number
   cacheCreationTokens: number
   cacheReadTokens: number
+  reasoningTokens: number
   cost: number
   cacheSavings: number
   origin: OriginInfo | null
@@ -190,6 +193,10 @@ export function parseOpenClawEntry(
     nonNegativeFiniteNumber(usage.cache_creation_input_tokens) ??
     nonNegativeFiniteNumber(usage.cache_creation_tokens) ??
     0
+  const reasoningTokens =
+    nonNegativeFiniteNumber(usage.reasoningTokens) ??
+    nonNegativeFiniteNumber(usage.reasoning_tokens) ??
+    0
 
   // Skip if no tokens at all
   if (
@@ -255,6 +262,7 @@ export function parseOpenClawEntry(
     outputTokens,
     cacheCreationTokens,
     cacheReadTokens,
+    reasoningTokens,
     cost,
     cacheSavings,
     origin: null,

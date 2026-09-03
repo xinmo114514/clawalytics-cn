@@ -172,54 +172,58 @@ try {
   // 5-second debounce.
   const triggerRoot = fs.mkdtempSync(path.join(os.tmpdir(), "clawalytics-trigger-"))
   const triggerDb = new Database(path.join(triggerRoot, "state.db"))
+  const triggerEpoch = Math.floor(Date.now() / 1000) - 60
   createSessionsTable(triggerDb)
   triggerDb.exec("CREATE TABLE session_model_usage (session_id TEXT NOT NULL, model TEXT NOT NULL, billing_provider TEXT NOT NULL DEFAULT '', billing_base_url TEXT NOT NULL DEFAULT '', billing_mode TEXT NOT NULL DEFAULT '', task TEXT NOT NULL DEFAULT '', api_call_count INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0, cache_write_tokens INTEGER NOT NULL DEFAULT 0, reasoning_tokens INTEGER NOT NULL DEFAULT 0, first_seen REAL, last_seen REAL)")
-  triggerDb.prepare("INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("trigger", "cli", "mimo-v2.5", 1788243830, null, 1788247490, null, 100_000_000, 1, 0, 0, 0, 1)
-  triggerDb.prepare("INSERT INTO session_model_usage VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("trigger", "mimo-v2.5", "custom", "", "", "", 1, 100_000_000, 1, 0, 0, 0, 1788243890, 1788247490)
+  triggerDb.prepare("INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("trigger", "cli", "mimo-v2.5", triggerEpoch, null, triggerEpoch, null, 100_000_000, 1, 0, 0, 0, 1)
+  triggerDb.prepare("INSERT INTO session_model_usage VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("trigger", "mimo-v2.5", "custom", "", "", "", 1, 100_000_000, 1, 0, 0, 0, triggerEpoch, triggerEpoch)
   triggerDb.close()
   const configDir = path.join(os.homedir(), ".clawalytics")
   fs.mkdirSync(configDir, { recursive: true })
   const configPath = path.join(configDir, "config.yaml")
   const configBackup = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : null
-  fs.writeFileSync(
-    configPath,
-    yaml.stringify({
-      schemaVersion: 3,
-      currency: "CNY",
-      dataSources: {
-        openclaw: { enabled: false, environment: "local", path: "" },
-        hermes: { enabled: true, environment: "local", path: triggerRoot },
-      },
-      rates: {},
-      alertThresholds: { dailyBudget: 1, weeklyBudget: 0, monthlyBudget: 0 },
-      openClawPath: "",
-      gatewayLogsPath: "/tmp/openclaw",
-      wsl: { enabled: false, distro: "", openClawPath: "" },
-      securityAlertsEnabled: true,
-      pricingEndpoint: null,
-    }),
-    "utf8"
-  )
-  const triggerService = initializeAnalyticsService({ ...DEFAULT_CONFIG, dataSources: { openclaw: { enabled: false, environment: "local", path: "" }, hermes: { enabled: true, environment: "local", path: triggerRoot } }, openClawPath: "", alertThresholds: { dailyBudget: 1, weeklyBudget: 0, monthlyBudget: 0 } })
-  const { getAlertsByType } = await import(
-    '../src/server/db/queries-security.ts'
-  )
-  const baselineBudgetAlerts = getAlertsByType("budget_daily_exceeded", 500)
-  await triggerService.refreshNow()
-  await new Promise((resolve) => setTimeout(resolve, 6000))
-  const refreshedBudgetAlerts = getAlertsByType("budget_daily_exceeded", 500)
   const { closeDatabase } = await import('../src/server/db/schema.ts')
-  assert.ok(
-    refreshedBudgetAlerts.length > baselineBudgetAlerts.length,
-    `Hermes refresh must schedule a budget check that emits a new alert (before=${baselineBudgetAlerts.length}, after=${refreshedBudgetAlerts.length})`
-  )
-  await shutdownAnalyticsService()
-  await closeDatabase()
-  fs.rmSync(triggerRoot, { recursive: true, force: true })
-  if (configBackup !== null) {
-    fs.writeFileSync(configPath, configBackup, "utf8")
-  } else {
-    fs.rmSync(configPath, { force: true })
+  try {
+    fs.writeFileSync(
+      configPath,
+      yaml.stringify({
+        schemaVersion: 3,
+        currency: "CNY",
+        dataSources: {
+          openclaw: { enabled: false, environment: "local", path: "" },
+          hermes: { enabled: true, environment: "local", path: triggerRoot },
+        },
+        rates: {},
+        alertThresholds: { dailyBudget: 1, weeklyBudget: 0, monthlyBudget: 0 },
+        openClawPath: "",
+        gatewayLogsPath: "/tmp/openclaw",
+        wsl: { enabled: false, distro: "", openClawPath: "" },
+        securityAlertsEnabled: true,
+        pricingEndpoint: null,
+      }),
+      "utf8"
+    )
+    const triggerService = initializeAnalyticsService({ ...DEFAULT_CONFIG, dataSources: { openclaw: { enabled: false, environment: "local", path: "" }, hermes: { enabled: true, environment: "local", path: triggerRoot } }, openClawPath: "", alertThresholds: { dailyBudget: 1, weeklyBudget: 0, monthlyBudget: 0 } })
+    const { getAlertsByType } = await import(
+      '../src/server/db/queries-security.ts'
+    )
+    const baselineBudgetAlerts = getAlertsByType("budget_daily_exceeded", 500)
+    await triggerService.refreshNow()
+    await new Promise((resolve) => setTimeout(resolve, 6000))
+    const refreshedBudgetAlerts = getAlertsByType("budget_daily_exceeded", 500)
+    assert.ok(
+      refreshedBudgetAlerts.length > baselineBudgetAlerts.length,
+      `Hermes refresh must schedule a budget check that emits a new alert (before=${baselineBudgetAlerts.length}, after=${refreshedBudgetAlerts.length})`
+    )
+  } finally {
+    await shutdownAnalyticsService()
+    await closeDatabase()
+    fs.rmSync(triggerRoot, { recursive: true, force: true })
+    if (configBackup !== null) {
+      fs.writeFileSync(configPath, configBackup, "utf8")
+    } else {
+      fs.rmSync(configPath, { force: true })
+    }
   }
     console.log("Hermes data pipeline checks passed")
 } finally { fs.rmSync(root, { recursive: true, force: true }) }

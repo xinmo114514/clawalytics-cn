@@ -118,11 +118,11 @@ export function HelpCenter() {
                 </h3>
                 <p className='mb-3 text-sm text-muted-foreground'>
                   {text(
-                    '使用 npm 或 pnpm 全局安装。',
-                    'Install globally with npm or pnpm.'
+                    '从 GitHub Releases 下载 Windows 安装包。',
+                    'Download the Windows installer from GitHub Releases.'
                   )}
                 </p>
-                <CodeBlock>{`npm install -g clawalytics`}</CodeBlock>
+                <CodeBlock>{`Clawalytics-<version>-win-x64-setup.exe`}</CodeBlock>
               </div>
               <div className='rounded-lg border bg-card p-5'>
                 <h3 className='mb-2 font-semibold'>
@@ -130,19 +130,21 @@ export function HelpCenter() {
                 </h3>
                 <p className='mb-3 text-sm text-muted-foreground'>
                   {text(
-                    '启动服务并打开本地仪表盘。',
-                    'Start the service and open the local dashboard.'
+                    '打开 Clawalytics 桌面应用。',
+                    'Open the Clawalytics desktop app.'
                   )}
                 </p>
-                <CodeBlock>{`clawalytics start`}</CodeBlock>
+                <CodeBlock>{`Clawalytics.exe`}</CodeBlock>
               </div>
               <div className='rounded-lg border bg-card p-5'>
                 <h3 className='mb-2 font-semibold'>
                   {text('3. 查看数据', '3. View Data')}
                 </h3>
                 <p className='text-sm text-muted-foreground'>
-                  {text('默认地址是 ', 'The dashboard is available at ')}
-                  <InlineCode>http://localhost:9174</InlineCode>
+                  {text(
+                    '应用会自动连接内嵌的本机后端。',
+                    'The app connects to its embedded local backend automatically.'
+                  )}
                 </p>
               </div>
             </div>
@@ -197,31 +199,28 @@ export function HelpCenter() {
             </div>
           </Section>
 
-          <Section title={text('常用命令', 'Common Commands')}>
+          <Section title={text('桌面操作', 'Desktop Actions')}>
             <div className='rounded-lg border bg-card p-5'>
               <div className='space-y-2 text-sm'>
                 <div className='flex gap-4'>
-                  <InlineCode>clawalytics start</InlineCode>
+                  <InlineCode>Clawalytics.exe</InlineCode>
                   <span className='text-muted-foreground'>
-                    {text('启动仪表盘', 'Start the dashboard')}
+                    {text('打开桌面应用', 'Open the desktop app')}
                   </span>
                 </div>
                 <div className='flex gap-4'>
-                  <InlineCode>clawalytics config</InlineCode>
+                  <InlineCode>Settings</InlineCode>
                   <span className='text-muted-foreground'>
-                    {text('查看当前配置', 'View current configuration')}
+                    {text(
+                      '配置 OpenClaw、主题和通知',
+                      'Configure OpenClaw, themes and notifications'
+                    )}
                   </span>
                 </div>
                 <div className='flex gap-4'>
-                  <InlineCode>clawalytics path [dir]</InlineCode>
+                  <InlineCode>Tray menu</InlineCode>
                   <span className='text-muted-foreground'>
-                    {text('设置日志路径', 'Set a custom log path')}
-                  </span>
-                </div>
-                <div className='flex gap-4'>
-                  <InlineCode>clawalytics mcp</InlineCode>
-                  <span className='text-muted-foreground'>
-                    {text('启动 MCP 服务', 'Start the MCP server')}
+                    {text('重新打开或退出应用', 'Reopen or quit the app')}
                   </span>
                 </div>
               </div>
@@ -261,11 +260,9 @@ alertThresholds:
                       )}
                     </li>
                     <li>
-                      {text('使用 ', 'Use ')}
-                      <InlineCode>clawalytics config</InlineCode>
                       {text(
-                        ' 检查当前配置。',
-                        ' to inspect your current configuration.'
+                        '在设置页检查 OpenClaw 路径和数据源。',
+                        'Check the OpenClaw path and data source in Settings.'
                       )}
                     </li>
                   </ul>
@@ -289,10 +286,9 @@ alertThresholds:
                 question={text('如何修改端口？', 'How do I change the port?')}
                 answer={
                   <p className='text-sm'>
-                    <InlineCode>clawalytics start --port 3005</InlineCode>
                     {text(
-                      ' 可以指定端口，也可以通过环境变量 PORT 配置。',
-                      ' lets you choose a port, or you can configure it with the PORT environment variable.'
+                      '桌面应用会自动选择本机回环端口，用户无需配置。',
+                      'The desktop app chooses a local loopback port automatically.'
                     )}
                   </p>
                 }

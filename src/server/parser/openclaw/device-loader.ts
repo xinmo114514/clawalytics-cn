@@ -21,6 +21,11 @@ export interface PendingRequest {
   type: string
 }
 
+export type SnapshotResult<T> =
+  | { status: 'ok'; items: T[] }
+  | { status: 'missing'; items: [] }
+  | { status: 'error'; items: []; error: Error }
+
 interface PairedDevicesFile {
   devices: Array<{
     id: string
@@ -63,10 +68,17 @@ let deviceWatcher: FSWatcher | null = null
  * Load paired devices from the paired.json file
  */
 export function loadPairedDevices(openClawPath: string): PairedDevice[] {
+  const result = loadPairedDevicesSnapshot(openClawPath)
+  return result.status === 'ok' ? result.items : []
+}
+
+export function loadPairedDevicesSnapshot(
+  openClawPath: string
+): SnapshotResult<PairedDevice> {
   const filePath = path.join(openClawPath, 'nodes', 'paired.json')
 
   if (!fs.existsSync(filePath)) {
-    return []
+    return { status: 'missing', items: [] }
   }
 
   try {
@@ -75,19 +87,30 @@ export function loadPairedDevices(openClawPath: string): PairedDevice[] {
 
     if (!data.devices || !Array.isArray(data.devices)) {
       console.warn('paired.json has no devices array')
-      return []
+      return {
+        status: 'error',
+        items: [],
+        error: new Error('paired.json has no devices array'),
+      }
     }
 
-    return data.devices.map((device) => ({
-      id: device.id,
-      name: device.name,
-      type: device.type,
-      pairedAt: device.pairedAt,
-      publicKey: device.publicKey,
-    }))
+    return {
+      status: 'ok',
+      items: data.devices.map((device) => ({
+        id: device.id,
+        name: device.name,
+        type: device.type,
+        pairedAt: device.pairedAt,
+        publicKey: device.publicKey,
+      })),
+    }
   } catch (error) {
     console.error('Failed to load paired devices:', error)
-    return []
+    return {
+      status: 'error',
+      items: [],
+      error: error instanceof Error ? error : new Error(String(error)),
+    }
   }
 }
 
@@ -95,10 +118,17 @@ export function loadPairedDevices(openClawPath: string): PairedDevice[] {
  * Load pending pairing requests from the pending.json file
  */
 export function loadPendingRequests(openClawPath: string): PendingRequest[] {
+  const result = loadPendingRequestsSnapshot(openClawPath)
+  return result.status === 'ok' ? result.items : []
+}
+
+export function loadPendingRequestsSnapshot(
+  openClawPath: string
+): SnapshotResult<PendingRequest> {
   const filePath = path.join(openClawPath, 'nodes', 'pending.json')
 
   if (!fs.existsSync(filePath)) {
-    return []
+    return { status: 'missing', items: [] }
   }
 
   try {
@@ -107,18 +137,29 @@ export function loadPendingRequests(openClawPath: string): PendingRequest[] {
 
     if (!data.requests || !Array.isArray(data.requests)) {
       console.warn('pending.json has no requests array')
-      return []
+      return {
+        status: 'error',
+        items: [],
+        error: new Error('pending.json has no requests array'),
+      }
     }
 
-    return data.requests.map((request) => ({
-      id: request.id,
-      deviceName: request.deviceName,
-      type: request.type,
-      requestedAt: request.requestedAt,
-    }))
+    return {
+      status: 'ok',
+      items: data.requests.map((request) => ({
+        id: request.id,
+        deviceName: request.deviceName,
+        type: request.type,
+        requestedAt: request.requestedAt,
+      })),
+    }
   } catch (error) {
     console.error('Failed to load pending requests:', error)
-    return []
+    return {
+      status: 'error',
+      items: [],
+      error: error instanceof Error ? error : new Error(String(error)),
+    }
   }
 }
 
@@ -180,17 +221,13 @@ export function watchDeviceFiles(
 
   deviceWatcher.on('unlink', (filePath) => {
     if (filePath.endsWith('paired.json')) {
-      // All devices removed
-      for (const deviceId of previousDevices.keys()) {
-        callbacks.onDeviceRemoved(deviceId)
-      }
-      previousDevices.clear()
+      console.warn(
+        'paired.json became unavailable; preserving the last valid device snapshot'
+      )
     } else if (filePath.endsWith('pending.json')) {
-      // All requests removed
-      for (const requestId of previousRequests.keys()) {
-        callbacks.onRequestRemoved(requestId)
-      }
-      previousRequests.clear()
+      console.warn(
+        'pending.json became unavailable; preserving the last valid request snapshot'
+      )
     }
   })
 
@@ -223,7 +260,11 @@ function handlePairedDevicesChange(
   openClawPath: string,
   callbacks: DeviceWatcherCallbacks
 ): void {
-  const currentDevices = loadPairedDevices(openClawPath)
+  const devicesSnapshot = loadPairedDevicesSnapshot(openClawPath)
+  if (devicesSnapshot.status !== 'ok') {
+    return
+  }
+  const currentDevices = devicesSnapshot.items
   const currentDevicesMap = new Map(currentDevices.map((d) => [d.id, d]))
 
   // Detect new devices
@@ -249,7 +290,11 @@ function handlePendingRequestsChange(
   openClawPath: string,
   callbacks: DeviceWatcherCallbacks
 ): void {
-  const currentRequests = loadPendingRequests(openClawPath)
+  const requestsSnapshot = loadPendingRequestsSnapshot(openClawPath)
+  if (requestsSnapshot.status !== 'ok') {
+    return
+  }
+  const currentRequests = requestsSnapshot.items
   const currentRequestsMap = new Map(currentRequests.map((r) => [r.id, r]))
 
   // Detect new requests

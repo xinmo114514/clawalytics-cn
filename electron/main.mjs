@@ -7,17 +7,23 @@ import {
   nativeImage,
   Notification,
   shell,
+  session,
   systemPreferences,
   Tray,
   utilityProcess,
 } from 'electron';
 import { execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import WebSocket from 'ws';
+import {
+  isAllowedAppNavigation,
+  isAllowedExternalUrl,
+} from './navigation-policy.mjs';
 import {
   NOTIFICATION_SOURCES,
   buildNotification,
@@ -107,6 +113,7 @@ let backendModule = null;
 let backendChild = null;
 let backendStartPromise = null;
 let backendPort = null;
+let desktopToken = null;
 let desktopIntegrationsPort = null;
 let isQuitting = false;
 let mainWindow = null;
@@ -1065,7 +1072,8 @@ function handleMainWindowClose() {
 
 async function fetchEnhancedStats(port, sourceType) {
   const response = await fetch(
-    `http://127.0.0.1:${port}/api/stats/enhanced?sourceType=${sourceType}`
+    `http://127.0.0.1:${port}/api/stats/enhanced?sourceType=${sourceType}`,
+    { headers: { 'X-Clawalytics-Desktop-Token': desktopToken ?? '' } }
   );
 
   if (!response.ok) {
@@ -1248,7 +1256,9 @@ function connectCostsSocket(port) {
     costsSocket = null;
   }
 
-  const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+    headers: { 'X-Clawalytics-Desktop-Token': desktopToken ?? '' },
+  });
   costsSocket = socket;
 
   socket.on('message', (payload) => {
@@ -1318,7 +1328,7 @@ function findFreePort() {
 // Emergency fallback: run the backend inside the main process exactly like
 // the pre-utilityProcess architecture did. Enable with
 // CLAWALYTICS_IN_PROCESS=1 only; it freezes the window under load.
-async function startBackendInProcess(port) {
+async function startBackendInProcess(port, token) {
   const serverEntry = pathToFileURL(
     getAppAssetPath('dist', 'server', 'index.js')
   ).href;
@@ -1333,7 +1343,11 @@ async function startBackendInProcess(port) {
     throw new Error('Desktop backend entry does not export a start() function.');
   }
 
-  await backendModule.start({ port });
+  await backendModule.start({
+    port,
+    runtimeMode: 'electron',
+    desktopToken: token,
+  });
   if (typeof backendModule.setDesktopBridge === 'function') {
     backendModule.setDesktopBridge({
       handleCloseChoice: (action) => handleDesktopCloseChoice(action),
@@ -1342,7 +1356,7 @@ async function startBackendInProcess(port) {
   }
 }
 
-function startBackendChild(port) {
+function startBackendChild(port, token) {
   const child = utilityProcess.fork(
     getAppAssetPath('dist', 'server', 'electron-child.js'),
     [],
@@ -1478,6 +1492,10 @@ function startBackendChild(port) {
     child.on('message', onMessage);
     child.on('exit', onExit);
 
+    // Keep the per-process token on the private utility-process channel. It
+    // is never persisted, placed in a URL, or written to logs.
+    child.postMessage({ type: 'start', port, desktopToken: token });
+
     readyTimeout = setTimeout(() => {
       if (settled) {
         return;
@@ -1510,12 +1528,14 @@ async function startBackend() {
 
   backendStartPromise = (async () => {
     const port = await findFreePort();
+    const token = randomBytes(32).toString('base64url');
+    desktopToken = token;
 
     try {
       if (process.env.CLAWALYTICS_IN_PROCESS === '1') {
-        await startBackendInProcess(port);
+        await startBackendInProcess(port, token);
       } else {
-        await startBackendChild(port);
+        await startBackendChild(port, token);
       }
 
       backendPort = port;
@@ -1523,6 +1543,7 @@ async function startBackend() {
     } catch (error) {
       backendModule = null;
       backendChild = null;
+      desktopToken = null;
       throw error;
     } finally {
       backendStartPromise = null;
@@ -1548,6 +1569,7 @@ async function stopBackend() {
     const child = backendChild;
     backendChild = null;
     backendPort = null;
+    desktopToken = null;
     desktopIntegrationsPort = null;
 
     await new Promise((resolve) => {
@@ -1587,6 +1609,7 @@ async function stopBackend() {
     backendModule = null;
     backendPort = null;
     desktopIntegrationsPort = null;
+    desktopToken = null;
     return;
   }
 
@@ -1596,6 +1619,7 @@ async function stopBackend() {
     backendModule = null;
     backendPort = null;
     desktopIntegrationsPort = null;
+    desktopToken = null;
   }
 }
 
@@ -1609,7 +1633,7 @@ async function createMainWindow(options = {}) {
   // window; a themed loading page covers the time until the port is known.
   const backendReadyPromise = startBackend();
 
-  const preloadPath = getAppAssetPath('electron', 'preload.mjs');
+  const preloadPath = getAppAssetPath('electron', 'preload.cjs');
 
   const window = new BrowserWindow({
     width: 1280,
@@ -1635,15 +1659,29 @@ async function createMainWindow(options = {}) {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       spellcheck: false,
       preload: preloadPath,
     },
   });
 
   window.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    if (isAllowedExternalUrl(url)) {
+      void shell.openExternal(url);
+    }
     return { action: 'deny' };
+  });
+
+  window.webContents.on('will-navigate', (event, url) => {
+    const allowedOrigin = backendPort
+      ? `http://127.0.0.1:${backendPort}`
+      : null;
+    if (
+      !allowedOrigin ||
+      !isAllowedAppNavigation(url, allowedOrigin, LOADING_PAGE_URL)
+    ) {
+      event.preventDefault();
+    }
   });
 
   window.setMenuBarVisibility(false);
@@ -1702,6 +1740,13 @@ async function createMainWindow(options = {}) {
     return window;
   }
 
+  await session.defaultSession.cookies.set({
+    url: `http://127.0.0.1:${port}`,
+    name: 'clawalytics_desktop_token',
+    value: desktopToken ?? '',
+    httpOnly: true,
+    sameSite: 'strict',
+  });
   await window.loadURL(`http://127.0.0.1:${port}`);
   initializeDesktopIntegrations(port);
 

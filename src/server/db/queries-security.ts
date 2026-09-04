@@ -65,12 +65,14 @@ export interface PairingRequest {
   responded_at: string | null
   status: string
   response: string | null
+  source_request_id: string | null
 }
 
 export interface PairingRequestInput {
   device_id: string
   device_name?: string | null
   status?: string
+  source_request_id?: string | null
 }
 
 // ============================================
@@ -246,12 +248,89 @@ export function deleteDevice(id: string): void {
 // ============================================
 
 export function createPairingRequest(request: PairingRequestInput): number {
+  if (request.source_request_id) {
+    const existing = prepareCached(
+      'SELECT id FROM pairing_requests WHERE source_request_id = ?'
+    ).get(request.source_request_id) as { id: number } | undefined
+    if (existing) {
+      prepareCached(
+        `UPDATE pairing_requests SET
+           device_id = ?, device_name = ?, status = ?,
+           responded_at = NULL, response = NULL
+         WHERE id = ?`
+      ).run(
+        request.device_id,
+        request.device_name ?? null,
+        request.status ?? 'pending',
+        existing.id
+      )
+      return existing.id
+    }
+    const result = prepareCached(`
+      INSERT INTO pairing_requests (device_id, device_name, status, source_request_id)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      request.device_id,
+      request.device_name ?? null,
+      request.status ?? 'pending',
+      request.source_request_id
+    )
+    return result.lastInsertRowid as number
+  }
+
   const stmt = prepareCached(`
     INSERT INTO pairing_requests (device_id, device_name)
     VALUES (?, ?)
   `)
   const result = stmt.run(request.device_id, request.device_name ?? null)
   return result.lastInsertRowid as number
+}
+
+export function markPairingRequestState(
+  sourceRequestId: string,
+  status: 'resolved' | 'removed'
+): boolean {
+  const result = prepareCached(
+    `UPDATE pairing_requests
+     SET status = ?, responded_at = COALESCE(responded_at, datetime('now'))
+     WHERE source_request_id = ? AND status = 'pending'`
+  ).run(status, sourceRequestId)
+  return result.changes > 0
+}
+
+export function reconcilePairingRequests(
+  pending: PairingRequestInput[],
+  pairedDeviceIds: ReadonlySet<string>
+): void {
+  const db = getDatabase()
+  db.transaction(() => {
+    const pendingIds = new Set<string>()
+    for (const request of pending) {
+      const sourceId = request.source_request_id ?? request.device_id
+      pendingIds.add(sourceId)
+      createPairingRequest({
+        ...request,
+        source_request_id: sourceId,
+        status: 'pending',
+      })
+    }
+
+    const current = prepareCached(
+      `SELECT source_request_id, device_id FROM pairing_requests WHERE status = 'pending'`
+    ).all() as Array<{ source_request_id: string | null; device_id: string }>
+    for (const request of current) {
+      const sourceId = request.source_request_id ?? request.device_id
+      if (!pendingIds.has(sourceId)) {
+        markPairingRequestState(
+          sourceId,
+          pairedDeviceIds.has(request.device_id) ||
+            pairedDeviceIds.has(sourceId)
+            ? 'resolved'
+            : 'removed'
+        )
+      }
+    }
+  })()
 }
 
 export function getPendingRequests(): PairingRequest[] {
@@ -278,21 +357,6 @@ export function getPairingRequest(id: number): PairingRequest | undefined {
   return prepareCached('SELECT * FROM pairing_requests WHERE id = ?').get(
     id
   ) as PairingRequest | undefined
-}
-
-export function respondToPairingRequest(
-  id: number,
-  status: string,
-  response: string
-): void {
-  const stmt = prepareCached(`
-    UPDATE pairing_requests SET
-      status = ?,
-      response = ?,
-      responded_at = datetime('now')
-    WHERE id = ?
-  `)
-  stmt.run(status, response, id)
 }
 
 // ============================================

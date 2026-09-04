@@ -1,14 +1,12 @@
 /**
  * Pricing Service
  *
- * Fetches model pricing from a configurable endpoint and caches locally.
- * Falls back to default rates when endpoint is unavailable.
+ * Builds the in-memory model-pricing table from bundled defaults and the
+ * user's validated manual rate overrides. This service performs no network
+ * requests and does not read the legacy remote-pricing cache.
  */
-import path from 'path'
 import { createHash } from 'crypto'
-import fs from 'fs'
 import { DEFAULT_RATES, type DefaultRates } from '../config/defaults.js'
-import { getConfigDir } from '../config/loader.js'
 
 // ============================================
 // Types
@@ -27,112 +25,8 @@ export interface PricingData {
   source: string // Where pricing came from
 }
 
-// ============================================
-// Cache Management
-// ============================================
-
-const CACHE_FILE = 'pricing-cache.json'
-const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000 // 24 hours
-
 let memoryCache: PricingData | null = null
 let configuredDefaultRates: DefaultRates = DEFAULT_RATES
-let backgroundRefreshPromise: Promise<void> | null = null
-
-function getCachePath(): string {
-  return path.join(getConfigDir(), CACHE_FILE)
-}
-
-/**
- * Load pricing from disk cache
- */
-function loadCacheFromDisk(): PricingData | null {
-  try {
-    const cachePath = getCachePath()
-    if (!fs.existsSync(cachePath)) {
-      return null
-    }
-
-    const content = fs.readFileSync(cachePath, 'utf-8')
-    const data = JSON.parse(content) as PricingData
-
-    // Check if cache is stale
-    const fetchedAt = new Date(data.fetchedAt).getTime()
-    const age = Date.now() - fetchedAt
-    if (age > CACHE_MAX_AGE_MS) {
-      console.log('Pricing cache is stale, will refresh')
-      return data // Return stale data as fallback
-    }
-
-    return data
-  } catch (error) {
-    console.error('Error loading pricing cache:', error)
-    return null
-  }
-}
-
-/**
- * Save pricing to disk cache
- */
-function saveCacheToDisk(data: PricingData): void {
-  try {
-    const cachePath = getCachePath()
-    fs.writeFileSync(cachePath, JSON.stringify(data, null, 2), 'utf-8')
-  } catch (error) {
-    console.error('Error saving pricing cache:', error)
-  }
-}
-
-// ============================================
-// Pricing Fetching
-// ============================================
-
-/**
- * Fetch pricing from endpoint
- */
-async function fetchPricingFromEndpoint(
-  endpoint: string
-): Promise<PricingData | null> {
-  try {
-    const response = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'Clawalytics/0.3.0',
-      },
-      signal: AbortSignal.timeout(10000), // 10 second timeout
-    })
-
-    if (!response.ok) {
-      console.warn(
-        `Pricing endpoint returned ${response.status}: ${response.statusText}`
-      )
-      return null
-    }
-
-    const data = (await response.json()) as Record<string, unknown>
-
-    // Normalize response to PricingData format
-    // Support both flat format { "model": { input, output } }
-    // and nested format { models: { "model": { input, output } } }
-    let models: Record<string, ModelPricing>
-
-    if (data.models && typeof data.models === 'object') {
-      models = data.models as Record<string, ModelPricing>
-    } else {
-      // Assume flat format
-      models = data as Record<string, ModelPricing>
-    }
-
-    return {
-      models,
-      fetchedAt: new Date().toISOString(),
-      source: endpoint,
-    }
-  } catch (error) {
-    console.warn('Failed to fetch pricing from endpoint:', error)
-    return null
-  }
-}
 
 /**
  * Convert DEFAULT_RATES to PricingData format
@@ -169,78 +63,21 @@ function getDefaultPricingData(
   }
 }
 
-function applyDefaultPricingCache(): void {
-  memoryCache = getDefaultPricingData()
-  saveCacheToDisk(memoryCache)
-}
-
-function refreshPricingInBackground(endpoint: string): void {
-  if (backgroundRefreshPromise) {
-    return
-  }
-
-  backgroundRefreshPromise = refreshPricing(endpoint)
-    .then((success) => {
-      if (success) {
-        console.log(
-          `Pricing refreshed from ${endpoint}: ${Object.keys(memoryCache?.models ?? {}).length} models`
-        )
-        return
-      }
-
-      console.log(
-        'Pricing endpoint unavailable, using cached or built-in pricing data'
-      )
-    })
-    .catch((error) => {
-      console.warn('Failed to refresh pricing in background:', error)
-    })
-    .finally(() => {
-      backgroundRefreshPromise = null
-    })
-}
-
 // ============================================
 // Public API
 // ============================================
 
 /**
  * Initialize pricing service
- * Loads from cache and optionally refreshes from endpoint
+ * Initializes the in-memory table from bundled and user-configured rates.
  */
-export async function initPricingService(
-  endpoint: string | null,
+export function initPricingService(
   defaultRates: DefaultRates = DEFAULT_RATES
-): Promise<void> {
+): void {
   configuredDefaultRates = defaultRates
-
-  // Try to load from disk cache first
-  memoryCache = loadCacheFromDisk()
-
-  if (endpoint) {
-    if (!memoryCache || memoryCache.source === 'default') {
-      applyDefaultPricingCache()
-      console.log(
-        'Using built-in pricing defaults while refreshing pricing in background'
-      )
-    } else {
-      console.log(
-        'Using cached pricing data while refreshing pricing in background'
-      )
-    }
-
-    refreshPricingInBackground(endpoint)
-    return
-  }
-
-  if (!memoryCache || memoryCache.source === 'default') {
-    console.log(
-      'No pricing endpoint configured, using current built-in defaults'
-    )
-    applyDefaultPricingCache()
-  } else {
-    console.log('Using cached pricing data')
-  }
+  memoryCache = getDefaultPricingData(defaultRates)
+  variantIndex = null
+  console.log('Using built-in and user-configured pricing data')
 }
 
 // Prefix-variant index over the current pricing table. Rebuilding it scans
@@ -364,28 +201,6 @@ export function getPricingFingerprint(): string {
 }
 
 /**
- * Force refresh pricing from endpoint
- */
-export async function refreshPricing(endpoint: string): Promise<boolean> {
-  const freshData = await fetchPricingFromEndpoint(endpoint)
-  if (freshData) {
-    memoryCache = freshData
-    saveCacheToDisk(freshData)
-    // Parsed analytics records contain derived costs. Rebuild them whenever
-    // the effective pricing table changes so historical totals stay correct.
-    void import('./analytics-service.js')
-      .then(({ getAnalyticsService }) => {
-        getAnalyticsService().invalidateCostCache()
-      })
-      .catch(() => {
-        // Pricing refresh must not fail merely because analytics is unavailable.
-      })
-    return true
-  }
-  return false
-}
-
-/**
  * Check if pricing is available for a model
  */
 export function hasPricing(provider: string, model: string): boolean {
@@ -407,5 +222,6 @@ export function hasPricing(provider: string, model: string): boolean {
  */
 export function refreshPricingCache(rates: DefaultRates): void {
   memoryCache = getDefaultPricingData(rates)
+  variantIndex = null
   console.log('Pricing cache refreshed from config')
 }

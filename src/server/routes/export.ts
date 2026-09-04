@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express'
+import { toCsv } from '../../shared/csv.js'
 import {
   getOutboundCallsWithCount,
   getAuditLogWithCount,
@@ -6,22 +7,6 @@ import {
 import { getAnalyticsService } from '../services/analytics-service.js'
 
 const router: Router = Router()
-
-function toCsv(headers: string[], rows: unknown[][]): string {
-  const escape = (val: unknown) => {
-    const str = String(val ?? '')
-    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-      return `"${str.replace(/"/g, '""')}"`
-    }
-    return str
-  }
-
-  const lines = [headers.join(',')]
-  for (const row of rows) {
-    lines.push(row.map(escape).join(','))
-  }
-  return lines.join('\n')
-}
 
 function sendExport(
   res: Response,

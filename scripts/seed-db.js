@@ -547,4 +547,4 @@ db.close();
 
 console.log('\n✅ Database seeded successfully!');
 console.log(`   Location: ${DB_PATH}`);
-console.log('\n🚀 Start the dashboard with: clawalytics start\n');
+console.log('\n🚀 Open Clawalytics.exe to view the dashboard\n');

@@ -1,4 +1,8 @@
 import { Router, type Request, type Response } from 'express'
+import {
+  parsePositiveSafeInteger,
+  QueryParameterError,
+} from '../lib/query-params.js'
 import { getAnalyticsService } from '../services/analytics-service.js'
 
 const router: Router = Router()
@@ -61,14 +65,10 @@ router.get('/by-name/:name', (req: Request, res: Response): void => {
 // GET /api/channels/:id - Get single channel details
 router.get('/:id', (req: Request, res: Response): void => {
   try {
-    const id = parseInt(
-      Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
+    const id = parsePositiveSafeInteger(
+      Array.isArray(req.params.id) ? req.params.id[0] : req.params.id,
+      'channel ID'
     )
-
-    if (isNaN(id)) {
-      res.status(400).json({ error: 'Invalid channel ID' })
-      return
-    }
 
     const channel = getAnalyticsService().getChannel(id)
 
@@ -79,6 +79,10 @@ router.get('/:id', (req: Request, res: Response): void => {
 
     res.json(channel)
   } catch (error) {
+    if (error instanceof QueryParameterError) {
+      res.status(400).json({ error: error.message })
+      return
+    }
     console.error('Error fetching channel:', error)
     res.status(500).json({ error: 'Failed to fetch channel' })
   }
@@ -87,14 +91,10 @@ router.get('/:id', (req: Request, res: Response): void => {
 // GET /api/channels/:id/stats - Get channel statistics
 router.get('/:id/stats', (req: Request, res: Response): void => {
   try {
-    const id = parseInt(
-      Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
+    const id = parsePositiveSafeInteger(
+      Array.isArray(req.params.id) ? req.params.id[0] : req.params.id,
+      'channel ID'
     )
-
-    if (isNaN(id)) {
-      res.status(400).json({ error: 'Invalid channel ID' })
-      return
-    }
 
     const channel = getAnalyticsService().getChannel(id)
 
@@ -111,6 +111,10 @@ router.get('/:id/stats', (req: Request, res: Response): void => {
       dailyCosts,
     })
   } catch (error) {
+    if (error instanceof QueryParameterError) {
+      res.status(400).json({ error: error.message })
+      return
+    }
     console.error('Error fetching channel stats:', error)
     res.status(500).json({ error: 'Failed to fetch channel stats' })
   }
@@ -119,19 +123,19 @@ router.get('/:id/stats', (req: Request, res: Response): void => {
 // GET /api/channels/:id/daily - Get channel daily costs
 router.get('/:id/daily', (req: Request, res: Response): void => {
   try {
-    const id = parseInt(
-      Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
+    const id = parsePositiveSafeInteger(
+      Array.isArray(req.params.id) ? req.params.id[0] : req.params.id,
+      'channel ID'
     )
-
-    if (isNaN(id)) {
-      res.status(400).json({ error: 'Invalid channel ID' })
-      return
-    }
 
     const days = parseInt(req.query.days as string) || 30
     const dailyCosts = getAnalyticsService().getChannelDailyCosts(id, days)
     res.json(dailyCosts)
   } catch (error) {
+    if (error instanceof QueryParameterError) {
+      res.status(400).json({ error: error.message })
+      return
+    }
     console.error('Error fetching channel daily costs:', error)
     res.status(500).json({ error: 'Failed to fetch channel daily costs' })
   }

@@ -5,7 +5,6 @@ import {
   getActiveDevices,
   getPendingRequests,
   getPairingRequests,
-  respondToPairingRequest,
 } from '../db/queries-security.js'
 
 const router: Router = Router()
@@ -70,34 +69,6 @@ router.get('/:id', (req: Request, res: Response): void => {
   } catch (error) {
     console.error('Error fetching device:', error)
     res.status(500).json({ error: 'Failed to fetch device' })
-  }
-})
-
-// POST /api/devices/requests/:id/respond - Respond to a pairing request
-router.post('/requests/:id/respond', (req: Request, res: Response): void => {
-  try {
-    const id = parseInt(
-      Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
-    )
-    const { status, response } = req.body
-
-    if (isNaN(id)) {
-      res.status(400).json({ error: 'Invalid request ID' })
-      return
-    }
-
-    if (!status || !['approved', 'denied'].includes(status)) {
-      res
-        .status(400)
-        .json({ error: 'Invalid status. Must be "approved" or "denied"' })
-      return
-    }
-
-    respondToPairingRequest(id, status, response || '')
-    res.json({ success: true })
-  } catch (error) {
-    console.error('Error responding to pairing request:', error)
-    res.status(500).json({ error: 'Failed to respond to pairing request' })
   }
 })
 

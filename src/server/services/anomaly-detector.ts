@@ -1,7 +1,10 @@
+import {
+  formatLocalDate,
+  localWindowStart,
+} from '../analytics/analytics-index.js'
 import { createAlert } from '../db/queries-security.js'
 import { formatCny } from '../lib/currency.js'
 import { getAnalyticsService } from './analytics-service.js'
-import { formatLocalDate, localWindowStart } from '../analytics/analytics-index.js'
 
 interface AnomalyResult {
   type: string
@@ -125,7 +128,14 @@ function detectModelSpikes(): AnomalyResult[] {
       anomalies.push({
         type: 'model_spike',
         severity: 'medium',
-        message: 'Model cost spike: ' + key + ' cost ' + formatCny(recentCost) + ' this week (' + ratio.toFixed(1) + 'x previous week)',
+        message:
+          'Model cost spike: ' +
+          key +
+          ' cost ' +
+          formatCny(recentCost) +
+          ' this week (' +
+          ratio.toFixed(1) +
+          'x previous week)',
         details: {
           model: key,
           recentCost,

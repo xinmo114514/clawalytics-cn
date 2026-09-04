@@ -1,11 +1,14 @@
 import path from 'path'
-import cors from 'cors'
 import express, { type Express } from 'express'
 import { realpathSync } from 'fs'
 import type { Server } from 'http'
 import { fileURLToPath } from 'url'
 import { ensureConfigDir, loadConfig } from './config/loader.js'
 import { closeDatabase, getDatabase } from './db/schema.js'
+import {
+  QueryParameterError,
+  validateBoundedQuery,
+} from './lib/query-params.js'
 import {
   startSecurityWatcher,
   stopSecurityWatcher,
@@ -25,6 +28,12 @@ import statsRoutes from './routes/stats.js'
 import tokensRoutes from './routes/tokens.js'
 import toolsRoutes from './routes/tools.js'
 import trendsRoutes from './routes/trends.js'
+import {
+  isTrustedRequest,
+  shouldSetCorsOrigin,
+  type RuntimeMode,
+  type RequestTrustConfig,
+} from './security/request-trust.js'
 import {
   getAnalyticsService,
   initializeAnalyticsService,
@@ -55,39 +64,63 @@ const clientPath = path.join(__dirname, '../client')
 let httpServer: Server | null = null
 let activePort: number | null = null
 let signalHandlersRegistered = false
+let requestTrustConfig: RequestTrustConfig = {
+  mode: isElectron ? 'electron' : isProduction ? 'production' : 'development',
+  port: DEFAULT_PORT,
+  desktopToken: null,
+}
 
-// Middleware
-const allowedOrigins =
-  isProduction && !isElectron
-    ? ['http://localhost:9174', 'http://localhost:4173']
-    : true
-app.use(
-  cors({
-    origin: allowedOrigins,
-    credentials: true,
-  })
-)
-app.use(express.json())
-
-// Keep all analytics endpoints consistent: malformed/negative/oversized day
-// windows should never silently become the default or trigger an unbounded
-// scan.
-const MAX_ANALYTICS_DAYS = 3650
+// API trust boundary must run before JSON parsing and route execution. In
+// Electron mode this is a mandatory origin + per-process token check.
 app.use('/api', (req, res, next) => {
-  const value = req.query.days
-  if (value === undefined) {
-    next()
+  if (
+    !isTrustedRequest(req, {
+      ...requestTrustConfig,
+      port: req.socket.localPort ?? requestTrustConfig.port,
+    })
+  ) {
+    res.status(403).json({ error: 'Untrusted local request origin' })
     return
   }
-  const raw = Array.isArray(value) ? value[0] : value
-  const days = typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : NaN
-  if (!Number.isSafeInteger(days) || days < 1 || days > MAX_ANALYTICS_DAYS) {
-    res.status(400).json({
-      error: `days must be an integer between 1 and ${MAX_ANALYTICS_DAYS}`,
-    })
+
+  const origin = Array.isArray(req.headers.origin)
+    ? req.headers.origin[0]
+    : req.headers.origin
+  if (shouldSetCorsOrigin(origin, requestTrustConfig)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Access-Control-Allow-Credentials', 'true')
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, X-Clawalytics-Desktop-Token'
+    )
+    res.setHeader(
+      'Access-Control-Allow-Methods',
+      'GET,POST,PUT,PATCH,DELETE,OPTIONS'
+    )
+    res.setHeader('Vary', 'Origin')
+  }
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204)
     return
   }
   next()
+})
+app.use(express.json())
+
+app.use('/api', (req, res, next) => {
+  try {
+    validateBoundedQuery(req, 'days', 1, 3650)
+    validateBoundedQuery(req, 'limit', 1, 1000)
+    validateBoundedQuery(req, 'offset', 0, 1_000_000)
+    validateBoundedQuery(req, 'hours', 1, 8760)
+    next()
+  } catch (error) {
+    if (error instanceof QueryParameterError) {
+      res.status(400).json({ error: error.message })
+      return
+    }
+    next(error)
+  }
 })
 
 app.use('/api', (req, res, next) => {
@@ -162,6 +195,8 @@ app.use((req, res, next) => {
 
 export interface StartServerOptions {
   port?: number
+  runtimeMode?: RuntimeMode
+  desktopToken?: string | null
 }
 
 export interface StartedServer {
@@ -288,6 +323,14 @@ export async function start(
     }
   }
 
+  requestTrustConfig = {
+    mode:
+      options.runtimeMode ??
+      (isElectron ? 'electron' : isProduction ? 'production' : 'development'),
+    port,
+    desktopToken: options.desktopToken ?? null,
+  }
+
   try {
     ensureConfigDir()
 
@@ -296,7 +339,7 @@ export async function start(
 
     const config = loadConfig()
 
-    await initPricingService(config.pricingEndpoint, config.rates)
+    initPricingService(config.rates)
 
     initializeAnalyticsService(config)
 
@@ -313,7 +356,7 @@ export async function start(
     httpServer = server
     activePort = port
 
-    initWebSocket(server)
+    initWebSocket(server, requestTrustConfig)
     registerSignalHandlers()
 
     console.log(`\nClawalytics server running at http://localhost:${port}`)

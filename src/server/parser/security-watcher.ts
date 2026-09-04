@@ -7,13 +7,15 @@ import {
   updateDeviceLastSeen,
   updateDeviceStatus,
   getDevice,
+  markPairingRequestState,
+  reconcilePairingRequests,
 } from '../db/queries-security.js'
 import { AlertService } from '../services/alert-service.js'
 import {
   watchDeviceFiles,
   stopDeviceWatcher,
-  loadPairedDevices,
-  loadPendingRequests,
+  loadPairedDevicesSnapshot,
+  loadPendingRequestsSnapshot,
   type PairedDevice,
   type PendingRequest,
 } from './openclaw/device-loader.js'
@@ -51,6 +53,7 @@ let activeWatchers: ActiveWatchers = {
 }
 
 let isRunning = false
+let activeOpenClawPath = ''
 
 // ============================================
 // Main watcher functions
@@ -75,6 +78,7 @@ export function startSecurityWatcher(config: SecurityWatcherConfig): void {
   }
 
   const alertService = AlertService.getInstance()
+  activeOpenClawPath = config.openClawPath
 
   console.log('Starting security watcher...')
 
@@ -129,6 +133,7 @@ export function stopSecurityWatcher(): void {
   }
 
   isRunning = false
+  activeOpenClawPath = ''
   console.log('Security watcher stopped')
 }
 
@@ -145,7 +150,8 @@ export function isSecurityWatcherRunning(): boolean {
 
 function loadInitialState(openClawPath: string): void {
   // Load existing devices
-  const devices = loadPairedDevices(openClawPath)
+  const pairedSnapshot = loadPairedDevicesSnapshot(openClawPath)
+  const devices = pairedSnapshot.status === 'ok' ? pairedSnapshot.items : []
   for (const device of devices) {
     upsertDevice({
       id: device.id,
@@ -157,12 +163,24 @@ function loadInitialState(openClawPath: string): void {
   console.log(`Loaded ${devices.length} paired devices`)
 
   // Load existing pending requests
-  const requests = loadPendingRequests(openClawPath)
+  const pendingSnapshot = loadPendingRequestsSnapshot(openClawPath)
+  const requests = pendingSnapshot.status === 'ok' ? pendingSnapshot.items : []
   for (const request of requests) {
     createPairingRequest({
       device_id: request.id,
       device_name: request.deviceName,
+      source_request_id: request.id,
     })
+  }
+  if (pendingSnapshot.status === 'ok' && pairedSnapshot.status === 'ok') {
+    reconcilePairingRequests(
+      requests.map((request) => ({
+        device_id: request.id,
+        device_name: request.deviceName,
+        source_request_id: request.id,
+      })),
+      new Set(devices.map((device) => device.id))
+    )
   }
   console.log(`Loaded ${requests.length} pending pairing requests`)
 }
@@ -184,6 +202,7 @@ function handleDevicePaired(
     type: device.type,
     status: 'active',
   })
+  markPairingRequestState(device.id, 'resolved')
 
   // Log audit entry
   logAudit({
@@ -247,6 +266,7 @@ function handleNewPairingRequest(
   createPairingRequest({
     device_id: request.id,
     device_name: request.deviceName,
+    source_request_id: request.id,
   })
 
   // Log audit entry
@@ -274,7 +294,20 @@ function handleNewPairingRequest(
 function handlePairingRequestRemoved(requestId: string): void {
   console.log(`Pairing request removed: ${requestId}`)
 
-  // Log audit entry (request was either approved or denied)
+  const paired = activeOpenClawPath
+    ? loadPairedDevicesSnapshot(activeOpenClawPath)
+    : { status: 'error' as const, items: [] }
+  if (paired.status !== 'ok') return
+
+  const pairedIds = new Set(paired.items.map((device) => device.id))
+  const changed = markPairingRequestState(
+    requestId,
+    pairedIds.has(requestId) ? 'resolved' : 'removed'
+  )
+  if (!changed) return
+
+  // Log the observed external state transition only; no approve/deny action
+  // is inferred or sent to OpenClaw.
   logAudit({
     action: 'pairing_request_resolved',
     entity_type: 'pairing_request',

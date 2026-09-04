@@ -32,7 +32,7 @@ try {
         openClawPath,
       },
       securityAlertsEnabled: true,
-      pricingEndpoint: null,
+      pricingEndpoint: 'http://127.0.0.1:9999/legacy-pricing',
     })
   )
 
@@ -46,6 +46,7 @@ try {
   assert.equal(config.dataSources.openclaw.path, openClawPath)
   assert.equal(config.dataSources.hermes.enabled, false)
   assert.equal(config.dataSources.hermes.path, '')
+  assert.equal('pricingEndpoint' in config, false)
 
   const hermesRoot = path.join(home, '.hermes')
   fs.mkdirSync(hermesRoot)
@@ -60,6 +61,7 @@ try {
   )
   assert.equal(persisted.schemaVersion, 3)
   assert.equal(persisted.dataSources.hermes.enabled, false)
+  assert.equal('pricingEndpoint' in persisted, false)
 
   // Pricing cache must reflect rates loaded from disk after the config has
   // been updated, instead of staying pinned to whatever rates were captured
@@ -70,7 +72,7 @@ try {
     await import('../src/server/services/pricing-service.ts')
   const { DEFAULT_RATES } = await import('../src/server/config/defaults.ts')
   const { saveConfig } = await import('../src/server/config/loader.ts')
-  await initPricingService(null, loadConfig().rates)
+  initPricingService(loadConfig().rates)
 
   const baselineAnthropic = getModelPricing('anthropic', 'claude-sonnet-4')
   assert.ok(baselineAnthropic, 'baseline anthropic rate must be available')

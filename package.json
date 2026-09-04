@@ -1,24 +1,16 @@
 {
-  "name": "clawalytics",
+  "name": "clawalytics-cn-desktop",
   "version": "0.7.9",
   "description": "Cost-tracking analytics dashboard for OpenClaw - track AI spending across 100+ models, monitor agents, analyze channels, and manage security",
   "author": "David Novotny",
   "license": "MIT",
   "type": "module",
-  "main": "dist/server/index.js",
-  "bin": {
-    "clawalytics": "./bin/clawalytics.js",
-    "clawalytics-mcp": "./bin/clawalytics-mcp.js"
-  },
-  "files": [
-    "bin",
-    "dist",
-    "scripts",
-    "README.md"
-  ],
+  "private": true,
+  "main": "electron/main.mjs",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.12.0"
   },
+  "packageManager": "pnpm@10.32.0",
   "scripts": {
     "dev": "concurrently \"corepack pnpm dev:client\" \"corepack pnpm dev:server\"",
     "dev:client": "vite",
@@ -28,32 +20,32 @@
     "build:client": "tsc -b && vite build",
     "build:server": "tsc -p tsconfig.server.json",
     "build:desktop": "corepack pnpm build && node scripts/run-electron-builder.mjs install-app-deps && node scripts/run-electron-builder.mjs --win nsis",
-    "start": "node scripts/ensure-native-deps.mjs && node scripts/start-production.mjs",
     "test:openclaw": "node scripts/ensure-native-deps.mjs && node --import tsx scripts/test-openclaw-data-pipeline.mjs",
     "test:hermes": "node scripts/ensure-native-deps.mjs && node --import tsx scripts/test-hermes-data-pipeline.mjs && node --import tsx scripts/test-data-source-config.mjs",
     "test:desktop-notifications": "node scripts/test-desktop-notifications.mjs",
     "test:analytics": "node --import tsx scripts/test-analytics-regressions.mjs",
+    "test:security-boundary": "node --import tsx scripts/test-security-boundary.mjs",
+    "test:request-trust": "node --import tsx scripts/test-request-trust.mjs",
+    "test:desktop-security": "node scripts/test-desktop-security.mjs",
+    "test:desktop-e2e": "node scripts/test-desktop-e2e.mjs",
+    "test:pairing-sync": "node --import tsx scripts/test-pairing-sync.mjs",
+    "test:input-safety": "node --import tsx scripts/test-input-safety.mjs",
+    "test:wsl-platform": "node --import tsx scripts/test-wsl-platform.mjs",
     "rebuild:native": "node scripts/ensure-native-deps.mjs",
-    "postinstall": "node scripts/postinstall.js",
-    "preuninstall": "node scripts/preuninstall.js",
-    "prepublishOnly": "corepack pnpm build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --check --end-of-line auto .",
     "format": "prettier --write .",
     "test:server-binding": "node scripts/ensure-native-deps.mjs && node --import tsx scripts/test-server-binding.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^13.0.3",
     "chokidar": "^4.0.3",
-    "commander": "^13.1.0",
-    "cors": "^2.8.5",
     "express": "^5.1.0",
-    "json5": "^2.2.3",
     "framer-motion": "^12.32.0",
-    "ws": "^8.19.0",
-    "yaml": "^2.7.0"
+    "json5": "^2.2.3",
+    "ws": "^8.21.3",
+    "yaml": "^2.9.0"
   },
   "optionalDependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -75,7 +67,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "axios": "^1.13.4",
+    "axios": "^1.20.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "1.1.1",
@@ -95,6 +87,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@playwright/test": "1.62.1",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/eslint-plugin-query": "^5.91.2",
     "@tanstack/react-query": "^5.90.12",
@@ -105,7 +98,6 @@
     "@tanstack/router-plugin": "^1.141.2",
     "@trivago/prettier-plugin-sort-imports": "^6.0.0",
     "@types/better-sqlite3": "^7.6.12",
-    "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^25.0.2",
     "@types/react": "^19.2.7",
@@ -113,13 +105,13 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react-swc": "^4.2.2",
     "concurrently": "^9.1.2",
-    "electron": "^37.3.1",
-    "electron-builder": "^26.0.12",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.39.2",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.25",
     "globals": "^16.5.0",
-    "prettier": "^3.7.4",
+    "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "tailwindcss": "^4.1.18",
     "tsx": "^4.19.4",
@@ -145,11 +137,18 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/clawalytics/clawalytics.git"
+    "url": "git+https://github.com/xinmo114514/clawalytics-cn.git"
   },
-  "homepage": "https://github.com/clawalytics/clawalytics#readme",
+  "homepage": "https://github.com/xinmo114514/clawalytics-cn#readme",
   "bugs": {
-    "url": "https://github.com/clawalytics/clawalytics/issues"
+    "url": "https://github.com/xinmo114514/clawalytics-cn/issues"
+  },
+  "pnpm": {
+    "overrides": {
+      "body-parser": "2.3.0",
+      "path-to-regexp": "8.4.2",
+      "qs": "6.16.0"
+    }
   },
   "build": {
     "appId": "com.clawalytics.desktop",
@@ -189,14 +188,5 @@
       "createStartMenuShortcut": true,
       "include": "scripts/custom-nsis.generated.nsh"
     }
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "electron-winstaller",
-      "better-sqlite3",
-      "esbuild",
-      "@swc/core"
-    ]
   }
 }

@@ -10,6 +10,10 @@ import {
   getRecentConnectionEvents,
   getSecurityDashboardStats,
 } from '../db/queries-security.js'
+import {
+  parsePositiveSafeInteger,
+  QueryParameterError,
+} from '../lib/query-params.js'
 
 const router: Router = Router()
 
@@ -106,18 +110,18 @@ router.get(
 // POST /api/security/alerts/:id/acknowledge - Acknowledge an alert
 router.post('/alerts/:id/acknowledge', (req: Request, res: Response): void => {
   try {
-    const id = parseInt(
-      Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
+    const id = parsePositiveSafeInteger(
+      Array.isArray(req.params.id) ? req.params.id[0] : req.params.id,
+      'alert ID'
     )
-
-    if (isNaN(id)) {
-      res.status(400).json({ error: 'Invalid alert ID' })
-      return
-    }
 
     acknowledgeAlert(id)
     res.json({ success: true })
   } catch (error) {
+    if (error instanceof QueryParameterError) {
+      res.status(400).json({ error: error.message })
+      return
+    }
     console.error('Error acknowledging alert:', error)
     res.status(500).json({ error: 'Failed to acknowledge alert' })
   }

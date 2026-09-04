@@ -105,6 +105,12 @@ import {
 } from '../ws/index.js'
 import { getPricingFingerprint } from './pricing-service.js'
 
+function requestMultiplicity(
+  request: Pick<ParsedRequest, 'apiCallCount'>
+): number {
+  return Math.max(0, request.apiCallCount ?? 1)
+}
+
 const isProduction = process.env.NODE_ENV === 'production'
 
 // Version 2 changed per-request cost derivation and added previously unpriced
@@ -3459,7 +3465,10 @@ class AnalyticsService {
       ch.total_cost += session.totalCost
       ch.total_input_tokens += session.totalInputTokens
       ch.total_output_tokens += session.totalOutputTokens
-      ch.message_count += session.requests.length
+      ch.message_count += session.requests.reduce(
+        (total, request) => total + requestMultiplicity(request),
+        0
+      )
     }
 
     return [...channelMap.values()].sort((a, b) => b.total_cost - a.total_cost)
@@ -3507,7 +3516,7 @@ class AnalyticsService {
         d.total_cost += req.cost
         d.input_tokens += req.inputTokens
         d.output_tokens += req.outputTokens
-        d.message_count++
+        d.message_count += requestMultiplicity(req)
       }
     }
 

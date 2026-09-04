@@ -1,7 +1,6 @@
 import { Router, type Request, type Response } from 'express'
-import { loadConfig } from '../config/loader.js'
 import { getAnalyticsService } from '../services/analytics-service.js'
-import { getAllPricing, refreshPricing } from '../services/pricing-service.js'
+import { getAllPricing } from '../services/pricing-service.js'
 
 const router: Router = Router()
 
@@ -86,33 +85,5 @@ router.get('/pricing', (_req: Request, res: Response): void => {
     res.status(500).json({ error: 'Failed to fetch pricing' })
   }
 })
-
-// POST /api/models/pricing/refresh - Force refresh pricing from endpoint
-router.post(
-  '/pricing/refresh',
-  async (_req: Request, res: Response): Promise<void> => {
-    try {
-      const config = loadConfig()
-      if (!config.pricingEndpoint) {
-        res.status(400).json({ error: 'No pricing endpoint configured' })
-        return
-      }
-
-      const success = await refreshPricing(config.pricingEndpoint)
-      if (success) {
-        getAnalyticsService().invalidateCostCache()
-        const pricing = getAllPricing()
-        res.json({ success: true, pricing })
-      } else {
-        res
-          .status(500)
-          .json({ error: 'Failed to refresh pricing from endpoint' })
-      }
-    } catch (error) {
-      console.error('Error refreshing pricing:', error)
-      res.status(500).json({ error: 'Failed to refresh pricing' })
-    }
-  }
-)
 
 export default router

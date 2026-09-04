@@ -215,7 +215,7 @@ const TENCENT_PAYG_RATES: ProviderRates = {
 }
 
 // Fallback rates when pricing service is unavailable
-// These will be replaced by dynamic pricing from the pricing endpoint
+// Users can override these bundled rates through the local configuration.
 export const DEFAULT_RATES: DefaultRates = {
   anthropic: {
     'claude-opus-4': { input: 105, output: 525 },
@@ -321,8 +321,6 @@ export interface Config {
     openClawPath: string // Linux path inside WSL2 (e.g. ~/.openclaw)
   }
   securityAlertsEnabled: boolean
-  // Pricing service
-  pricingEndpoint: string | null // Custom endpoint for model pricing
 }
 
 export type DataSourceEnvironment = 'local' | 'wsl'
@@ -363,6 +361,4 @@ export const DEFAULT_CONFIG: Config = {
     openClawPath: '~/.openclaw',
   },
   securityAlertsEnabled: true,
-  // Pricing
-  pricingEndpoint: null, // Set to custom endpoint URL if desired
 }

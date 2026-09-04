@@ -338,6 +338,56 @@ const migrations: {
       )
     },
   },
+  {
+    version: 4,
+    description: 'Add stable OpenClaw pairing request source IDs',
+    up: (db) => {
+      const info = db.prepare('PRAGMA table_info(pairing_requests)').all() as {
+        name: string
+      }[]
+      if (!info.some((column) => column.name === 'source_request_id')) {
+        db.exec(
+          'ALTER TABLE pairing_requests ADD COLUMN source_request_id TEXT'
+        )
+      }
+
+      const duplicateDevices = db
+        .prepare(
+          `SELECT device_id, GROUP_CONCAT(id) AS ids
+           FROM pairing_requests
+           WHERE status = 'pending'
+           GROUP BY device_id
+           HAVING COUNT(*) > 1`
+        )
+        .all() as Array<{ device_id: string; ids: string }>
+      for (const duplicate of duplicateDevices) {
+        const ids = duplicate.ids
+          .split(',')
+          .map((id) => Number(id))
+          .filter((id) => Number.isSafeInteger(id))
+          .sort((a, b) => b - a)
+        const [keep, ...older] = ids
+        if (!keep) continue
+        for (const id of older) {
+          db.prepare(
+            `UPDATE pairing_requests
+             SET status = 'removed', responded_at = COALESCE(responded_at, datetime('now'))
+             WHERE id = ?`
+          ).run(id)
+        }
+        db.prepare(
+          `UPDATE pairing_requests SET source_request_id = device_id
+           WHERE id = ? AND source_request_id IS NULL`
+        ).run(keep)
+      }
+
+      db.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_pairing_requests_source_request_id
+         ON pairing_requests(source_request_id)
+         WHERE source_request_id IS NOT NULL`
+      )
+    },
+  },
   // To add a future migration:
   // {
   //   version: 3,

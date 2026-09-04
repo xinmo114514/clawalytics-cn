@@ -36,6 +36,7 @@ import { LanguageSwitch } from '@/components/language-switch'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { toCsv } from '../../../shared/csv'
 import { AlertsList } from './components/alerts-list'
 import { AuditTable } from './components/audit-table'
 import { ConnectionsList } from './components/connections-list'
@@ -184,17 +185,7 @@ export function SecurityPage() {
       entry.details ?? '',
     ])
 
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row
-          .map((cell) =>
-            typeof cell === 'string' && cell.includes(',')
-              ? `"${cell.replace(/"/g, '""')}"`
-              : cell
-          )
-          .join(',')
-      )
-      .join('\n')
+    const csv = toCsv(headers, rows)
 
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)

@@ -613,9 +613,6 @@ function loadConfigFromDisk(): Config {
       },
       securityAlertsEnabled:
         userConfig.securityAlertsEnabled ?? defaultConfig.securityAlertsEnabled,
-      // Pricing
-      pricingEndpoint:
-        userConfig.pricingEndpoint ?? defaultConfig.pricingEndpoint,
     }
 
     if (

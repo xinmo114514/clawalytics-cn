@@ -1,11 +1,8 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Check, Clock, Smartphone, X } from 'lucide-react'
-import { toast } from 'sonner'
-import { type PairingRequest, respondToPairingRequest } from '@/lib/api'
+import { Clock, Smartphone } from 'lucide-react'
+import { type PairingRequest } from '@/lib/api'
 import { formatRelativeTime } from '@/lib/i18n'
 import { useLocale } from '@/context/locale-provider'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -24,44 +21,6 @@ PairingRequests.displayName = 'PairingRequests'
 
 export function PairingRequests({ requests, isLoading }: PairingRequestsProps) {
   const { locale, text } = useLocale()
-  const queryClient = useQueryClient()
-
-  const respondMutation = useMutation({
-    mutationFn: ({
-      id,
-      status,
-      response,
-    }: {
-      id: number
-      status: string
-      response?: string
-    }) => respondToPairingRequest(id, status, response),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['pendingRequests'] })
-      queryClient.invalidateQueries({ queryKey: ['devices'] })
-      queryClient.invalidateQueries({ queryKey: ['securityDashboard'] })
-      toast.success(
-        variables.status === 'approved'
-          ? text('设备已配对', 'Device paired')
-          : text('请求已拒绝', 'Request denied')
-      )
-    },
-    onError: () => {
-      toast.error(text('处理请求失败', 'Error processing request'))
-    },
-  })
-
-  const handleApprove = (id: number) => {
-    respondMutation.mutate({ id, status: 'approved' })
-  }
-
-  const handleDeny = (id: number) => {
-    respondMutation.mutate({
-      id,
-      status: 'denied',
-      response: 'Manually denied',
-    })
-  }
 
   if (isLoading) {
     return (
@@ -108,6 +67,12 @@ export function PairingRequests({ requests, isLoading }: PairingRequestsProps) {
                 `${requests.length} request${requests.length !== 1 ? 's' : ''} pending`
               )
             : text('没有待处理请求', 'No pending requests')}
+          <span className='mt-1 block text-xs'>
+            {text(
+              '请在 OpenClaw 中处理，Clawalytics 仅展示状态。',
+              'Handle this request in OpenClaw; Clawalytics only displays its status.'
+            )}
+          </span>
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -153,26 +118,6 @@ export function PairingRequests({ requests, isLoading }: PairingRequestsProps) {
                       {formatRelativeTime(request.requested_at, locale)}
                     </span>
                   </div>
-                </div>
-                <div className='flex gap-2'>
-                  <Button
-                    variant='default'
-                    size='sm'
-                    onClick={() => handleApprove(request.id)}
-                    disabled={respondMutation.isPending}
-                  >
-                    <Check className='mr-1 h-4 w-4' />
-                    {text('批准', 'Approve')}
-                  </Button>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    onClick={() => handleDeny(request.id)}
-                    disabled={respondMutation.isPending}
-                  >
-                    <X className='mr-1 h-4 w-4' />
-                    {text('拒绝', 'Deny')}
-                  </Button>
                 </div>
               </div>
             ))}

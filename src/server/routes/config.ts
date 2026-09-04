@@ -112,11 +112,10 @@ router.post('/', (req: Request, res: Response): void => {
       },
       securityAlertsEnabled:
         updates.securityAlertsEnabled ?? currentConfig.securityAlertsEnabled,
-      pricingEndpoint: updates.pricingEndpoint ?? currentConfig.pricingEndpoint,
     }
 
     saveConfig(newConfig)
-    if (updates.rates || updates.pricingEndpoint !== undefined) {
+    if (updates.rates) {
       refreshPricingCache(loadConfig().rates)
       getAnalyticsService().invalidateCostCache()
     }

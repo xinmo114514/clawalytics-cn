@@ -32,6 +32,7 @@ import { LanguageSwitch } from '@/components/language-switch'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { toCsv } from '../../../shared/csv'
 import { ProjectCostChart } from './components/project-cost-chart'
 import { SessionStatsCards } from './components/session-stats-cards'
 import { SessionsTable } from './components/sessions-table'
@@ -150,7 +151,7 @@ export function Sessions() {
       s.models_used.join('; '),
     ])
 
-    const csv = [headers, ...rows].map((row) => row.join(',')).join('\n')
+    const csv = toCsv(headers, rows)
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')

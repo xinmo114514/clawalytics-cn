@@ -50,7 +50,7 @@ v0.7.7 把后端 HTTP 服务固定绑定到 IPv4 回环接口（`127.0.0.1`）�
 这一版重点修复本机后端服务在局域网可被访问的风险，并补齐相关回归测试：
 
 - 后端 HTTP 服务固定绑定到 IPv4 回环接口（`127.0.0.1`），避免无认证的分析与配置 API 在局域网内被访问。
-- CLI 内部的回环请求统一改用 `127.0.0.1`，避免依赖系统的 `localhost` 解析，保证与回环绑定一致。
+- Electron 桌面端的后端请求统一限制在 `127.0.0.1` 回环接口，并使用每进程临时令牌保护。
 - 新增 `pnpm test:server-binding`：在每次发布前自动验证监听地址、健康接口响应，以及对外部接口的连接拒绝。
 - 新增 Hermes 数据源支持：可读取 Hermes 会话和用量数据，接入统一的成本、Token、模型与趋势分析，并提供数据源切换和配置诊断。
 - 其它可用性修复：仪表盘模型用量 Treemap 在窄区域内的文字越界、圆角不一致等问题（沿用 v0.7.6 已修复内容）。
@@ -84,15 +84,15 @@ v0.7.7 把后端 HTTP 服务固定绑定到 IPv4 回环接口（`127.0.0.1`）�
 
 ## 亮点
 
-| 模块       | 你能看到什么                                                 |
-| ---------- | ------------------------------------------------------------ |
-| 成本总览   | 生命周期、月、周、日花费，趋势图，缓存节省，模型占比         |
-| 会话分析   | 每次会话的项目路径、模型、Token、成本、最近活跃时间          |
-| 模型分析   | 不同模型和供应商的成本分布、调用次数、输入输出 Token         |
-| Agent 分析 | OpenClaw 多 Agent 的成本、趋势、请求量与表现对比             |
-| 渠道分析   | WhatsApp、Telegram、Slack 等渠道的成本、消息数、单条消息成本 |
-| 安全监控   | 设备列表、配对请求、安全告警、连接历史、审计日志             |
-| 桌面体验   | Windows 桌面版、托盘驻留、原生通知、开机自启与启动方式选择   |
+| 模块       | 你能看到什么                                                     |
+| ---------- | ---------------------------------------------------------------- |
+| 成本总览   | 生命周期、月、周、日花费，趋势图，缓存节省，模型占比             |
+| 会话分析   | 每次会话的项目路径、模型、Token、成本、最近活跃时间              |
+| 模型分析   | 不同模型和供应商的成本分布、调用次数、输入输出 Token             |
+| Agent 分析 | OpenClaw 多 Agent 的成本、趋势、请求量与表现对比                 |
+| 渠道分析   | WhatsApp、Telegram、Slack 等渠道的成本、消息数、单条消息成本     |
+| 安全监控   | 设备列表、配对请求、安全告警、连接历史、审计日志                 |
+| 桌面体验   | Windows 桌面版、托盘驻留、原生通知、开机自启与启动方式选择       |
 | 数据接入   | OpenClaw Windows / WSL2 与 Hermes 数据源、增量会话缓存、后台刷新 |
 
 ## Windows 桌面版
@@ -132,59 +132,18 @@ v0.7.7 把后端 HTTP 服务固定绑定到 IPv4 回环接口（`127.0.0.1`）�
 
 ## 快速开始
 
-### 1. 安装 CLI 版本
+Clawalytics CN 仅通过 GitHub Releases 提供 Windows 桌面版。下载并运行
+`Clawalytics-<version>-win-x64-setup.exe`，应用会在本机回环地址启动内嵌后端，
+不会在安装或卸载时注册、启动或停止系统服务。
 
-```bash
-npm install -g clawalytics
+## 源码开发方式
 
-# 或
-pnpm add -g clawalytics
-```
-
-安装完成后，Clawalytics 会尝试自动安装为系统后台服务：
-
-- macOS: LaunchAgent
-- Linux: `systemd --user`
-- Windows: Task Scheduler
-
-### 2. 启动并查看状态
-
-```bash
-clawalytics
-```
-
-默认仪表盘地址：
-
-```text
-http://localhost:9174
-```
-
-### 3. 常用命令
-
-| 命令                                                      | 说明                                 |
-| --------------------------------------------------------- | ------------------------------------ |
-| `clawalytics`                                             | 显示迷你状态面板，并告诉你仪表盘地址 |
-| `clawalytics status`                                      | 查看完整状态、成本统计、预算使用情况 |
-| `clawalytics logs -f`                                     | 跟踪服务日志                         |
-| `clawalytics config`                                      | 打开配置文件                         |
-| `clawalytics path`                                        | 查看配置、数据库、日志等路径         |
-| `clawalytics budget`                                      | 交互式设置预算阈值                   |
-| `clawalytics budget --daily 10 --weekly 50 --monthly 200` | 直接设置预算阈值                     |
-| `clawalytics start --port 3005`                           | 前台启动，适合开发或调试             |
-| `clawalytics tunnel`                                      | 查看远程访问仪表盘的 SSH 隧道说明    |
-| `clawalytics install-service`                             | 手动安装后台服务                     |
-| `clawalytics uninstall-service`                           | 卸载后台服务                         |
-| `clawalytics mcp`                                         | 启动 MCP 服务，供 AI 工具接入        |
-
-## Web / CLI 开发方式
-
-如果你更习惯源码运行，也可以继续按原来的方式开发：
+开发者可以从源码运行 Vite 与 Electron：
 
 ```bash
 pnpm install
 pnpm dev
 pnpm build
-pnpm start
 pnpm lint
 pnpm format:check
 ```
@@ -262,7 +221,7 @@ release/win-unpacked/Clawalytics.exe
 - `中文 / English` 语言切换
 - `Light / Dark / System` 主题切换
 - 本地数据库，无需单独部署外部数据库
-- Web、CLI 与 Windows 桌面端可以配合使用
+- Windows Electron 桌面端内置本机后端与数据分析
 
 ## 配置与数据位置
 
@@ -277,7 +236,7 @@ Clawalytics 默认把配置和数据放在用户目录下：
 - OpenClaw 数据路径
 - Gateway 日志路径
 - 安全告警开关
-- 价格接口地址
+- 模型手工费率覆盖
 
 一个常见配置示例：
 

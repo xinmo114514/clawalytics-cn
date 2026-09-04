@@ -1,5 +1,9 @@
 import type { Server } from 'http'
 import { WebSocketServer, WebSocket } from 'ws'
+import {
+  isTrustedRequest,
+  type RequestTrustConfig,
+} from '../security/request-trust.js'
 
 const isProduction = process.env.NODE_ENV === 'production'
 
@@ -7,6 +11,7 @@ const WS_HEARTBEAT_INTERVAL_MS = 30000
 // Clients only ever send handshake/control frames here; keep the payload cap
 // small so a rogue client cannot pressure the main process with huge frames.
 const WS_MAX_PAYLOAD_BYTES = 64 * 1024
+const WS_MAX_CONNECTIONS = 32
 
 export type WsEventType =
   | 'costs:updated'
@@ -58,11 +63,47 @@ function stopHeartbeat(): void {
   }
 }
 
-export function initWebSocket(server: Server): WebSocketServer {
+export function initWebSocket(
+  server: Server,
+  trustConfig: RequestTrustConfig
+): WebSocketServer {
   wss = new WebSocketServer({
-    server,
-    path: '/ws',
+    noServer: true,
     maxPayload: WS_MAX_PAYLOAD_BYTES,
+  })
+
+  server.on('upgrade', (request, socket, head) => {
+    let pathname = ''
+    try {
+      pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
+    } catch {
+      socket.destroy()
+      return
+    }
+    if (pathname !== '/ws') {
+      return
+    }
+
+    const requestConfig = {
+      ...trustConfig,
+      port: request.socket.localPort ?? trustConfig.port,
+    }
+    if (!isTrustedRequest(request, requestConfig)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+      socket.destroy()
+      return
+    }
+    if (wss && wss.clients.size >= WS_MAX_CONNECTIONS) {
+      socket.write(
+        'HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n'
+      )
+      socket.destroy()
+      return
+    }
+
+    wss?.handleUpgrade(request, socket, head, (client) => {
+      wss?.emit('connection', client, request)
+    })
   })
 
   wss.on('connection', (ws) => {

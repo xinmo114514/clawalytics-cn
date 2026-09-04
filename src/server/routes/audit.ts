@@ -8,6 +8,10 @@ import {
   getAuditStats,
   type AuditFilters,
 } from '../db/queries-security.js'
+import {
+  parsePositiveSafeInteger,
+  QueryParameterError,
+} from '../lib/query-params.js'
 
 const router: Router = Router()
 
@@ -95,14 +99,10 @@ router.get('/actor/:actor', (req: Request, res: Response): void => {
 // GET /api/audit/:id - Get single audit entry
 router.get('/:id', (req: Request, res: Response): void => {
   try {
-    const id = parseInt(
-      Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
+    const id = parsePositiveSafeInteger(
+      Array.isArray(req.params.id) ? req.params.id[0] : req.params.id,
+      'audit entry ID'
     )
-
-    if (isNaN(id)) {
-      res.status(400).json({ error: 'Invalid audit entry ID' })
-      return
-    }
 
     const entry = getAuditEntry(id)
 
@@ -113,6 +113,10 @@ router.get('/:id', (req: Request, res: Response): void => {
 
     res.json(entry)
   } catch (error) {
+    if (error instanceof QueryParameterError) {
+      res.status(400).json({ error: error.message })
+      return
+    }
     console.error('Error fetching audit entry:', error)
     res.status(500).json({ error: 'Failed to fetch audit entry' })
   }

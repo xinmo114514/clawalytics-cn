@@ -10,6 +10,12 @@ interface ParentPortLike {
   on(event: 'message', listener: (event: { data: unknown }) => void): unknown
 }
 
+interface StartMessage {
+  type: 'start'
+  port: number
+  desktopToken: string
+}
+
 function getParentPort(): ParentPortLike | null {
   return (process as { parentPort?: ParentPortLike }).parentPort ?? null
 }
@@ -50,6 +56,11 @@ async function runBackendChild(): Promise<void> {
     },
   })
 
+  let resolveStart: ((message: StartMessage) => void) | null = null
+  const startMessage = new Promise<StartMessage>((resolve) => {
+    resolveStart = resolve
+  })
+
   parentPort.on('message', (event) => {
     const message = event.data as { type?: string } | null | undefined
 
@@ -62,15 +73,27 @@ async function runBackendChild(): Promise<void> {
       return
     }
 
+    if (
+      message.type === 'start' &&
+      typeof (message as Partial<StartMessage>).port === 'number' &&
+      typeof (message as Partial<StartMessage>).desktopToken === 'string'
+    ) {
+      resolveStart?.(message as StartMessage)
+      resolveStart = null
+      return
+    }
+
     if (message.type === 'requestCloseChoice') {
       requestDesktopCloseChoice()
     }
   })
 
-  const configuredPort = Number.parseInt(process.env.PORT ?? '', 10)
-  const started = await start(
-    Number.isInteger(configuredPort) ? { port: configuredPort } : {}
-  )
+  const message = await startMessage
+  const started = await start({
+    port: message.port,
+    runtimeMode: 'electron',
+    desktopToken: message.desktopToken,
+  })
 
   parentPort.postMessage({ type: 'ready', port: started.port })
 }

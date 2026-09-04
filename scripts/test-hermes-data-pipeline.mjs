@@ -117,6 +117,13 @@ try {
     const allAgentsDaily = aggregateService.getAllAgentsDailyCosts(30)
     const allAgentsTotal = allAgentsDaily.reduce((sum, entry) => sum + entry.request_count, 0)
     assert.equal(allAgentsTotal, 5, "all-agents daily request count must include all 5 calls")
+    const aggregateChannel = aggregateService.getChannels().find((channel) => channel.name === 'cli')
+    assert.ok(aggregateChannel)
+    assert.equal(aggregateChannel.message_count, 5, "channel total must include all aggregate calls")
+    const channelDaily = aggregateService.getChannelDailyCosts(aggregateChannel.id, 30)
+    assert.equal(channelDaily.reduce((sum, entry) => sum + entry.message_count, 0), 5)
+    const allChannelsDaily = aggregateService.getAllChannelsDailyCosts(30)
+    assert.equal(allChannelsDaily.reduce((sum, entry) => sum + entry.message_count, 0), 5)
     await shutdownAnalyticsService()
     // Explicit 0 must be preserved (zero-call residual records do not become 1).
     const zeroCallRoot = fs.mkdtempSync(path.join(os.tmpdir(), "clawalytics-zero-call-"))
@@ -199,7 +206,6 @@ try {
         gatewayLogsPath: "/tmp/openclaw",
         wsl: { enabled: false, distro: "", openClawPath: "" },
         securityAlertsEnabled: true,
-        pricingEndpoint: null,
       }),
       "utf8"
     )
@@ -227,5 +233,4 @@ try {
   }
     console.log("Hermes data pipeline checks passed")
 } finally { fs.rmSync(root, { recursive: true, force: true }) }
-
 

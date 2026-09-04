@@ -225,7 +225,8 @@ export interface MaterializedSqliteDatabase {
   cleanup(): void
 }
 
-interface WslSqliteSnapshotOptions {
+export interface WslSqliteSnapshotOptions {
+  platform?: NodeJS.Platform
   commandRunner?: (
     file: string,
     args: string[],
@@ -309,7 +310,9 @@ export function materializeWslSqliteDatabase(
   options: WslSqliteSnapshotOptions = {}
 ): MaterializedSqliteDatabase {
   const parsed =
-    process.platform === 'win32' ? parseWslUncPath(sourcePath) : null
+    (options.platform ?? process.platform) === 'win32'
+      ? parseWslUncPath(sourcePath)
+      : null
   if (!parsed) {
     return { sourcePath, databasePath: sourcePath, cleanup() {} }
   }

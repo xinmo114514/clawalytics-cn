@@ -1,1 +1,7 @@
 sideEffectsCache: false
+
+onlyBuiltDependencies:
+  - electron
+  - better-sqlite3
+  - esbuild
+  - '@swc/core'

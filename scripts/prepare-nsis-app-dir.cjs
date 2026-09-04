@@ -73,6 +73,10 @@ async function writeGeneratedNsisInclude(targetDir) {
 }
 
 module.exports = async function prepareNsisAppDir(context) {
+  if (process.env.CLAWALYTICS_DIRECTORY_BUILD === '1') {
+    return;
+  }
+
   if (context.electronPlatformName !== 'win32') {
     return;
   }

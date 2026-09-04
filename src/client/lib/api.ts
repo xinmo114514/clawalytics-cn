@@ -121,7 +121,6 @@ export interface Config {
     openClawPath: string
   }
   securityAlertsEnabled?: boolean
-  pricingEndpoint?: string | null
 }
 
 export interface DataSourceConfig {
@@ -589,6 +588,7 @@ export interface PairingRequest {
   responded_at: string | null
   status: string
   response: string | null
+  source_request_id: string | null
 }
 
 // Phase 3: Security types
@@ -690,14 +690,6 @@ export async function getActiveDevices(): Promise<Device[]> {
 export async function getPendingRequests(): Promise<PairingRequest[]> {
   const { data } = await api.get<PairingRequest[]>('/devices/pending')
   return data
-}
-
-export async function respondToPairingRequest(
-  id: number,
-  status: string,
-  response?: string
-): Promise<void> {
-  await api.post(`/devices/requests/${id}/respond`, { status, response })
 }
 
 // Phase 3: Security API functions
@@ -883,16 +875,6 @@ export async function getProviderSummary(
 
 export async function getModelPricing(): Promise<PricingData> {
   const { data } = await api.get<PricingData>('/models/pricing')
-  return data
-}
-
-export async function refreshModelPricing(): Promise<{
-  success: boolean
-  pricing?: PricingData
-}> {
-  const { data } = await api.post<{ success: boolean; pricing?: PricingData }>(
-    '/models/pricing/refresh'
-  )
   return data
 }
 

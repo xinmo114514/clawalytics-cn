@@ -20,6 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import WebSocket from 'ws';
+import { teardownSocket } from './costs-socket-teardown.mjs';
 import {
   isAllowedAppNavigation,
   isAllowedExternalUrl,
@@ -43,6 +44,11 @@ const FORCE_QUIT_TIMEOUT_MS = 5000;
 const BACKEND_READY_TIMEOUT_MS = 60000;
 const BACKEND_STOP_TIMEOUT_MS = 2000;
 const BACKEND_KILL_GRACE_MS = 1000;
+const BACKEND_RESTART_MAX_ATTEMPTS = 3;
+const BACKEND_RESTART_RETRY_DELAY_MS = 2000;
+const DASHBOARD_LOAD_ATTEMPTS = 3;
+const DASHBOARD_LOAD_RETRY_DELAY_MS = 1000;
+const RENDERER_CRASH_RELOAD_LIMIT = 3;
 const TITLE_BAR_HEIGHT = 48;
 const DESKTOP_PREFERENCES_FILE = 'desktop-preferences.json';
 const CLOSE_ACTION_ASK = 'ask';
@@ -129,6 +135,8 @@ let isRefreshingCostStats = false;
 let hasQueuedCostRefresh = false;
 let isHandlingCloseChoice = false;
 let forceQuitTimer = null;
+let backendRestartInFlight = false;
+let rendererCrashReloadCount = 0;
 let desktopPreferencesLoaded = false;
 let desktopPreferences = {
   locale: 'en',
@@ -1228,8 +1236,7 @@ function closeCostsSocket() {
   }
 
   if (costsSocket) {
-    costsSocket.removeAllListeners();
-    costsSocket.close();
+    teardownSocket(costsSocket);
     costsSocket = null;
   }
 }
@@ -1250,9 +1257,15 @@ function connectCostsSocket(port) {
     return;
   }
 
+  // A pending reconnect timer captures a stale port (e.g. the backend
+  // restarted on a different one); this connection supersedes it.
+  if (costsReconnectTimer) {
+    clearTimeout(costsReconnectTimer);
+    costsReconnectTimer = null;
+  }
+
   if (costsSocket) {
-    costsSocket.removeAllListeners();
-    costsSocket.close();
+    teardownSocket(costsSocket);
     costsSocket = null;
   }
 
@@ -1486,6 +1499,7 @@ function startBackendChild(port, token) {
         console.error(
           `Backend child process exited unexpectedly (code ${code}).`
         );
+        void restartBackendAfterUnexpectedExit();
       }
     };
 
@@ -1623,6 +1637,82 @@ async function stopBackend() {
   }
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function loadDashboard(window, port) {
+  await session.defaultSession.cookies.set({
+    url: `http://127.0.0.1:${port}`,
+    name: 'clawalytics_desktop_token',
+    value: desktopToken ?? '',
+    httpOnly: true,
+    sameSite: 'strict',
+  });
+
+  for (let attempt = 1; ; attempt += 1) {
+    if (isQuitting || window.isDestroyed()) {
+      return;
+    }
+
+    try {
+      await window.loadURL(`http://127.0.0.1:${port}`);
+      rendererCrashReloadCount = 0;
+      return;
+    } catch (error) {
+      // The backend child signals ready slightly before its HTTP server is
+      // accepting connections; retry briefly before giving up.
+      if (attempt >= DASHBOARD_LOAD_ATTEMPTS) {
+        throw error;
+      }
+      await delay(DASHBOARD_LOAD_RETRY_DELAY_MS);
+    }
+  }
+}
+
+async function restartBackendAfterUnexpectedExit() {
+  if (isQuitting || backendRestartInFlight) {
+    return;
+  }
+
+  backendRestartInFlight = true;
+  try {
+    let port = null;
+    for (let attempt = 1; attempt <= BACKEND_RESTART_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        port = await startBackend();
+        break;
+      } catch (error) {
+        console.error(`Backend restart attempt ${attempt} failed:`, error);
+        if (attempt >= BACKEND_RESTART_MAX_ATTEMPTS) {
+          throw error;
+        }
+        await delay(BACKEND_RESTART_RETRY_DELAY_MS);
+      }
+    }
+
+    if (!port) {
+      return;
+    }
+
+    initializeDesktopIntegrations(port);
+
+    const window = mainWindow;
+    if (window && !window.isDestroyed()) {
+      await loadDashboard(window, port);
+    }
+  } catch (error) {
+    console.error('Backend could not be restarted automatically:', error);
+    dialog.showErrorBox(
+      'Clawalytics backend stopped',
+      'The Clawalytics backend stopped unexpectedly and could not be restarted. '
+        + 'Please restart the app.'
+    );
+  } finally {
+    backendRestartInFlight = false;
+  }
+}
+
 async function createMainWindow(options = {}) {
   const { forceShow = false } = options;
   const startHidden = !forceShow && shouldStartHidden();
@@ -1670,6 +1760,38 @@ async function createMainWindow(options = {}) {
       void shell.openExternal(url);
     }
     return { action: 'deny' };
+  });
+
+  // Never let Chromium's white error page persist: swap in the themed splash
+  // and let the backend watchdog / retry logic drive recovery.
+  window.webContents.on('did-fail-load', (_event, _code, _desc, url, isMainFrame) => {
+    if (!isMainFrame || isQuitting || window.isDestroyed()) {
+      return;
+    }
+
+    if (!url.startsWith('http://127.0.0.1:')) {
+      return;
+    }
+
+    void window.loadURL(LOADING_PAGE_URL).catch(() => {});
+  });
+
+  window.webContents.on('render-process-gone', (_event, details) => {
+    if (isQuitting || details.reason === 'clean-exit' || window.isDestroyed()) {
+      return;
+    }
+
+    // Bound the crash-reload loop so a persistently crashing renderer cannot
+    // spin forever.
+    if (rendererCrashReloadCount >= RENDERER_CRASH_RELOAD_LIMIT) {
+      return;
+    }
+
+    rendererCrashReloadCount += 1;
+
+    if (backendPort) {
+      void loadDashboard(window, backendPort).catch(() => {});
+    }
   });
 
   window.webContents.on('will-navigate', (event, url) => {
@@ -1740,14 +1862,7 @@ async function createMainWindow(options = {}) {
     return window;
   }
 
-  await session.defaultSession.cookies.set({
-    url: `http://127.0.0.1:${port}`,
-    name: 'clawalytics_desktop_token',
-    value: desktopToken ?? '',
-    httpOnly: true,
-    sameSite: 'strict',
-  });
-  await window.loadURL(`http://127.0.0.1:${port}`);
+  await loadDashboard(window, port);
   initializeDesktopIntegrations(port);
 
   if (forceShow && !window.isDestroyed() && !window.isVisible()) {
@@ -1780,6 +1895,17 @@ function ensureMainWindow(options = {}) {
 
   return mainWindowCreationPromise;
 }
+
+// A teardown race or similar main-process bug must never surface as the
+// OS-level "A JavaScript error occurred in the main process" dialog or block
+// an in-flight quit; log it and rely on the force-quit timer for shutdown.
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception in Clawalytics main process:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection in Clawalytics main process:', reason);
+});
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();

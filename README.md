@@ -13,17 +13,29 @@ Clawalytics 把原本分散在日志、会话记录和网关事件里的信息�
 
 OpenClaw 与 Hermes 可以分别配置数据位置并独立分析；切换数据源后，仪表盘会使用对应的数据管道和统计结果，不影响本地运行方式。
 
-## 当前版本：v0.7.9
+## 当前版本：v0.7.10
 
-v0.7.7 把后端 HTTP 服务固定绑定到 IPv4 回环接口（`127.0.0.1`），避免无认证的分析与配置 API 在局域网内可访问；命令行内部的回环请求也统一改用 `127.0.0.1`，并新增 `pnpm test:server-binding` 在每次发布前自动验证绑定地址、健康接口与外部访问拒绝行为。
+v0.7.10 修复设备配对同步的可靠性、非 `/ws` WebSocket 升级请求的处理和桌面端 CSV 导出，并升级旧数据库的配对记录迁移。
 
 当前发布提供 Windows x64 NSIS 安装版，推荐直接下载安装：
 
-- [下载 Clawalytics v0.7.9 Windows 安装包](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.9/Clawalytics-0.7.9-win-x64-setup.exe)
-- [下载 Clawalytics v0.7.9 Portable 版](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.9/Clawalytics-0.7.9-win-x64-portable.exe)
-- [查看 v0.7.9 Release](https://github.com/xinmo114514/clawalytics-cn/releases/tag/v0.7.9)
+- [下载 Clawalytics v0.7.10 Windows 安装包](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.10/Clawalytics-0.7.10-win-x64-setup.exe)
+- [下载 Clawalytics v0.7.10 Portable 版](https://github.com/xinmo114514/clawalytics-cn/releases/download/v0.7.10/Clawalytics-0.7.10-win-x64-portable.exe)
+- [查看 v0.7.10 Release](https://github.com/xinmo114514/clawalytics-cn/releases/tag/v0.7.10)
 
 本次发布提供 Windows x64 安装包和 portable 构建，普通用户推荐使用上面的 NSIS 安装包。
+
+## 0.7.10 本次更新
+
+这一版以“有效快照是权威状态”为核心重构了配对同步，并修复两个发布阻断问题，全部改动先以失败回归测试还原：
+
+- 旧数据库迁移修复：新增 schema v5，把没有稳定请求 ID 的旧 pending 配对记录收敛为单条有效请求（最新一条绑定 `source_request_id`，其余保留历史并标记 removed），覆盖从 v3 直接升级和 v4 之后出现“旧记录 + 新规范记录”并存两种路径。
+- 配对/设备状态可收敛同步：`paired.json` / `pending.json` 任一文件变化都会重新读取两份快照并做全量对账；只针对真实状态变化写库、记审计和发告警，重复快照不再产生重复记录或通知。
+- 文件乱序最终一致：请求先从 pending 消失再出现在 paired（或反之）两种顺序都会收敛到 resolved；已 resolved 的历史请求不会因设备以后移除而降级。
+- 快照缺失或损坏时保留数据库与内存状态，按 100/250/500/1000/2000ms 单队列重试，新文件事件会重置重试；畸形条目（如 `{"requests":[{}]}`）不会写库也不会阻止后端启动。
+- WebSocket 安全边界：非 `/ws` 路径的 upgrade 请求现在明确返回 404 并关闭连接，不再留下悬挂 socket，服务器 stop 不再因此挂起。
+- 桌面端 CSV 导出修复：Dashboard 与工具页改用同源认证 fetch + 临时 `<a download>` 触发下载，文件名取自 `Content-Disposition`，失败时显示双语错误提示；不再依赖会被 Electron 拦截的 `window.open`。
+- 桌面 E2E 扩展：验证页面内认证、无 token 请求 403、HttpOnly 令牌不可读、页面 WebSocket `connected`、渲染器隔离、主题切换与两处非空 CSV 下载。
 
 ## 0.7.9 本次更新
 

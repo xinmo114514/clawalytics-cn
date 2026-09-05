@@ -1,14 +1,10 @@
 import type { FSWatcher } from 'chokidar'
 import {
-  upsertDevice,
-  createPairingRequest,
+  getDevice,
   logConnectionEvent,
   logAudit,
   updateDeviceLastSeen,
-  updateDeviceStatus,
-  getDevice,
-  markPairingRequestState,
-  reconcilePairingRequests,
+  reconcileSecurityState,
 } from '../db/queries-security.js'
 import { AlertService } from '../services/alert-service.js'
 import {
@@ -54,6 +50,16 @@ let activeWatchers: ActiveWatchers = {
 
 let isRunning = false
 let activeOpenClawPath = ''
+let alertService: AlertService | null = null
+
+// Snapshot sync retries: a single queued timer walks the backoff ladder
+// while either snapshot is unavailable. A new file event resets it.
+const SNAPSHOT_RETRY_DELAYS_MS = [100, 250, 500, 1000, 2000]
+let snapshotRetryTimer: ReturnType<typeof setTimeout> | null = null
+let snapshotRetryAttempt = 0
+// The first successful reconcile reflects historical state; it must not
+// spam audit/alert notifications. Only later changes notify.
+let hasCompletedInitialSync = false
 
 // ============================================
 // Main watcher functions
@@ -77,39 +83,35 @@ export function startSecurityWatcher(config: SecurityWatcherConfig): void {
     return
   }
 
-  const alertService = AlertService.getInstance()
+  alertService = AlertService.getInstance()
   activeOpenClawPath = config.openClawPath
+  hasCompletedInitialSync = false
 
   console.log('Starting security watcher...')
 
-  // Load initial state
-  loadInitialState(config.openClawPath)
+  isRunning = true
 
-  // Watch device files
-  activeWatchers.deviceWatcher = watchDeviceFiles(config.openClawPath, {
-    onDevicePaired: (device: PairedDevice) => {
-      handleDevicePaired(device, alertService)
-    },
-    onDeviceRemoved: (deviceId: string) => {
-      handleDeviceRemoved(deviceId, alertService)
-    },
-    onNewRequest: (request: PendingRequest) => {
-      handleNewPairingRequest(request, alertService)
-    },
-    onRequestRemoved: (requestId: string) => {
-      handlePairingRequestRemoved(requestId)
-    },
-  })
+  // Initial reconciliation: bring the database in line with whatever the
+  // snapshot files currently contain, without emitting notifications for
+  // historical differences. If the snapshots are not readable yet, the
+  // retry queue keeps trying until they are.
+  synchronizeSnapshots()
+
+  // Watch device files: any change to either snapshot triggers a full
+  // re-read + reconcile, regardless of which file changed or in what order.
+  activeWatchers.deviceWatcher = watchDeviceFiles(
+    config.openClawPath,
+    handleSnapshotsSignal
+  )
 
   // Watch gateway logs
   activeWatchers.gatewayWatcher = watchGatewayLogs(
     config.gatewayLogsPath,
     (event: GatewayLogEntry) => {
-      handleGatewayEvent(event, alertService)
+      handleGatewayEvent(event, alertService as AlertService)
     }
   )
 
-  isRunning = true
   console.log('Security watcher started')
 }
 
@@ -124,6 +126,7 @@ export function stopSecurityWatcher(): void {
 
   console.log('Stopping security watcher...')
 
+  clearSnapshotRetry()
   stopDeviceWatcher()
   stopGatewayWatcher()
 
@@ -134,6 +137,8 @@ export function stopSecurityWatcher(): void {
 
   isRunning = false
   activeOpenClawPath = ''
+  alertService = null
+  hasCompletedInitialSync = false
   console.log('Security watcher stopped')
 }
 
@@ -145,179 +150,194 @@ export function isSecurityWatcherRunning(): boolean {
 }
 
 // ============================================
-// Initial state loading
+// Snapshot synchronization
 // ============================================
 
-function loadInitialState(openClawPath: string): void {
-  // Load existing devices
-  const pairedSnapshot = loadPairedDevicesSnapshot(openClawPath)
-  const devices = pairedSnapshot.status === 'ok' ? pairedSnapshot.items : []
-  for (const device of devices) {
-    upsertDevice({
+function clearSnapshotRetry(): void {
+  if (snapshotRetryTimer) {
+    clearTimeout(snapshotRetryTimer)
+    snapshotRetryTimer = null
+  }
+  snapshotRetryAttempt = 0
+}
+
+function scheduleSnapshotRetry(): void {
+  if (!isRunning || snapshotRetryTimer) {
+    return
+  }
+  const delay =
+    SNAPSHOT_RETRY_DELAYS_MS[
+      Math.min(snapshotRetryAttempt, SNAPSHOT_RETRY_DELAYS_MS.length - 1)
+    ]
+  snapshotRetryAttempt += 1
+  snapshotRetryTimer = setTimeout(() => {
+    snapshotRetryTimer = null
+    synchronizeSnapshots()
+  }, delay)
+  snapshotRetryTimer.unref?.()
+}
+
+function handleSnapshotsSignal(): void {
+  if (!isRunning) {
+    return
+  }
+  // A fresh file event means readable data may be available right now:
+  // reset any pending backoff and reconcile immediately.
+  clearSnapshotRetry()
+  synchronizeSnapshots()
+}
+
+/**
+ * Re-read both snapshots and reconcile the database with them. If either
+ * snapshot is missing or invalid, the last reconciled state is preserved and
+ * a retry is queued. Returns true when a reconcile actually ran.
+ */
+function synchronizeSnapshots(): boolean {
+  if (!isRunning || !activeOpenClawPath) {
+    return false
+  }
+
+  const pairedSnapshot = loadPairedDevicesSnapshot(activeOpenClawPath)
+  if (pairedSnapshot.status !== 'ok') {
+    scheduleSnapshotRetry()
+    return false
+  }
+  const pendingSnapshot = loadPendingRequestsSnapshot(activeOpenClawPath)
+  if (pendingSnapshot.status !== 'ok') {
+    scheduleSnapshotRetry()
+    return false
+  }
+
+  clearSnapshotRetry()
+  const changes = reconcileSecurityState(
+    pairedSnapshot.items.map((device) => ({
       id: device.id,
       name: device.name,
       type: device.type,
-      status: 'active',
-    })
-  }
-  console.log(`Loaded ${devices.length} paired devices`)
-
-  // Load existing pending requests
-  const pendingSnapshot = loadPendingRequestsSnapshot(openClawPath)
-  const requests = pendingSnapshot.status === 'ok' ? pendingSnapshot.items : []
-  for (const request of requests) {
-    createPairingRequest({
-      device_id: request.id,
-      device_name: request.deviceName,
-      source_request_id: request.id,
-    })
-  }
-  if (pendingSnapshot.status === 'ok' && pairedSnapshot.status === 'ok') {
-    reconcilePairingRequests(
-      requests.map((request) => ({
-        device_id: request.id,
-        device_name: request.deviceName,
-        source_request_id: request.id,
-      })),
-      new Set(devices.map((device) => device.id))
-    )
-  }
-  console.log(`Loaded ${requests.length} pending pairing requests`)
-}
-
-// ============================================
-// Event handlers
-// ============================================
-
-function handleDevicePaired(
-  device: PairedDevice,
-  alertService: AlertService
-): void {
-  console.log(`Device paired: ${device.name} (${device.id})`)
-
-  // Upsert device in database
-  upsertDevice({
-    id: device.id,
-    name: device.name,
-    type: device.type,
-    status: 'active',
-  })
-  markPairingRequestState(device.id, 'resolved')
-
-  // Log audit entry
-  logAudit({
-    action: 'device_paired',
-    entity_type: 'device',
-    entity_id: device.id,
-    details: JSON.stringify({
-      name: device.name,
-      type: device.type,
-      pairedAt: device.pairedAt,
-    }),
-  })
-
-  // Process through alert service
-  alertService.processEvent({
-    type: 'device_paired',
-    deviceId: device.id,
-    name: device.name,
-    deviceType: device.type,
-    pairedAt: device.pairedAt,
-  })
-}
-
-function handleDeviceRemoved(
-  deviceId: string,
-  alertService: AlertService
-): void {
-  console.log(`Device removed: ${deviceId}`)
-
-  // Get device info before marking as removed
-  const device = getDevice(deviceId)
-
-  // Update device status
-  updateDeviceStatus(deviceId, 'removed')
-
-  // Log audit entry
-  logAudit({
-    action: 'device_removed',
-    entity_type: 'device',
-    entity_id: deviceId,
-    details: device
-      ? JSON.stringify({ name: device.name, type: device.type })
-      : null,
-  })
-
-  // Process through alert service
-  alertService.processEvent({
-    type: 'device_removed',
-    deviceId,
-    name: device?.name,
-  })
-}
-
-function handleNewPairingRequest(
-  request: PendingRequest,
-  alertService: AlertService
-): void {
-  console.log(`New pairing request: ${request.deviceName} (${request.id})`)
-
-  // Create pairing request in database
-  createPairingRequest({
-    device_id: request.id,
-    device_name: request.deviceName,
-    source_request_id: request.id,
-  })
-
-  // Log audit entry
-  logAudit({
-    action: 'pairing_request_created',
-    entity_type: 'pairing_request',
-    entity_id: request.id,
-    details: JSON.stringify({
+    })),
+    pendingSnapshot.items.map((request) => ({
+      id: request.id,
       deviceName: request.deviceName,
       type: request.type,
       requestedAt: request.requestedAt,
-    }),
-  })
-
-  // Process through alert service
-  alertService.processEvent({
-    type: 'pairing_request',
-    deviceId: request.id,
-    deviceName: request.deviceName,
-    deviceType: request.type,
-    requestedAt: request.requestedAt,
-  })
-}
-
-function handlePairingRequestRemoved(requestId: string): void {
-  console.log(`Pairing request removed: ${requestId}`)
-
-  const paired = activeOpenClawPath
-    ? loadPairedDevicesSnapshot(activeOpenClawPath)
-    : { status: 'error' as const, items: [] }
-  if (paired.status !== 'ok') return
-
-  const pairedIds = new Set(paired.items.map((device) => device.id))
-  const changed = markPairingRequestState(
-    requestId,
-    pairedIds.has(requestId) ? 'resolved' : 'removed'
+    }))
   )
-  if (!changed) return
 
-  // Log the observed external state transition only; no approve/deny action
-  // is inferred or sent to OpenClaw.
-  logAudit({
-    action: 'pairing_request_resolved',
-    entity_type: 'pairing_request',
-    entity_id: requestId,
-  })
+  if (!hasCompletedInitialSync) {
+    hasCompletedInitialSync = true
+    console.log(
+      `Security snapshots reconciled: ${pairedSnapshot.items.length} paired devices, ${pendingSnapshot.items.length} pending requests`
+    )
+    return true
+  }
+
+  notifySnapshotChanges(changes, pairedSnapshot.items, pendingSnapshot.items)
+  return true
 }
+
+function notifySnapshotChanges(
+  changes: ReturnType<typeof reconcileSecurityState>,
+  pairedDevices: PairedDevice[],
+  pendingRequests: PendingRequest[]
+): void {
+  if (changes.length === 0 || !alertService) {
+    return
+  }
+
+  const pairedById = new Map(pairedDevices.map((device) => [device.id, device]))
+  const pendingById = new Map(
+    pendingRequests.map((request) => [request.id, request])
+  )
+
+  for (const change of changes) {
+    if (change.kind === 'device') {
+      if (change.to === 'active') {
+        const device = pairedById.get(change.id)
+        console.log(`Device paired: ${device?.name ?? change.id}`)
+        logAudit({
+          action: 'device_paired',
+          entity_type: 'device',
+          entity_id: change.id,
+          details: device
+            ? JSON.stringify({
+                name: device.name,
+                type: device.type,
+                pairedAt: device.pairedAt,
+              })
+            : null,
+        })
+        alertService.processEvent({
+          type: 'device_paired',
+          deviceId: change.id,
+          name: device?.name,
+          deviceType: device?.type,
+          pairedAt: device?.pairedAt,
+        })
+      } else if (change.to === 'removed') {
+        console.log(`Device removed: ${change.id}`)
+        // The device is no longer in the snapshot; recover its last known
+        // identity from the database for the audit trail.
+        const device = getDevice(change.id)
+        logAudit({
+          action: 'device_removed',
+          entity_type: 'device',
+          entity_id: change.id,
+          details: device
+            ? JSON.stringify({ name: device.name, type: device.type })
+            : null,
+        })
+        alertService.processEvent({
+          type: 'device_removed',
+          deviceId: change.id,
+          name: device?.name ?? undefined,
+        })
+      }
+      continue
+    }
+
+    if (change.to === 'pending') {
+      const request = pendingById.get(change.id)
+      console.log(`New pairing request: ${request?.deviceName ?? change.id}`)
+      logAudit({
+        action: 'pairing_request_created',
+        entity_type: 'pairing_request',
+        entity_id: change.id,
+        details: JSON.stringify({
+          deviceName: request?.deviceName ?? null,
+          type: request?.type ?? null,
+          requestedAt: request?.requestedAt ?? null,
+        }),
+      })
+      alertService.processEvent({
+        type: 'pairing_request',
+        deviceId: change.id,
+        deviceName: request?.deviceName,
+        deviceType: request?.type,
+        requestedAt: request?.requestedAt,
+      })
+    } else if (change.to === 'resolved') {
+      logAudit({
+        action: 'pairing_request_resolved',
+        entity_type: 'pairing_request',
+        entity_id: change.id,
+      })
+    } else if (change.to === 'removed') {
+      logAudit({
+        action: 'pairing_request_removed',
+        entity_type: 'pairing_request',
+        entity_id: change.id,
+      })
+    }
+  }
+}
+
+// ============================================
+// Gateway event handlers
+// ============================================
 
 function handleGatewayEvent(
   event: GatewayLogEntry,
-  alertService: AlertService
+  alertServiceInstance: AlertService
 ): void {
   // Log connection event to database
   logConnectionEvent({
@@ -355,5 +375,5 @@ function handleGatewayEvent(
   }
 
   // Process through alert service
-  alertService.processEvent(event)
+  alertServiceInstance.processEvent(event)
 }

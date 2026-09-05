@@ -1,6 +1,6 @@
 {
   "name": "clawalytics-cn-desktop",
-  "version": "0.7.9",
+  "version": "0.7.10",
   "description": "Cost-tracking analytics dashboard for OpenClaw - track AI spending across 100+ models, monitor agents, analyze channels, and manage security",
   "author": "David Novotny",
   "license": "MIT",
@@ -23,6 +23,7 @@
     "test:openclaw": "node scripts/ensure-native-deps.mjs && node --import tsx scripts/test-openclaw-data-pipeline.mjs",
     "test:hermes": "node scripts/ensure-native-deps.mjs && node --import tsx scripts/test-hermes-data-pipeline.mjs && node --import tsx scripts/test-data-source-config.mjs",
     "test:desktop-notifications": "node scripts/test-desktop-notifications.mjs",
+    "test:costs-socket-teardown": "node scripts/test-costs-socket-teardown.mjs",
     "test:analytics": "node --import tsx scripts/test-analytics-regressions.mjs",
     "test:security-boundary": "node --import tsx scripts/test-security-boundary.mjs",
     "test:request-trust": "node --import tsx scripts/test-request-trust.mjs",

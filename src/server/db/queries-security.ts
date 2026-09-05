@@ -286,51 +286,170 @@ export function createPairingRequest(request: PairingRequestInput): number {
   return result.lastInsertRowid as number
 }
 
-export function markPairingRequestState(
-  sourceRequestId: string,
-  status: 'resolved' | 'removed'
-): boolean {
-  const result = prepareCached(
-    `UPDATE pairing_requests
-     SET status = ?, responded_at = COALESCE(responded_at, datetime('now'))
-     WHERE source_request_id = ? AND status = 'pending'`
-  ).run(status, sourceRequestId)
-  return result.changes > 0
+// ============================================
+// Snapshot reconciliation
+// ============================================
+//
+// The OpenClaw pairing files (paired.json / pending.json) are the authority
+// on device and request state. Reconciliation runs inside a single
+// transaction whenever both snapshots are valid and returns the real state
+// changes it applied, so callers can audit/alert exactly once per change and
+// never for unchanged data.
+
+export interface SecurityPairedEntry {
+  id: string
+  name: string | null
+  type: string | null
 }
 
-export function reconcilePairingRequests(
-  pending: PairingRequestInput[],
-  pairedDeviceIds: ReadonlySet<string>
-): void {
-  const db = getDatabase()
-  db.transaction(() => {
-    const pendingIds = new Set<string>()
-    for (const request of pending) {
-      const sourceId = request.source_request_id ?? request.device_id
-      pendingIds.add(sourceId)
-      createPairingRequest({
-        ...request,
-        source_request_id: sourceId,
-        status: 'pending',
+export interface SecurityPendingEntry {
+  id: string
+  deviceName: string | null
+  type: string | null
+  requestedAt: string | null
+}
+
+export interface SecurityStateChange {
+  kind: 'device' | 'pairing_request'
+  id: string
+  from: string | null
+  to: string
+}
+
+export function reconcileSecurityState(
+  pairedDevices: SecurityPairedEntry[],
+  pendingRequests: SecurityPendingEntry[]
+): SecurityStateChange[] {
+  const changes: SecurityStateChange[] = []
+  const pairedIds = new Set(pairedDevices.map((device) => device.id))
+  const pendingIds = new Set(pendingRequests.map((request) => request.id))
+
+  const insertDevice = prepareCached(
+    `INSERT INTO devices (id, name, type, status)
+     VALUES (?, ?, ?, 'active')
+     ON CONFLICT(id) DO UPDATE SET
+       name = COALESCE(excluded.name, devices.name),
+       type = COALESCE(excluded.type, devices.type)`
+  )
+  const setDeviceStatus = prepareCached(
+    'UPDATE devices SET status = ? WHERE id = ?'
+  )
+
+  const loadRequests = prepareCached(
+    `SELECT id, device_id, source_request_id, status
+     FROM pairing_requests
+     WHERE status IN ('pending', 'resolved', 'removed')`
+  )
+  const setRequestStatus = prepareCached(
+    `UPDATE pairing_requests
+     SET status = ?, responded_at = COALESCE(responded_at, datetime('now'))
+     WHERE source_request_id = ?`
+  )
+  const insertRequest = prepareCached(
+    `INSERT INTO pairing_requests
+       (device_id, device_name, status, source_request_id, requested_at)
+     VALUES (?, ?, ?, ?, COALESCE(?, datetime('now')))`
+  )
+
+  getDatabase().transaction(() => {
+    // Devices: the paired snapshot defines the active set.
+    const deviceRows = prepareCached(
+      'SELECT id, status FROM devices'
+    ).all() as Array<{ id: string; status: string }>
+    const deviceRowsById = new Map(deviceRows.map((row) => [row.id, row]))
+
+    for (const device of pairedDevices) {
+      const existing = deviceRowsById.get(device.id)
+      if (!existing) {
+        insertDevice.run(device.id, device.name, device.type)
+        changes.push({
+          kind: 'device',
+          id: device.id,
+          from: null,
+          to: 'active',
+        })
+      } else {
+        if (existing.status !== 'active') {
+          setDeviceStatus.run('active', device.id)
+          changes.push({
+            kind: 'device',
+            id: device.id,
+            from: existing.status,
+            to: 'active',
+          })
+        }
+      }
+    }
+
+    for (const row of deviceRows) {
+      if (row.status === 'active' && !pairedIds.has(row.id)) {
+        setDeviceStatus.run('removed', row.id)
+        changes.push({
+          kind: 'device',
+          id: row.id,
+          from: 'active',
+          to: 'removed',
+        })
+      }
+    }
+
+    // Pairing requests: paired membership resolves (priority over pending),
+    // pending.json keeps requests pending, requests that vanished from
+    // pending without being paired are removed. Removed requests may be
+    // corrected back to resolved (out-of-order file writes); resolved
+    // history is never downgraded.
+    const requestRows = loadRequests.all() as Array<{
+      id: number
+      device_id: string
+      source_request_id: string | null
+      status: string
+    }>
+    const knownSourceIds = new Set<string>()
+    for (const row of requestRows) {
+      if (!row.source_request_id) continue
+      knownSourceIds.add(row.source_request_id)
+
+      const isPaired =
+        pairedIds.has(row.source_request_id) || pairedIds.has(row.device_id)
+      let desired: string | null = null
+      if (isPaired) {
+        desired = 'resolved'
+      } else if (pendingIds.has(row.source_request_id)) {
+        desired = 'pending'
+      } else if (row.status === 'pending') {
+        desired = 'removed'
+      }
+
+      if (!desired || desired === row.status) continue
+      setRequestStatus.run(desired, row.source_request_id)
+      changes.push({
+        kind: 'pairing_request',
+        id: row.source_request_id,
+        from: row.status,
+        to: desired,
       })
     }
 
-    const current = prepareCached(
-      `SELECT source_request_id, device_id FROM pairing_requests WHERE status = 'pending'`
-    ).all() as Array<{ source_request_id: string | null; device_id: string }>
-    for (const request of current) {
-      const sourceId = request.source_request_id ?? request.device_id
-      if (!pendingIds.has(sourceId)) {
-        markPairingRequestState(
-          sourceId,
-          pairedDeviceIds.has(request.device_id) ||
-            pairedDeviceIds.has(sourceId)
-            ? 'resolved'
-            : 'removed'
-        )
-      }
+    for (const request of pendingRequests) {
+      if (knownSourceIds.has(request.id)) continue
+      const status = pairedIds.has(request.id) ? 'resolved' : 'pending'
+      insertRequest.run(
+        request.id,
+        request.deviceName,
+        status,
+        request.id,
+        request.requestedAt
+      )
+      changes.push({
+        kind: 'pairing_request',
+        id: request.id,
+        from: null,
+        to: status,
+      })
     }
   })()
+
+  return changes
 }
 
 export function getPendingRequests(): PairingRequest[] {

@@ -81,6 +81,10 @@ export function initWebSocket(
       return
     }
     if (pathname !== '/ws') {
+      // Never leave unmatched upgrade sockets dangling: respond, close, and
+      // keep them out of the WebSocket server's client accounting.
+      socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n')
+      socket.destroy()
       return
     }
 

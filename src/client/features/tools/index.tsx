@@ -19,6 +19,7 @@ import {
   YAxis,
 } from 'recharts'
 import { getOutboundCalls, getToolStats } from '@/lib/api'
+import { downloadApiExport } from '@/lib/download'
 import { formatRelativeTime } from '@/lib/i18n'
 import { pollWhenVisible } from '@/lib/polling'
 import { useLocale } from '@/context/locale-provider'
@@ -187,7 +188,10 @@ export function ToolsAnalytics() {
             variant='outline'
             size='sm'
             onClick={() =>
-              window.open('/api/export/tools?format=csv', '_blank')
+              void downloadApiExport(
+                '/api/export/tools?format=csv',
+                'clawalytics-tools.csv'
+              )
             }
           >
             <Download className='mr-2 h-4 w-4' />

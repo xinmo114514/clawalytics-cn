@@ -19,6 +19,7 @@ import {
   modelUsageQueryKey,
   type BudgetPeriod,
 } from '@/lib/api'
+import { downloadApiExport } from '@/lib/download'
 import { formatNumber } from '@/lib/format'
 import { pollWhenVisible } from '@/lib/polling'
 import { useCurrency } from '@/context/currency-provider'
@@ -234,7 +235,10 @@ export function Dashboard() {
               variant='outline'
               size='sm'
               onClick={() =>
-                window.open('/api/export/costs?format=csv', '_blank')
+                void downloadApiExport(
+                  '/api/export/costs?format=csv',
+                  'clawalytics-costs.csv'
+                )
               }
             >
               <Download className='mr-2 h-4 w-4' />

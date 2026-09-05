@@ -167,7 +167,8 @@ function initializeSchema(database: Database.Database): void {
       requested_at TEXT DEFAULT CURRENT_TIMESTAMP,
       responded_at TEXT,
       status TEXT DEFAULT 'pending',
-      response TEXT
+      response TEXT,
+      source_request_id TEXT
     );
 
     -- Connection events log
@@ -386,6 +387,52 @@ const migrations: {
          ON pairing_requests(source_request_id)
          WHERE source_request_id IS NOT NULL`
       )
+    },
+  },
+  {
+    version: 5,
+    description: 'Repair legacy pairing requests missing source_request_id',
+    up: (db) => {
+      const hasCanonicalSourceId = db.prepare(
+        'SELECT COUNT(*) AS n FROM pairing_requests WHERE source_request_id = ?'
+      )
+      const bindLegacyRow = db.prepare(
+        `UPDATE pairing_requests
+         SET source_request_id = device_id
+         WHERE id = ? AND source_request_id IS NULL AND status = 'pending'`
+      )
+      const markLegacyRemoved = db.prepare(
+        `UPDATE pairing_requests
+         SET status = 'removed',
+             responded_at = COALESCE(responded_at, datetime('now'))
+         WHERE id = ? AND source_request_id IS NULL AND status = 'pending'`
+      )
+
+      // Newest row first so that, per device, the most recent legacy pending
+      // becomes the canonical record and any remaining duplicates are ended
+      // as 'removed'. A device that already owns a canonical row (any status)
+      // never gets a second binding - its legacy rows are only retired.
+      const legacyRows = db
+        .prepare(
+          `SELECT id, device_id FROM pairing_requests
+           WHERE status = 'pending' AND source_request_id IS NULL
+           ORDER BY id DESC`
+        )
+        .all() as Array<{ id: number; device_id: string }>
+
+      for (const row of legacyRows) {
+        const canonical = hasCanonicalSourceId.get(row.device_id) as {
+          n: number
+        }
+        if (canonical.n > 0) {
+          markLegacyRemoved.run(row.id)
+          continue
+        }
+        const bound = bindLegacyRow.run(row.id)
+        if (bound.changes === 0) {
+          markLegacyRemoved.run(row.id)
+        }
+      }
     },
   },
   // To add a future migration:

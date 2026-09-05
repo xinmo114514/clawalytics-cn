@@ -27,51 +27,42 @@ export type SnapshotResult<T> =
   | { status: 'error'; items: []; error: Error }
 
 interface PairedDevicesFile {
-  devices: Array<{
-    id: string
-    name: string
-    type: string
-    pairedAt: string
-    publicKey?: string
-  }>
+  devices: unknown
 }
 
 interface PendingRequestsFile {
-  requests: Array<{
-    id: string
-    deviceName: string
-    type: string
-    requestedAt: string
-  }>
+  requests: unknown
 }
 
-export interface DeviceWatcherCallbacks {
-  onDevicePaired: (device: PairedDevice) => void
-  onDeviceRemoved: (deviceId: string) => void
-  onNewRequest: (request: PendingRequest) => void
-  onRequestRemoved: (requestId: string) => void
+/**
+ * Invoked whenever either snapshot file may have changed. Consumers must
+ * re-read BOTH snapshots and reconcile; individual file deltas are not
+ * reported because the two files can be written in any order.
+ */
+export type SnapshotsChangedListener = () => void
+
+// ============================================
+// Validation
+// ============================================
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== ''
 }
 
-// ============================================
-// State tracking for change detection
-// ============================================
-
-let previousDevices = new Map<string, PairedDevice>()
-let previousRequests = new Map<string, PendingRequest>()
-let deviceWatcher: FSWatcher | null = null
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
 
 // ============================================
 // Load functions
 // ============================================
 
 /**
- * Load paired devices from the paired.json file
+ * Load paired devices from the paired.json file. An 'ok' snapshot guarantees
+ * every entry passed runtime validation; 'missing' and 'error' mean the
+ * snapshot is temporarily unavailable and must never be treated as
+ * authoritative (no deletions based on it).
  */
-export function loadPairedDevices(openClawPath: string): PairedDevice[] {
-  const result = loadPairedDevicesSnapshot(openClawPath)
-  return result.status === 'ok' ? result.items : []
-}
-
 export function loadPairedDevicesSnapshot(
   openClawPath: string
 ): SnapshotResult<PairedDevice> {
@@ -81,47 +72,62 @@ export function loadPairedDevicesSnapshot(
     return { status: 'missing', items: [] }
   }
 
+  let data: PairedDevicesFile
   try {
-    const content = fs.readFileSync(filePath, 'utf-8')
-    const data = JSON.parse(content) as PairedDevicesFile
-
-    if (!data.devices || !Array.isArray(data.devices)) {
-      console.warn('paired.json has no devices array')
-      return {
-        status: 'error',
-        items: [],
-        error: new Error('paired.json has no devices array'),
-      }
-    }
-
-    return {
-      status: 'ok',
-      items: data.devices.map((device) => ({
-        id: device.id,
-        name: device.name,
-        type: device.type,
-        pairedAt: device.pairedAt,
-        publicKey: device.publicKey,
-      })),
-    }
+    data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as PairedDevicesFile
   } catch (error) {
-    console.error('Failed to load paired devices:', error)
+    console.error('Failed to parse paired devices:', error)
     return {
       status: 'error',
       items: [],
       error: error instanceof Error ? error : new Error(String(error)),
     }
   }
+
+  if (!Array.isArray(data.devices)) {
+    console.warn('paired.json has no devices array')
+    return {
+      status: 'error',
+      items: [],
+      error: new Error('paired.json has no devices array'),
+    }
+  }
+
+  const items: PairedDevice[] = []
+  for (const [index, entry] of data.devices.entries()) {
+    if (
+      !isRecord(entry) ||
+      !isNonEmptyString(entry.id) ||
+      !isNonEmptyString(entry.name) ||
+      !isNonEmptyString(entry.type) ||
+      !isNonEmptyString(entry.pairedAt) ||
+      (entry.publicKey !== undefined && typeof entry.publicKey !== 'string')
+    ) {
+      console.warn(`paired.json entry at index ${index} is invalid`)
+      return {
+        status: 'error',
+        items: [],
+        error: new Error(
+          `paired.json entry at index ${index} is invalid: required fields must be non-empty strings`
+        ),
+      }
+    }
+    items.push({
+      id: entry.id,
+      name: entry.name,
+      type: entry.type,
+      pairedAt: entry.pairedAt,
+      ...(entry.publicKey !== undefined ? { publicKey: entry.publicKey } : {}),
+    })
+  }
+
+  return { status: 'ok', items }
 }
 
 /**
- * Load pending pairing requests from the pending.json file
+ * Load pending pairing requests from the pending.json file. An 'ok' snapshot
+ * guarantees every entry passed runtime validation.
  */
-export function loadPendingRequests(openClawPath: string): PendingRequest[] {
-  const result = loadPendingRequestsSnapshot(openClawPath)
-  return result.status === 'ok' ? result.items : []
-}
-
 export function loadPendingRequestsSnapshot(
   openClawPath: string
 ): SnapshotResult<PendingRequest> {
@@ -131,36 +137,54 @@ export function loadPendingRequestsSnapshot(
     return { status: 'missing', items: [] }
   }
 
+  let data: PendingRequestsFile
   try {
-    const content = fs.readFileSync(filePath, 'utf-8')
-    const data = JSON.parse(content) as PendingRequestsFile
-
-    if (!data.requests || !Array.isArray(data.requests)) {
-      console.warn('pending.json has no requests array')
-      return {
-        status: 'error',
-        items: [],
-        error: new Error('pending.json has no requests array'),
-      }
-    }
-
-    return {
-      status: 'ok',
-      items: data.requests.map((request) => ({
-        id: request.id,
-        deviceName: request.deviceName,
-        type: request.type,
-        requestedAt: request.requestedAt,
-      })),
-    }
+    data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as PendingRequestsFile
   } catch (error) {
-    console.error('Failed to load pending requests:', error)
+    console.error('Failed to parse pending requests:', error)
     return {
       status: 'error',
       items: [],
       error: error instanceof Error ? error : new Error(String(error)),
     }
   }
+
+  if (!Array.isArray(data.requests)) {
+    console.warn('pending.json has no requests array')
+    return {
+      status: 'error',
+      items: [],
+      error: new Error('pending.json has no requests array'),
+    }
+  }
+
+  const items: PendingRequest[] = []
+  for (const [index, entry] of data.requests.entries()) {
+    if (
+      !isRecord(entry) ||
+      !isNonEmptyString(entry.id) ||
+      !isNonEmptyString(entry.deviceName) ||
+      !isNonEmptyString(entry.type) ||
+      !isNonEmptyString(entry.requestedAt)
+    ) {
+      console.warn(`pending.json entry at index ${index} is invalid`)
+      return {
+        status: 'error',
+        items: [],
+        error: new Error(
+          `pending.json entry at index ${index} is invalid: required fields must be non-empty strings`
+        ),
+      }
+    }
+    items.push({
+      id: entry.id,
+      deviceName: entry.deviceName,
+      requestedAt: entry.requestedAt,
+      type: entry.type,
+    })
+  }
+
+  return { status: 'ok', items }
 }
 
 // ============================================
@@ -168,11 +192,13 @@ export function loadPendingRequestsSnapshot(
 // ============================================
 
 /**
- * Watch device pairing files for changes
+ * Watch device pairing files for changes. Any add/change/unlink of either
+ * file emits a single "snapshots may have changed" signal; the consumer
+ * re-reads both snapshots and reconciles.
  */
 export function watchDeviceFiles(
   openClawPath: string,
-  callbacks: DeviceWatcherCallbacks
+  onSnapshotsChanged: SnapshotsChangedListener
 ): FSWatcher | null {
   const nodesPath = path.join(openClawPath, 'nodes')
   const pairedPath = path.join(nodesPath, 'paired.json')
@@ -184,13 +210,6 @@ export function watchDeviceFiles(
     return null
   }
 
-  // Initialize state with current files
-  const initialDevices = loadPairedDevices(openClawPath)
-  previousDevices = new Map(initialDevices.map((d) => [d.id, d]))
-
-  const initialRequests = loadPendingRequests(openClawPath)
-  previousRequests = new Map(initialRequests.map((r) => [r.id, r]))
-
   // Watch both files
   deviceWatcher = chokidar.watch([pairedPath, pendingPath], {
     persistent: true,
@@ -201,34 +220,39 @@ export function watchDeviceFiles(
     },
   })
 
-  deviceWatcher.on('change', (filePath) => {
-    if (filePath.endsWith('paired.json')) {
-      handlePairedDevicesChange(openClawPath, callbacks)
-    } else if (filePath.endsWith('pending.json')) {
-      handlePendingRequestsChange(openClawPath, callbacks)
+  const emitSignal = (filePath: string, reason: string) => {
+    if (
+      !filePath.endsWith('paired.json') &&
+      !filePath.endsWith('pending.json')
+    ) {
+      return
     }
-  })
-
-  deviceWatcher.on('add', (filePath) => {
-    if (filePath.endsWith('paired.json')) {
-      console.log('paired.json created, loading devices...')
-      handlePairedDevicesChange(openClawPath, callbacks)
-    } else if (filePath.endsWith('pending.json')) {
-      console.log('pending.json created, loading requests...')
-      handlePendingRequestsChange(openClawPath, callbacks)
+    try {
+      onSnapshotsChanged()
+    } catch (error) {
+      console.error(`Error handling ${reason} (${filePath}):`, error)
     }
-  })
+  }
 
+  deviceWatcher.on('change', (filePath) => emitSignal(filePath, 'file change'))
+  deviceWatcher.on('add', (filePath) => emitSignal(filePath, 'file creation'))
+  // Writes that land while the initial scan is still running are absorbed
+  // into that scan and never surface as 'change' events. The 'ready' signal
+  // re-reads both snapshots once the scan completes so nothing is lost.
+  deviceWatcher.on('ready', () => emitSignal(pairedPath, 'watcher ready'))
   deviceWatcher.on('unlink', (filePath) => {
     if (filePath.endsWith('paired.json')) {
       console.warn(
-        'paired.json became unavailable; preserving the last valid device snapshot'
+        'paired.json became unavailable; preserving the last reconciled state'
       )
     } else if (filePath.endsWith('pending.json')) {
       console.warn(
-        'pending.json became unavailable; preserving the last valid request snapshot'
+        'pending.json became unavailable; preserving the last reconciled state'
       )
     }
+    // The file may be recreated (or replaced atomically) right away: signal
+    // so the consumer keeps retrying until a valid snapshot returns.
+    emitSignal(filePath, 'file removal')
   })
 
   deviceWatcher.on('error', (error) => {
@@ -246,72 +270,12 @@ export function stopDeviceWatcher(): void {
   if (deviceWatcher) {
     deviceWatcher.close()
     deviceWatcher = null
-    previousDevices.clear()
-    previousRequests.clear()
     console.log('Device watcher stopped')
   }
 }
 
 // ============================================
-// Change handlers
+// State
 // ============================================
 
-function handlePairedDevicesChange(
-  openClawPath: string,
-  callbacks: DeviceWatcherCallbacks
-): void {
-  const devicesSnapshot = loadPairedDevicesSnapshot(openClawPath)
-  if (devicesSnapshot.status !== 'ok') {
-    return
-  }
-  const currentDevices = devicesSnapshot.items
-  const currentDevicesMap = new Map(currentDevices.map((d) => [d.id, d]))
-
-  // Detect new devices
-  for (const [id, device] of currentDevicesMap) {
-    if (!previousDevices.has(id)) {
-      console.log(`New device paired: ${device.name}`)
-      callbacks.onDevicePaired(device)
-    }
-  }
-
-  // Detect removed devices
-  for (const [id] of previousDevices) {
-    if (!currentDevicesMap.has(id)) {
-      console.log(`Device removed: ${id}`)
-      callbacks.onDeviceRemoved(id)
-    }
-  }
-
-  previousDevices = currentDevicesMap
-}
-
-function handlePendingRequestsChange(
-  openClawPath: string,
-  callbacks: DeviceWatcherCallbacks
-): void {
-  const requestsSnapshot = loadPendingRequestsSnapshot(openClawPath)
-  if (requestsSnapshot.status !== 'ok') {
-    return
-  }
-  const currentRequests = requestsSnapshot.items
-  const currentRequestsMap = new Map(currentRequests.map((r) => [r.id, r]))
-
-  // Detect new requests
-  for (const [id, request] of currentRequestsMap) {
-    if (!previousRequests.has(id)) {
-      console.log(`New pairing request: ${request.deviceName}`)
-      callbacks.onNewRequest(request)
-    }
-  }
-
-  // Detect removed requests (approved/denied)
-  for (const [id] of previousRequests) {
-    if (!currentRequestsMap.has(id)) {
-      console.log(`Pairing request removed: ${id}`)
-      callbacks.onRequestRemoved(id)
-    }
-  }
-
-  previousRequests = currentRequestsMap
-}
+let deviceWatcher: FSWatcher | null = null

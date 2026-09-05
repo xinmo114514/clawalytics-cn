@@ -111,6 +111,41 @@ try {
     socket.once('error', reject)
   })
 
+  // A raw TCP upgrade to a path other than /ws must be answered with 404,
+  // its socket must be closed, and it must not consume a WebSocket slot.
+  const nonWsUpgrade = await new Promise((resolve, reject) => {
+    const socket = net.connect(port, '127.0.0.1')
+    const timer = setTimeout(() => {
+      socket.destroy()
+      reject(new Error('non-/ws upgrade socket was not closed within 2s'))
+    }, 2000)
+    let data = ''
+    socket.on('data', (chunk) => {
+      data += chunk.toString()
+    })
+    socket.on('close', () => {
+      clearTimeout(timer)
+      resolve(data)
+    })
+    socket.on('error', (error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
+    socket.write(
+      'GET /not-ws HTTP/1.1\r\n' +
+        'Host: 127.0.0.1\r\n' +
+        'Upgrade: websocket\r\n' +
+        'Connection: Upgrade\r\n' +
+        'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+        'Sec-WebSocket-Version: 13\r\n\r\n'
+    )
+  })
+  assert.match(
+    nonWsUpgrade,
+    /^HTTP\/1\.1 404/,
+    `non-/ws upgrade must return 404, got: ${nonWsUpgrade.split('\r\n')[0]}`
+  )
+
   const sockets = []
   try {
     for (let index = 0; index < 32; index += 1) {
@@ -136,6 +171,13 @@ try {
     for (const socket of sockets) socket.close()
   }
 } finally {
-  await stop()
+  // stop() must not hang on leaked upgrade sockets; bound it so the failure
+  // mode is a clear assertion instead of a stuck CI job.
+  await Promise.race([
+    stop(),
+    new Promise((_resolve, reject) =>
+      setTimeout(() => reject(new Error('server stop hung')), 10000)
+    ),
+  ])
   ;(await import('node:fs')).rmSync(home, { recursive: true, force: true })
 }

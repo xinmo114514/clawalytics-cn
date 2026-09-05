@@ -73,13 +73,147 @@ try {
   )
   assert.notEqual(destructive, '')
 
+  const appOrigin = new URL(page.url()).origin
+  assert.match(appOrigin, /^http:\/\/(127\.0\.0\.1|localhost):\d+$/)
+
+  // ============================================
+  // Renderer isolation
+  // ============================================
+
+  const isolation = await page.evaluate(() => ({
+    hasRequire: typeof window.require !== 'undefined',
+    hasProcess: typeof process !== 'undefined',
+    electronApiKeys: Object.keys(window.electronAPI ?? {}).sort(),
+    cookieExposesToken: document.cookie.includes('clawalytics_desktop_token'),
+  }))
+  assert.equal(isolation.hasRequire, false, 'window.require must be unavailable')
+  assert.equal(isolation.hasProcess, false, 'Node process must be unavailable')
+  assert.deepEqual(
+    isolation.electronApiKeys,
+    [
+      'getWindowsAccentColor',
+      'onWindowsAccentColorChanged',
+      'selectFolder',
+    ].sort(),
+    `electronAPI must only expose the preload whitelist, got: ${isolation.electronApiKeys}`
+  )
+  assert.equal(
+    isolation.cookieExposesToken,
+    false,
+    'the HttpOnly desktop token must not be readable from the renderer'
+  )
+
+  // ============================================
+  // In-page authenticated requests
+  // ============================================
+
+  const healthStatus = await page.evaluate(
+    async () => (await fetch('/api/health')).status
+  )
+  assert.equal(healthStatus, 200, 'in-page /api/health must authenticate via cookie')
+
+  const externalStatus = await fetch(`${appOrigin}/api/health`)
+  assert.equal(externalStatus.status, 403, 'requests without the token must be rejected')
+
+  const wsMessageType = await page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        const ws = new WebSocket(`ws://${location.host}/ws`)
+        const timer = setTimeout(() => {
+          ws.close()
+          reject(new Error('WebSocket connected event timed out'))
+        }, 10000)
+        ws.onmessage = (event) => {
+          clearTimeout(timer)
+          resolve(JSON.parse(event.data).type)
+          ws.close()
+        }
+        ws.onerror = () => {
+          clearTimeout(timer)
+          reject(new Error('WebSocket connection failed'))
+        }
+      })
+  )
+  assert.equal(wsMessageType, 'connected')
+
+  // ============================================
+  // Theme switching must actually update the root node
+  // ============================================
+
+  const isDarkTheme = () =>
+    page.evaluate(() => document.documentElement.classList.contains('dark'))
+  const initialDark = await isDarkTheme()
+  const themeTrigger = page.getByRole('button', {
+    name: /Toggle theme|切换主题/,
+  })
+  await themeTrigger.click()
+  await page
+    .getByRole('menuitem', { name: initialDark ? /Light|浅色/ : /Dark|深色/ })
+    .click()
+  await page.waitForFunction(
+    (expected) => document.documentElement.classList.contains('dark') === expected,
+    !initialDark
+  )
+  await themeTrigger.click()
+  await page
+    .getByRole('menuitem', { name: initialDark ? /Dark|深色/ : /Light|浅色/ })
+    .click()
+  await page.waitForFunction(
+    (expected) => document.documentElement.classList.contains('dark') === expected,
+    initialDark
+  )
+
+  // ============================================
+  // CSV exports: real downloads whose names match the response headers
+  // ============================================
+
+  const downloadDir = path.join(tempHome, 'downloads')
+  fs.mkdirSync(downloadDir, { recursive: true })
+
+  async function assertHeaderFilename(apiPath, expectedFilename) {
+    const headerFilename = await page.evaluate(async (exportPath) => {
+      const response = await fetch(exportPath)
+      if (!response.ok) return null
+      const disposition = response.headers.get('Content-Disposition') ?? ''
+      return /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? null
+    }, apiPath)
+    assert.equal(headerFilename, expectedFilename)
+  }
+
+  async function exportCsvViaButton(expectedFilename) {
+    const downloadPromise = page.waitForEvent('download', { timeout: 15000 })
+    await page
+      .getByRole('button', { name: /Export CSV|导出 CSV/ })
+      .first()
+      .click()
+    const download = await downloadPromise
+    assert.equal(
+      download.suggestedFilename(),
+      expectedFilename,
+      'download filename must match the Content-Disposition header'
+    )
+    const target = path.join(downloadDir, expectedFilename)
+    await download.saveAs(target)
+    const content = fs.readFileSync(target)
+    assert.ok(content.length > 0, `${expectedFilename} download is empty`)
+  }
+
+  await assertHeaderFilename('/api/export/costs?format=csv', 'clawalytics-costs.csv')
+  await exportCsvViaButton('clawalytics-costs.csv')
+
+  await page.goto(`${appOrigin}/tools`, { waitUntil: 'domcontentloaded' })
+  await assertHeaderFilename('/api/export/tools?format=csv', 'clawalytics-tools.csv')
+  await exportCsvViaButton('clawalytics-tools.csv')
+
+  // ============================================
+  // Navigation sanity (existing behaviour)
+  // ============================================
+
   const settings = page.getByText('Settings', { exact: true }).first()
   if (await settings.count()) {
     await settings.click()
     await page.waitForTimeout(300)
   }
-  const appOrigin = new URL(page.url()).origin
-  assert.match(appOrigin, /^http:\/\/(127\.0\.0\.1|localhost):\d+$/)
 } finally {
   await browser?.close()
   child?.kill()
